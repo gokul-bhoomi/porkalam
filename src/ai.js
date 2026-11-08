@@ -117,8 +117,8 @@ function decide(m, cpu, p, o, d) {
 
   // boons: spend devotion. A beginner cashes in at once; a better player saves up for the divine weapon
   const M = TUNE.meditate, dv = p.devotion;
-  if (p.boon) { // a held boon: use it when it can land (a divine weapon, preferably when the opponent can't dodge)
-    const bm = p.boon.move, ready = can(bm) && (!bm.divine || o.med || o.effects.hold || o.effects.stun || o.cast || R() < 0.15);
+  if (p.boon) { // a held boon always finds its target; use it when nothing of theirs is in the air to meet it
+    const bm = { ...p.boon.move, range: 'anywhere' }, ready = can(bm) && !m.projectiles.some((pr) => pr.owner !== p.id);
     if (ready && R() < 0.6) return { buttons: COMBO.boon, time: 0.05 };
   } else if (dv >= M.tiers[0]) {
     const want = L.plan > 0.7 ? M.tiers[2] : L.plan > 0.4 ? M.tiers[1] : M.tiers[0];

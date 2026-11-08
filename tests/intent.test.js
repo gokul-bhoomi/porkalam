@@ -407,6 +407,22 @@ test('rule 11: asking reveals the boon and holds it; two specials again use it, 
   assert.equal(m.players[R].devotion, 3, 'the devotion stays banked');
 });
 
+test('rule 11: a boon always finds the opponent: no dodging, no walls, any distance; only another attack can meet it (owner, 2026-11-08)', () => {
+  const vel = findBoon('vel');
+  const fire = (m) => { m.players[R].boon = { move: vel, name: vel.name, god: 'Murugan', godId: 'murugan', tier: 'small' }; useBoon(m, R); };
+  // fired from across the arena while the opponent runs away and hides behind a wall
+  const m = match({ k: { x: -100, y: 0, power: 100 }, r: { x: 100, y: 0 } });
+  run(m, [{ block: true }, {}], 1); run(m, [{}, {}], 0.05);
+  fire(m); assert.equal(m.players[R].msg?.text ?? null, null, 'no TOO FAR for a boon');
+  run(m, [{ my: 1, mx: 1 }, {}], 4);
+  assert.equal(m.players[K].hp, 100 - vel.damage, 'it hit anyway');
+  // a basic attack meeting it head-on weakens it (clash: the weaker move's damage is taken off)
+  const n = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 60, y: 0 } });
+  fire(n); run(n, [{}, {}], vel.cast * 0.5); tap(n, K, 'a1'); run(n, [{}, {}], 2);
+  assert.ok(events(n, 'clash').length >= 1, 'they collided');
+  assert.ok(n.players[K].hp > 100 - vel.damage, 'the boon was weakened by the clash');
+});
+
 test('rule 11: the meditation barrier soaks damage instead of health; breaking it ends meditation', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
   tap(m, R, 'cls'); run(m, [{}, {}], 0.5);

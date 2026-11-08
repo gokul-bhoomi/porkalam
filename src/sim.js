@@ -167,6 +167,10 @@ function movement(m, inputs, dt) {
   }
 
   for (const pr of m.projectiles) {
+    if (pr.seek) { // a boon homes in on the opponent: it can't be dodged, only met by another attack (owner, 2026-11-08)
+      const o = m.players[1 - pr.owner], sp = Math.hypot(pr.vx, pr.vy), u = unitDir(o.x - pr.x, o.y - pr.y);
+      pr.vx = u.x * sp; pr.vy = u.y * sp; pr.life = Math.max(pr.life, 0.5); pr.legs = 0;
+    }
     pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt; pr.lt += dt;
     pr.flown += Math.hypot(pr.vx, pr.vy) * dt;
     if (pr.flown > pr.reach) pr.dead = true; // a basic shot only reaches as far as its range
@@ -237,7 +241,8 @@ function tryAct(m, p, slot, inp) {
   if (slot === 'boon') move = p.boon.move;
   else move = p.ch.moves[slot];
   if (!move) return;
-  const why = whyNot(m, p, move);
+  // a boon can be used from any distance: it always finds the opponent (owner, 2026-11-08)
+  const why = whyNot(m, p, slot === 'boon' ? { ...move, range: 'anywhere' } : move);
   if (why) { say(p, why); return; }
   if (slot === 'boon') { // single-use: gone as soon as it's used
     ev(m, 'boonUsed', { pid: p.id, name: p.boon.name, god: p.boon.god, godId: p.boon.godId, tier: p.boon.tier });
@@ -309,7 +314,7 @@ function release(m, p, c) {
         m.projectiles.push({
           id: m.nid++, owner: p.id, name: mv.name, shape: mv.shape, x: p.x + cx * TUNE.fighterR, y: p.y + cy * TUNE.fighterR,
           vx: cx * mv.speed * TUNE.pace.shot, vy: cy * mv.speed * TUNE.pace.shot, r: mv.radius, dmg, kb: mv.knockback, life: mv.life, legs: mv.legs ? mv.legs - 1 : 0,
-          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, divine: !!mv.divine, boon: c.slot === 'boon', reach: isBasic(mv) ? RANGES[rangeOf(mv)][1] : Infinity, flown: 0, pierceBlock: !!mv.pierceBlock, pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [],
+          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, divine: !!mv.divine, boon: c.slot === 'boon', reach: isBasic(mv) ? RANGES[rangeOf(mv)][1] : Infinity, flown: 0, seek: c.slot === 'boon', pierceBlock: !!mv.pierceBlock || c.slot === 'boon', pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [],
         });
       }
       break;
