@@ -44,13 +44,17 @@ const say = (p, text) => { p.msg = { text, t: 1.2 }; };
 export function rangeOf(move) {
   return move.special && (move.range === 'long' || move.range === 'midlong') ? 'anywhere' : move.range;
 }
+// a fighter's own basic attack (not a special, signature, class move or boon)
+const BASIC = new Set(Object.values(CHARS).flatMap((c) => [c.moves.a1, c.moves.a2]));
+export const isBasic = (move) => BASIC.has(move);
 export function rangeOK(move, d) { const [lo, hi] = RANGES[rangeOf(move)]; return d >= lo && d <= hi; }
 
 // Why a move can't start right now (null = it can).
 export function whyNot(m, p, move, extraPower = 0) {
   if (p.effects.stun) return 'STUNNED';
+  // Basic attacks always go off; their range is how far they reach (owner, 2026-11-08). Specials still need it.
   const d = dist(p, opponent(m, p)), [lo] = RANGES[rangeOf(move)];
-  if (!rangeOK(move, d)) return d < lo ? 'TOO CLOSE' : 'TOO FAR';
+  if (!isBasic(move) && !rangeOK(move, d)) return d < lo ? 'TOO CLOSE' : 'TOO FAR';
   const r = move.req || {}, c = move.cost || {};
   const pw = (c.power === 'all' ? 0 : c.power || 0) + extraPower;
   if (p.power + 1e-9 < Math.max(pw, r.minPower || 0)) return 'NO POWER';
@@ -163,6 +167,8 @@ function movement(m, inputs, dt) {
 
   for (const pr of m.projectiles) {
     pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt; pr.lt += dt;
+    pr.flown += Math.hypot(pr.vx, pr.vy) * dt;
+    if (pr.flown > pr.reach) pr.dead = true; // a basic shot only reaches as far as its range
     if (pr.legs > 0 && pr.lt >= pr.legTime) { // a chakra flies in straight legs and re-aims between them
       const o = m.players[1 - pr.owner], sp = Math.hypot(pr.vx, pr.vy), u = unitDir(o.x - pr.x, o.y - pr.y);
       pr.vx = u.x * sp; pr.vy = u.y * sp; pr.legs--; pr.lt = 0;
@@ -296,7 +302,7 @@ function release(m, p, c) {
         m.projectiles.push({
           id: m.nid++, owner: p.id, name: mv.name, shape: mv.shape, x: p.x + cx * TUNE.fighterR, y: p.y + cy * TUNE.fighterR,
           vx: cx * mv.speed * TUNE.pace.shot, vy: cy * mv.speed * TUNE.pace.shot, r: mv.radius, dmg, kb: mv.knockback, life: mv.life, legs: mv.legs ? mv.legs - 1 : 0,
-          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, divine: !!mv.divine, boon: c.slot === 'boon', pierceBlock: !!mv.pierceBlock, pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [],
+          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, divine: !!mv.divine, boon: c.slot === 'boon', reach: isBasic(mv) ? RANGES[rangeOf(mv)][1] : Infinity, flown: 0, pierceBlock: !!mv.pierceBlock, pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [],
         });
       }
       break;

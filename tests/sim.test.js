@@ -29,13 +29,18 @@ test('a charged shot does more damage than a tapped one', () => {
   assert.ok(dmg(0.6) > dmg(0.05) && dmg(0.6) < dmg(2));
 });
 
-test('basic attacks are refused out of range', () => {
-  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
-  tap(m, K, 'a2');
-  assert.equal(m.players[K].cast, null);
-  assert.equal(m.players[K].msg.text, 'TOO FAR');
-  m.players[R].x = -45; tap(m, K, 'a1');
-  assert.equal(m.players[K].msg.text, 'TOO CLOSE');
+test('basic attacks always go off; out of range they just fall short (owner, 2026-11-08)', () => {
+  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
+  tap(m, K, 'a2'); run(m, [{}, {}], 0.3);
+  assert.equal(events(m, 'swing').length, 1, 'the palm push swings');
+  assert.equal(m.players[R].hp, 100, 'and misses');
+  tap(m, K, 'a1'); run(m, [{}, {}], 3);
+  assert.equal(events(m, 'release').filter((e) => e.name === 'Mantra bolt').length, 1, 'the bolt is fired from 200 away');
+  assert.equal(m.players[R].hp, 100, 'but fades before it reaches');
+  assert.equal(m.projectiles.length, 0);
+  const n = match({ k: { x: -60, y: 0, power: 50 }, r: { x: 100, y: 0 } });
+  tap(n, K, 's2');
+  assert.equal(n.players[K].msg?.text, 'TOO FAR', 'specials still need their range');
 });
 
 test('palm push knocks back hard', () => {

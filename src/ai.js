@@ -153,7 +153,8 @@ function decide(m, cpu, p, o, d) {
   }
   // the Mage holds back mantra bolts while he isn't saving up for the chakra
   if (p.ch.id === 'siddhan' && p.power - (mv.a1.cost?.power || 0) < mv.s1.cost.power && R() < L.plan * 0.5) return null;
-  if (can(mv.a1)) {
+  const reach = RANGES[mv.a1.range]?.[1] ?? Infinity;
+  if (can(mv.a1) && d < reach + 10) { // basics always fire, but don't waste one that would fall short
     const safe = !m.projectiles.some((pr) => pr.owner !== p.id) && d > 70; // charging can be interrupted: only when nothing is coming
     const charge = mv.a1.charge ? mv.a1.cast + L.minCharge + (safe ? R() * mv.a1.charge.max * L.charge : 0) : 0.05; // hold a bow shot to charge it
     return done({ buttons: { a1: true }, time: charge });

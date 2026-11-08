@@ -20,7 +20,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 - Every move has:
   - a cost: power only, or power + health. Basic moves cost very little power.
   - requirements: minimum health and/or power.
-  - a range requirement: close, mid/long, or anywhere. Long-distance special moves have no distance requirement.
+  - a range requirement: close, mid/long, or anywhere. Long-distance special moves have no distance requirement. Basic attacks always go off: their range is how far they reach, so out of range they just fall short (owner, 2026-11-08).
   - a cast time.
   - damage. Damage is also the move's strength in a clash.
   - knockback.
