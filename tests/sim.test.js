@@ -1,0 +1,187 @@
+// Mechanics: every move does what its data says. (The owner's rules are in intent.test.js.)
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createMatch, stepMatch } from '../src/sim.js';
+import { TUNE } from '../src/config.js';
+import { CHARS } from '../src/chars/index.js';
+import { findBoon } from '../src/chars/gods.js';
+import { rng } from '../src/util.js';
+import { match, run, tap, events, K, R } from './helpers.js';
+
+const krishna = CHARS.krishna, raja = CHARS.rajaraja;
+const withBoon = (m, id) => { const b = findBoon(id); m.players[R].boons.push({ id, name: b.name, god: '?' }); };
+
+test('flute note travels and hits for its damage', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 40, y: 0 } });
+  tap(m, K, 'a1'); run(m, [{}, {}], 1);
+  assert.equal(m.players[R].hp, 100 - krishna.moves.a1.damage);
+});
+
+test('a charged shot does more damage than a tapped one', () => {
+  const dmg = (hold) => {
+    const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+    run(m, [{}, { a1: true }], hold); run(m, [{}, {}], 1);
+    return 100 - m.players[K].hp;
+  };
+  assert.ok(Math.abs(dmg(0.05) - raja.moves.a1.damage) < 0.2, 'a tap is the small damage');
+  assert.equal(dmg(raja.moves.a1.charge.max + 0.5), raja.moves.a1.charge.damage);
+  assert.ok(dmg(0.6) > dmg(0.05) && dmg(0.6) < dmg(2));
+});
+
+test('basic attacks are refused out of range', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+  tap(m, K, 'a2');
+  assert.equal(m.players[K].cast, null);
+  assert.equal(m.players[K].msg.text, 'TOO FAR');
+  m.players[R].x = -45; tap(m, K, 'a1');
+  assert.equal(m.players[K].msg.text, 'TOO CLOSE');
+});
+
+test('palm push knocks back hard', () => {
+  const m = match({ k: { x: -20, y: 0 }, r: { x: 0, y: 0 } });
+  tap(m, K, 'a2'); run(m, [{}, {}], 1);
+  assert.ok(m.players[R].x > 30);
+});
+
+test('Sudarshana Chakra re-aims and catches a fighter who sidesteps once', () => {
+  const m = match({ k: { x: -80, y: 0, power: 100 }, r: { x: 60, y: 0 } });
+  tap(m, K, 's1'); run(m, [{}, {}], krishna.moves.s1.cast);
+  run(m, [{}, { my: 1 }], 0.4); run(m, [{}, {}], 3);
+  assert.equal(m.players[R].hp, 100 - krishna.moves.s1.damage);
+});
+
+test('Venu Ganam holds the King still for 3 s (he can still act)', () => {
+  const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 40, y: 0 } });
+  tap(m, K, 's2'); run(m, [{}, {}], 2 + 1);
+  assert.ok(m.players[R].effects.hold);
+  const x = m.players[R].x; run(m, [{}, { mx: 1 }], 1);
+  assert.ok(Math.abs(m.players[R].x - x) < 1);
+  run(m, [{}, {}], 2); run(m, [{}, { mx: 1 }], 0.5);
+  assert.ok(m.players[R].x > x + 10, 'free again');
+});
+
+test('a block stops Venu Ganam\'s hold', () => {
+  const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 40, y: 0 } });
+  tap(m, K, 's2'); run(m, [{}, { block: true }], 3);
+  assert.ok(!m.players[R].effects.hold);
+});
+
+test('blink with no direction goes away from the opponent and stays inside the arena', () => {
+  const m = match({ k: { x: -90, y: 0, power: 50 }, r: { x: 0, y: 0 } });
+  tap(m, K, 's3');
+  assert.ok(m.players[K].x < -90 && Math.hypot(m.players[K].x, m.players[K].y) <= 110);
+});
+
+test('Vishwaroopam hits across the whole arena after its scene', () => {
+  const m = match({ k: { x: -100, y: 0, power: 100 }, r: { x: 100, y: 0 } });
+  tap(m, K, 'sig'); run(m, [{}, {}], krishna.moves.sig.cast + TUNE.scene + 0.1);
+  assert.equal(m.players[R].hp, 100 - krishna.moves.sig.damage);
+  assert.equal(m.players[K].hp, 100 - krishna.moves.sig.cost.health);
+});
+
+test('split shot fires 3 arrows in a fan', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
+  tap(m, R, 's1'); run(m, [{}, {}], raja.moves.s1.cast);
+  assert.equal(m.projectiles.length, 3);
+  assert.equal(new Set(m.projectiles.map((p) => p.vy.toFixed(2))).size, 3);
+});
+
+test('pinning arrow pins for ~1.5 s from any distance', () => {
+  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0, power: 50 } });
+  tap(m, R, 's2'); run(m, [{}, {}], 1.3);
+  assert.ok(m.players[K].effects.hold && m.players[K].effects.hold.t <= 1.5);
+});
+
+test('arrow rain lands on the opponent\'s spot after a warning, and can be walked out of', () => {
+  const hitAfter = (walk) => {
+    const m = match({ k: { x: -40, y: 0 }, r: { x: 60, y: 0, power: 50 } });
+    tap(m, R, 's3'); run(m, [{}, {}], raja.moves.s3.cast);
+    assert.equal(m.areas.length, 1);
+    run(m, [walk ? { my: 1 } : {}, {}], 1);
+    return 100 - m.players[K].hp;
+  };
+  assert.equal(hitAfter(false), raja.moves.s3.damage);
+  assert.equal(hitAfter(true), 0);
+});
+
+test('boons: Damaru stuns (no moves, no block), Peacock dash can\'t be hit, Shakti Vel pierces block', () => {
+  const m = match({ k: { x: -40, y: 0 }, r: { x: 40, y: 0 } });
+  withBoon(m, 'damaru'); tap(m, R, 'boon'); run(m, [{}, {}], 0.8);
+  assert.ok(m.players[K].effects.stun);
+  stepMatch(m, [{ a1: true, block: true }, {}]);
+  assert.equal(m.players[K].cast, null); assert.equal(m.players[K].block, null);
+
+  const d = match({ k: { x: -40, y: 0 }, r: { x: 40, y: 0 } });
+  withBoon(d, 'peacock'); tap(d, R, 'boon');
+  d.hits.push({ target: d.players[R], dmg: 10, kb: 0, from: null }); stepMatch(d);
+  assert.equal(d.players[R].hp, 100);
+  assert.ok(d.players[R].x > 45);
+
+  const s = match({ k: { x: -40, y: 0 }, r: { x: 60, y: 0 } });
+  withBoon(s, 'shakti'); tap(s, R, 'boon'); run(s, [{ block: true }, {}], 2);
+  assert.equal(s.players[K].hp, 100 - findBoon('shakti').damage);
+});
+
+test('Lotus seat makes the next meditation twice as fast, then it is used up', () => {
+  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
+  withBoon(m, 'lotus'); tap(m, R, 'boon'); run(m, [{}, {}], 0.5);
+  assert.ok(m.players[R].lotus);
+  tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.times[0] / 2 + 0.1);
+  assert.equal(m.players[R].meditations, 1);
+  assert.equal(m.players[R].lotus, false);
+});
+
+test('pressing a move while meditating stops the meditation', () => {
+  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
+  tap(m, R, 'cls'); run(m, [{}, {}], 1); tap(m, R, 'a1');
+  assert.equal(m.players[R].med, null);
+});
+
+test('meditation is refused with 3 boons held', () => {
+  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
+  for (let i = 0; i < 3; i++) withBoon(m, 'vel');
+  tap(m, R, 'cls');
+  assert.equal(m.players[R].med, null); assert.equal(m.players[R].msg.text, 'BOONS FULL');
+});
+
+test('the King picks which god to pray to; next boon cycles the selection', () => {
+  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
+  tap(m, R, 'god'); tap(m, R, 'god');
+  assert.equal(raja.gods[m.players[R].god], 'brahma');
+  withBoon(m, 'vel'); withBoon(m, 'spark'); tap(m, R, 'boonNext');
+  assert.equal(m.players[R].boonSel, 1);
+  tap(m, R, 'boon'); run(m, [{}, {}], 0.5);
+  assert.deepEqual(m.players[R].boons.map((b) => b.id), ['vel']);
+});
+
+test('fighters never overlap', () => {
+  const m = match({ k: { x: -30, y: 0 }, r: { x: 30, y: 0 } });
+  run(m, [{ mx: 1 }, { mx: -1 }], 2);
+  assert.ok(Math.hypot(m.players[0].x - m.players[1].x, m.players[0].y - m.players[1].y) >= TUNE.fighterR * 2 - 1e-6);
+});
+
+// A random mash of buttons for a whole match: no crash, numbers stay sane, and the same seed replays exactly.
+function mash(seed, seconds) {
+  const m = createMatch({ seed, time: 60 }), r = rng(seed * 7 + 1);
+  const keys = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3', 'sig', 'cls', 'boon', 'god', 'boonNext'];
+  let inp = [{}, {}];
+  for (let i = 0; i < seconds * 60 && m.phase === 'fight'; i++) {
+    if (i % 12 === 0) inp = [0, 1].map(() => { const o = { mx: r() * 2 - 1, my: r() * 2 - 1 }; for (const k of keys) o[k] = r() < 0.12; return o; });
+    stepMatch(m, inp);
+    for (const p of m.players) {
+      assert.ok(p.hp >= 0 && p.hp <= 100 && p.power >= 0 && p.power <= 100, 'bars stay in range');
+      assert.ok(Math.hypot(p.x, p.y) <= 110 + 1e-6, 'inside the arena');
+      assert.ok(p.boons.length <= 3);
+      assert.ok(m.traps.filter((t) => t.owner === p.id).length <= 3);
+    }
+  }
+  return m;
+}
+
+test('a random button-mash match runs to the end and replays identically from its seed', () => {
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const a = mash(seed, 70), b = mash(seed, 70);
+    assert.equal(a.phase, 'done', `seed ${seed} finished`);
+    assert.deepEqual(a.players.map((p) => [p.x, p.y, p.hp, p.power]), b.players.map((p) => [p.x, p.y, p.hp, p.power]));
+  }
+});
