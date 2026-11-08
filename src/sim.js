@@ -244,7 +244,8 @@ function tryAct(m, p, slot, inp) {
 }
 
 // Which boon spending devotion buys right now: tier by how much is banked (3 / 6 / 10 segments), then a random
-// god, then a random boon of that god's tier that can be used from here. Null (and nothing spent) if none fits.
+// boon of that tier that can be used from here, from any god (Brahmastra weighted by health, see TUNE).
+// Null (and nothing spent) if none fits.
 const GOD_IDS = Object.keys(GODS);
 const TIER_NAMES = ['small', 'medium', 'divine'];
 function pickBoon(m, p) {
@@ -252,16 +253,17 @@ function pickBoon(m, p) {
   let ti = -1;
   for (let i = tiers.length - 1; i >= 0; i--) if (p.devotion >= tiers[i]) { ti = i; break; }
   if (ti < 0) return null;
-  const gods = [...GOD_IDS];
-  for (let i = gods.length - 1; i > 0; i--) { const j = Math.floor(m.rand() * (i + 1)); [gods[i], gods[j]] = [gods[j], gods[i]]; }
-  for (const g of gods) {
-    const ok = GODS[g].tiers[ti].filter((b) => !whyNot(m, p, b));
-    if (!ok.length) continue;
-    const boon = ok[Math.floor(m.rand() * ok.length)];
-    return { boon, name: boon.name, god: GODS[g].name, tier: TIER_NAMES[ti], devotionCost: tiers[ti], cost: {}, range: 'anywhere' };
+  // every usable boon of that tier, from every god, weighted: Brahmastra is rare unless the caster's health is low
+  const opts = [];
+  for (const g of GOD_IDS) for (const boon of GODS[g].tiers[ti]) {
+    if (whyNot(m, p, boon)) continue;
+    const w = boon.kind === 'brahmastra' ? TUNE.brahmastraOdds.find((o) => p.hp <= o.hp).w : 1;
+    opts.push({ boon, god: GODS[g].name, w });
   }
-  say(p, 'NO BOON FITS HERE');
-  return null;
+  if (!opts.length) { say(p, 'NO BOON FITS HERE'); return null; }
+  let r = m.rand() * opts.reduce((a, o) => a + o.w, 0), pick = opts[opts.length - 1];
+  for (const o of opts) { if ((r -= o.w) < 0) { pick = o; break; } }
+  return { boon: pick.boon, name: pick.boon.name, god: pick.god, tier: TIER_NAMES[ti], devotionCost: tiers[ti], cost: {}, range: 'anywhere' };
 }
 
 function progressCast(m, p, inp, dt) {
