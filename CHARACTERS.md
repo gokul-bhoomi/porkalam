@@ -37,7 +37,7 @@ A South Indian archer-warrior: bronze and crimson armour, a tiger-stripe sash, a
 | Meditation | n/a | Time | Fills devotion behind a barrier |
 
 ## Boons (either fighter, ground rule 11)
-Spending devotion buys a boon from a random god: 3 segments = small, 6 = medium, 10 = divine weapon. Each boon is single-use.
+Two specials spend devotion to ask a random god for a boon: 3 segments = small, 6 = medium, 10 = divine weapon. The god reveals the boon and it's held (one at a time); two specials again use it, now or later. Each boon is single-use.
 
 | God | Small (3) | Medium (6) | Divine weapon (10) |
 |---|---|---|---|

@@ -531,7 +531,13 @@ function drawHud(m, tags) {
       if (tierEdge) R(sxp + segW - 1.2, 35, 0.6, 7, '#c9a24a');
     }
     const tierName = p.devotion >= MD.tiers[2] ? 'DIVINE' : p.devotion >= MD.tiers[1] ? 'MEDIUM' : p.devotion >= MD.tiers[0] ? 'SMALL' : '';
-    txt(tierName ? `BOON: ${tierName}` : 'DEVOTION', X(46 + MD.segments * segW + 4), 35.5, tierName ? '#ffcf6a' : '#a898c0', al, 6);
+    txt(tierName ? `ASK: ${tierName}` : 'DEVOTION', X(46 + MD.segments * segW + 4), 35.5, tierName ? '#ffcf6a' : '#a898c0', al, 6);
+    if (p.boon) { // the held boon, in a gold tag under the panel
+      const label = `${p.boon.tier === 'divine' ? '✦ ' : ''}${p.boon.name.toUpperCase()}`;
+      G.font = `6px ${FONT}`; const tw = G.measureText(label).width + 12, tx = X(30, tw), glow = 0.6 + 0.4 * Math.sin(m.t * 5);
+      box(tx, 47, tw, 11, 4, `rgba(60,36,10,.9)`, `rgba(255,207,106,${glow})`);
+      txt(label, tx + tw / 2, 49.5, '#ffe7a0', 'center', 6);
+    }
   }
   // timer medallion
   const low = m.timeLeft <= 30, tg = G.createLinearGradient(0, 3, 0, 35);

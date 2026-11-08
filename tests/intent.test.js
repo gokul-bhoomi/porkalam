@@ -390,6 +390,23 @@ test('rule 11: two specials spend devotion: 3 = small boon, 6 = medium, 10 = div
   assert.ok(src('main.js').includes("e.type === 'boon'"), 'the boon is announced on the shared screen');
 });
 
+test('rule 11: asking reveals the boon and holds it; two specials again use it, now or later; one held at a time (owner, 2026-11-08)', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+  m.players[R].devotion = 6;
+  useBoon(m, R);
+  const offer = events(m, 'boon')[0];
+  assert.ok(offer && m.players[R].boon?.name === offer.name, 'the offered boon is shown and held');
+  assert.equal(events(m, 'boonUsed').length, 0, 'not used yet');
+  assert.equal(m.players[R].devotion, 0);
+  run(m, [{}, {}], 3);
+  assert.ok(m.players[R].boon, 'still held later');
+  m.players[R].devotion = 3; useBoon(m, R);
+  assert.equal(events(m, 'boon').length, 1, 'no second offer while one is held');
+  assert.equal(events(m, 'boonUsed').length, 1, 'two specials used the held boon instead');
+  assert.equal(m.players[R].boon, null);
+  assert.equal(m.players[R].devotion, 3, 'the devotion stays banked');
+});
+
 test('rule 11: the meditation barrier soaks damage instead of health; breaking it ends meditation', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
   tap(m, R, 'cls'); run(m, [{}, {}], 0.5);

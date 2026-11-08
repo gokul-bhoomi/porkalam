@@ -64,8 +64,8 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 - Meditation fills a **devotion bar of 10 segments**, wherever the opponent is (owner, 2026-11-08: a nearby opponent can't stall it; they have to break the barrier). **Only full segments count**: stopping, or having the barrier broken, loses the part-filled segment. Full segments are kept.
 - While meditating, a **barrier** goes up around the fighter automatically. Ordinary hits drain the barrier instead of health and don't interrupt. If the barrier breaks, meditation ends, and what the barrier couldn't hold gets through.
 - **Divine weapons** (the top boons, such as Pashupatastra) go straight through a barrier and break the meditation.
-- Devotion is spent by pressing **two special move buttons together**. There is no separate boon button. It buys the biggest boon it pays for: **3 segments = a small boon, 6 = a medium boon, 10 = a divine weapon**, from a **random god**. The boon goes off straight away. Brahmastra (which ends the match in a draw) is rare at good health and much more likely when the caster's health is near the end.
-- When a boon is invoked, both players see which one it was and which god gave it.
+- Devotion is spent by pressing **two special move buttons together**. There is no separate boon button. It asks for the biggest boon it pays for: **3 segments = a small boon, 6 = a medium boon, 10 = a divine weapon**, from a **random god**. The god appears and **reveals the boon, which is then held**. Two specials again **use it, now or any time later**. A fighter holds **one boon at a time**; while holding one, two specials use it rather than asking for another, and devotion keeps banking. (Owner, 2026-11-08.) Brahmastra (which ends the match in a draw) is rare at good health and much more likely when the caster's health is near the end.
+- When a boon is offered, and again when it is used, both players see which one it is and which god gave it.
 
 ## 12. Extra units and arena changes
 - Summoned helpers and copies have their own health, can be hit, and disappear when their timer ends.
