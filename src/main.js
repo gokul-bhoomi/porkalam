@@ -78,7 +78,7 @@ function onEvent(e, m) {
   if (e.type === 'scene') { sound.play('powerUp'); sound.duck(0.15, 2.6); }
   if (e.type === 'release' && POWER_MOVES.has(e.name)) sound.play('powerLand');
   if (e.type === 'end') { sound.play(e.reason === 'ko' || e.reason === 'double' || e.reason === 'brahmastra' ? 'ko' : 'tick'); if (e.winner != null) setTimeout(() => sound.play('win'), 1200); }
-  if (e.type === 'hp' && e.dmg > 0 && (e.srcs || []).some((s) => POWER_MOVES.has(s))) { // a power move lands: the island shatters
+  if (e.type === 'hp' && e.dmg > 0 && (e.srcs || []).some((s) => POWER_MOVES.has(s) && s !== 'Thousand-Arm Form')) { // a power move lands: the island shatters
     add({ kind: 'shatter', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 2.2 });
     add({ kind: 'scar', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 60, ground: true }); // the fissures stay
     for (let i = 0; i < 5; i++) { const a = Math.random() * Math.PI * 2, r = 12 + Math.random() * 40; crack(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, 0.9 + Math.random() * 0.6); }
@@ -89,7 +89,7 @@ function onEvent(e, m) {
     sound.play('shatter2');
   }
   if (e.type === 'hp') {
-    if (e.dmg >= 8) crack(e.x, e.y, Number.isFinite(e.dmg) ? Math.min(1.4, e.dmg / 25) : 1.6); // heavy hits break the sand
+    if (e.dmg >= 8 && !(e.srcs || []).includes('Thousand-Arm Form')) crack(e.x, e.y, Number.isFinite(e.dmg) ? Math.min(1.4, e.dmg / 25) : 1.6); // heavy hits break the sand
     if (e.dmg > 0) { add({ kind: 'pop', x: e.x, y: e.y, text: Number.isFinite(e.dmg) ? `-${Math.round(e.dmg * 10) / 10}` : 'X', color: '#ff6a5a' }); add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 }); }
     if (e.heal > 0) add({ kind: 'pop', x: e.x, y: e.y, text: `+${e.heal}`, color: '#7aff8a' });
   }
@@ -102,11 +102,11 @@ function onEvent(e, m) {
   if (e.type === 'blink') add({ kind: 'trail', x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'release') { // power moves land with a bang in the arena, right after their scene
     const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
-    if (e.name === 'Thousand-Arm Form') { // a spirit of a thousand teal arms rises behind Siddhan and reaches out to strike
+    if (e.name === 'Thousand-Arm Form') { // a serene jade-and-gold halo glides forward as one painted formation
       const o = m.players[1 - e.pid];
       add({ kind: 'arms', part: 'fan', ground: true, x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 }); // drawn behind the fighters
       add({ kind: 'arms', part: 'palms', x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 });          // drawn in front
-      add({ kind: 'shock', x: p.x, y: p.y, life: 1.0, color: '90,240,220', r: 160 }); shake(4, 0.7);
+      shake(0.7, 0.22); // a light accent; the golden impact ripples are drawn with the hands
     }
     if (e.name === 'Gaja Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Shakti Vel') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,200,90', r: 60 }); shake(3, 0.4); }

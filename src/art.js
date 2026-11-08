@@ -122,6 +122,8 @@ export async function loadArt(base = '') {
   if (circleHands) Object.assign(ART.fx, cutFx(circleHands, ['circleArm', 'circlePalm']));
   const haloHands = await loadImg(base + 'art/fx_hands_halo.png');
   if (haloHands) Object.assign(ART.fx, cutFx(haloHands, ['haloArm', 'haloPalm']));
+  const divineHalo = await loadImg(base + 'art/fx_divine_halo.png');
+  if (divineHalo) Object.assign(ART.fx, cutFx(divineHalo, ['divineHalo'], 80));
   const ele = await loadImg(base + 'art/fx_elephant.png'); // single sprite: the Gaja Arrow's war elephant
   if (ele) Object.assign(ART.fx, cutFx(ele, ['elephant']));
   ART.ready = true;
@@ -144,7 +146,7 @@ export function drawSprite(g, id, set, i, x, y, flip) {
 
 // Key out an effect sheet, shrink it to half size (still more pixels than the screen needs), and
 // find each cell's drawn area, so a sprite can be placed by its real edges.
-function cutFx(img, names) {
+function cutFx(img, names, minAlpha = 40) {
   const { c, d } = keyOut(img), n = names.length, cw = c.width / n, px = d.data, out = {};
   const k = 0.5, small = document.createElement('canvas');
   small.width = Math.round(c.width * k); small.height = Math.round(c.height * k);
@@ -152,7 +154,7 @@ function cutFx(img, names) {
   names.forEach((name, i) => {
     let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
     for (let y = 0; y < c.height; y += 2) for (let x = Math.round(i * cw); x < Math.round((i + 1) * cw); x += 2) {
-      if (px[(y * c.width + x) * 4 + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      if (px[(y * c.width + x) * 4 + 3] > minAlpha) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     }
     if (x1 < 0) return;
     out[name] = { canvas: small, x: x0 * k, y: y0 * k, w: (x1 - x0 + 2) * k, h: (y1 - y0 + 2) * k };
