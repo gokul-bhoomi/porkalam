@@ -45,4 +45,4 @@ Spending devotion buys a boon from a random god: 3 segments = small, 6 = medium,
 | Murugan | Vel throw | Peacock dash: a quick escape that can't be hit | Shakti Vel: pierces any block |
 | Brahma | Kamandalu: restores 10% health | Lotus seat: next meditation is twice as fast | Brahmastra: both fighters reach 0 health, so it's a draw |
 
-Divine weapons go through a meditation barrier and play a power-up with the god's painting.
+Divine weapons go through a meditation barrier and play a power-up with the god's painting. Brahmastra is rare unless the caster's health is low (about 5% above 35% health, 20% at 15-35%, 50% at 15% or less).

@@ -542,6 +542,21 @@ test('class: the god who answers is random; nobody picks one (owner change 2026-
   assert.equal(gods.size, Object.keys(GODS).length, 'every god answers sometimes');
 });
 
+test('class: Brahmastra (a draw) is rare at good health and likely near the end of the health bar (owner, 2026-11-08)', () => {
+  const rate = (hp) => {
+    let n = 0;
+    for (let seed = 1; seed <= 400; seed++) {
+      const m = match({ seed, k: { x: -60, y: 0 }, r: { x: 60, y: 0, hp } });
+      m.players[R].devotion = 10; useBoon(m, R);
+      if (events(m, 'boon')[0]?.name === 'Brahmastra') n++;
+    }
+    return n / 400;
+  };
+  const high = rate(90), low = rate(10);
+  assert.ok(high < 0.1, `at 90% health Brahmastra came ${Math.round(high * 100)}% of the time`);
+  assert.ok(low > 0.35, `at 10% health Brahmastra came only ${Math.round(low * 100)}% of the time`);
+});
+
 test('class: boons are strictly single-use: each one is paid for with devotion', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
   m.players[R].devotion = 3;

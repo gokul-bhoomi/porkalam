@@ -12,7 +12,7 @@ There are **two classes, Mages and Warriors**. There are no Monsters (removed to
 - **Every character has the same number of basic moves: 2 basic attacks + 1 block.**
 - **Class move: meditation**, for both classes (ground rule 11). The god who answers is random; nobody picks one.
 - **Boons are strictly single-use**: each one is paid for with devotion.
-- **Brahmastra** is a divine-weapon boon that only Brahma grants. Both fighters reach 0 health at once, which makes it a draw.
+- **Brahmastra** is a divine-weapon boon that only Brahma grants. Both fighters reach 0 health at once, which makes it a draw. It's rare (about 5% of divine weapons) unless the caster's health is low: about 20% at 35% health or less, about 50% at 15% or less. (Owner, 2026-11-08.)
 
 ## Mage
 - **Movement:** slow, can't run. A short blink costs power.
