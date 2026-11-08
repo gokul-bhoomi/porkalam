@@ -32,6 +32,7 @@ function makeFighter(ch, i) {
     hp: ch.health, power: ch.power.size * TUNE.startPower, kvx: 0, kvy: 0,
     cast: null, block: null, med: null, dash: null, effects: {}, chord: null, lotus: false,
     devotion: 0, // full devotion segments, earned by meditating and spent on boons (ground rule 11)
+    boon: null,  // a boon the gods have offered, held until it's used
     msg: null, stats: { dealt: 0, taken: 0 },
   };
 }
@@ -216,24 +217,31 @@ function chord(p, inp, act, dt) {
   if (c.seen.length >= 3) { p.chord = null; return 'sig'; }
   if (c.t < TUNE.chord - 1e-9) return null;
   p.chord = null;
-  if (c.seen.length === 2 && p.devotion >= TUNE.meditate.tiers[0]) return 'boon';
+  if (c.seen.length === 2 && (p.boon || p.devotion >= TUNE.meditate.tiers[0])) return 'boon';
   if (c.slot === 's1' && c.down) return 'cls';
   return c.slot;
 }
 
 function tryAct(m, p, slot, inp) {
   let move;
-  if (slot === 'boon') { // spend devotion: the biggest tier it pays for, from a random god
-    move = pickBoon(m, p);
-    if (!move) return;
-  } else move = p.ch.moves[slot];
+  // Boons (owner, 2026-11-08): two specials first ASK for one: devotion is spent, the god appears and reveals
+  // the boon, and it is held. Two specials again USE the held boon, now or any time later. One held at a time.
+  if (slot === 'boon' && !p.boon) {
+    const offer = pickBoon(m, p);
+    if (!offer) return;
+    p.devotion -= offer.devotionCost;
+    p.boon = { move: offer.boon, name: offer.name, god: offer.god, godId: offer.godId, tier: offer.tier };
+    ev(m, 'boon', { pid: p.id, name: offer.name, god: offer.god, godId: offer.godId, tier: offer.tier }); // both players see which boon it was
+    return;
+  }
+  if (slot === 'boon') move = p.boon.move;
+  else move = p.ch.moves[slot];
   if (!move) return;
   const why = whyNot(m, p, move);
   if (why) { say(p, why); return; }
-  if (slot === 'boon') {
-    p.devotion -= move.devotionCost;
-    ev(m, 'boon', { pid: p.id, name: move.name, god: move.god, godId: move.godId, tier: move.tier }); // both players see which boon it was
-    move = move.boon;
+  if (slot === 'boon') { // single-use: gone as soon as it's used
+    ev(m, 'boonUsed', { pid: p.id, name: p.boon.name, god: p.boon.god, godId: p.boon.godId, tier: p.boon.tier });
+    p.boon = null;
   }
   pay(p, move);
   if (move.kind === 'meditate') {
@@ -262,11 +270,10 @@ function pickBoon(m, p) {
   // every usable boon of that tier, from every god, weighted: Brahmastra is rare unless the caster's health is low
   const opts = [];
   for (const g of GOD_IDS) for (const boon of GODS[g].tiers[ti]) {
-    if (whyNot(m, p, boon)) continue;
     const w = boon.kind === 'brahmastra' ? TUNE.brahmastraOdds.find((o) => p.hp <= o.hp).w : 1;
     opts.push({ boon, god: GODS[g].name, godId: g, w });
   }
-  if (!opts.length) { say(p, 'NO BOON FITS HERE'); return null; }
+  if (!opts.length) return null;
   let r = m.rand() * opts.reduce((a, o) => a + o.w, 0), pick = opts[opts.length - 1];
   for (const o of opts) { if ((r -= o.w) < 0) { pick = o; break; } }
   return { boon: pick.boon, name: pick.boon.name, god: pick.god, godId: pick.godId, tier: TIER_NAMES[ti], devotionCost: tiers[ti], cost: {}, range: 'anywhere' };

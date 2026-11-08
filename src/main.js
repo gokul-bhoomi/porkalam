@@ -71,6 +71,7 @@ function onEvent(e, m) {
   if (e.type === 'barrier') sound.play('barrier');
   if (e.type === 'medStop' && me?.msg?.text === 'BARRIER BROKEN') sound.play('shatter');
   if (e.type === 'boon') { sound.play('boon', e.tier === 'divine'); sound.duck(0.2, 2.4); }
+  if (e.type === 'boonUsed' && e.tier !== 'divine') sound.play('powerLand');
   if (e.type === 'scene') { sound.play('powerUp'); sound.duck(0.15, 2.6); }
   if (e.type === 'release' && POWER_MOVES.has(e.name)) sound.play('powerLand');
   if (e.type === 'end') { sound.play(e.reason === 'ko' || e.reason === 'double' || e.reason === 'brahmastra' ? 'ko' : 'tick'); if (e.winner != null) setTimeout(() => sound.play('win'), 1200); }
@@ -105,13 +106,16 @@ function onEvent(e, m) {
     if (e.name === 'Brahmastra') { for (const q of m.players) add({ kind: 'pillar', x: q.x, y: q.y, life: 1.2 }); add({ kind: 'global', x: 0, y: 0, life: 0.9, color: '255,255,255' }); shake(5, 1.0); }
   }
   if (e.type === 'wall') { add({ kind: 'pop', x: e.x, y: e.y - 8, text: 'WALL', color: '#ffb46a' }); add({ kind: 'splash', x: e.x, y: e.y, life: 0.9, big: 1 }); }
-  if (e.type === 'boon') { // make the boon a moment: the fight slows, the god's light comes down on the caster
-    const p = m.players[e.pid];
+  if (e.type === 'boon') { // a god answers and reveals the boon: the fight slows, the god appears, blessing
     S.slowmo = { t0: S.now };
-    add({ kind: 'invoke', god: e.godId, x: p.x, y: p.y, pid: e.pid, life: 1.4 });
-    if (e.tier !== 'divine') add({ kind: 'god', god: e.godId, x: 0, y: 0, life: 2.2 }); // the god appears over the arena, blessing
+    add({ kind: 'god', god: e.godId, x: 0, y: 0, life: 2.4 });
+    S.banner = { text: `${e.god.toUpperCase()} OFFERS ${e.name.toUpperCase()}`, sub: `${m.players[e.pid].ch.name.toUpperCase()}: TWO SPECIALS TO USE IT, NOW OR LATER`, t0: S.now };
   }
-  if (e.type === 'boon') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()} INVOKES ${e.name.toUpperCase()}`, sub: `${e.tier.toUpperCase()} BOON FROM ${e.god.toUpperCase()}`, t0: S.now };
+  if (e.type === 'boonUsed') { // the held boon is used: the god's light comes down on the caster
+    const p = m.players[e.pid];
+    add({ kind: 'invoke', god: e.godId, x: p.x, y: p.y, pid: e.pid, life: 1.2 });
+    S.banner = { text: `${p.ch.name.toUpperCase()} USES ${e.name.toUpperCase()}`, sub: `${e.tier.toUpperCase()} BOON OF ${e.god.toUpperCase()}`, t0: S.now };
+  }
   if (e.type === 'medFull') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()}: DEVOTION FULL`, sub: 'A DIVINE WEAPON IS READY', t0: S.now };
 }
 
@@ -226,7 +230,7 @@ window.__game = {
           phase: m.phase, result: m.result, timeLeft: r1(m.timeLeft), duration: m.duration, scene: m.scene?.name || null,
           projectiles: m.projectiles.length,
           players: m.players.map((p) => ({ id: p.id, name: p.ch.name, x: r1(p.x), y: r1(p.y), hp: r1(p.hp), power: r1(p.power), cast: p.cast?.move.name || null,
-            block: !!p.block, med: !!p.med, barrier: p.med ? r1(p.med.barrier) : null, devotion: p.devotion, effects: Object.keys(p.effects) })),
+            block: !!p.block, med: !!p.med, barrier: p.med ? r1(p.med.barrier) : null, devotion: p.devotion, boon: p.boon?.name || null, effects: Object.keys(p.effects) })),
         },
       };
     },
