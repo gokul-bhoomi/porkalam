@@ -20,6 +20,8 @@ export function tap(m, pid, button, extra = {}) {
   a[pid] = { [button]: true, ...extra }; b[pid] = { ...extra };
   stepMatch(m, a); stepMatch(m, b);
 }
+// use the held boon: two special buttons pressed together
+export function useBoon(m, pid, a = 's1', b = 's2') { tap(m, pid, a, { [b]: true }); }
 // collect every event of a type over a run
 export function events(m, type) { return m.events.filter((e) => e.type === type); }
 export const far = { x: -90, y: 0 }, farR = { x: 90, y: 0 };

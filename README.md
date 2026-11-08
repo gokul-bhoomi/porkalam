@@ -15,15 +15,13 @@ Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: 
 | Move | WASD | Arrows | Left stick |
 | Basic attack 1 (hold to charge the shot) | F | K | A |
 | Basic attack 2 (close) | G | L | X |
-| Block (hold) | H | ; | RB |
+| Block (hold, lasts up to 3 s) | H | ; | RB |
 | Hold + basic 2: planted trap | Q | U | RT |
 | Hold + basic 2: water trap | E | J | LT |
 | Special 1 / 2 / 3 | R / T / Y | I / O / P | B / Y / LB |
 | Signature | V | M | D-pad up |
 | Class (Meditate / Brahmastra) | B | , | D-pad left |
-| Use boon | N | . | D-pad right |
-| Pick god to pray to | C | / | D-pad down |
-| Next boon | X | ' | Back |
+| Use boon (two specials together) | R+T (any two of R/T/Y) | I+O (any two of I/O/P) | B+Y (any two of B/Y/LB) |
 | Pause | Esc | Esc | Start |
 
 ## Tests

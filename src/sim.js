@@ -7,8 +7,10 @@ import { CHARS } from './chars/index.js';
 import { GODS, findBoon } from './chars/gods.js';
 
 // Same button layout for every fighter (ground rule 14).
-export const BUTTONS = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3', 'sig', 'cls', 'boon', 'god', 'boonNext'];
-const ACTS = ['sig', 'cls', 's1', 's2', 's3', 'a2', 'a1', 'boon']; // if several are pressed in one step, the first wins
+// The boon has no button of its own: two special buttons pressed together use it.
+export const BUTTONS = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3', 'sig', 'cls'];
+const ACTS = ['sig', 'cls', 's1', 's2', 's3', 'a2', 'a1']; // if several are pressed in one step, the first wins
+const SPECIALS = ['s1', 's2', 's3'];
 
 export function createMatch({ seed = 1, time = TUNE.match.default, chars = ['krishna', 'rajaraja'] } = {}) {
   const duration = clamp(time, TUNE.match.min, TUNE.match.max);
@@ -24,7 +26,7 @@ function makeFighter(ch, i) {
   return {
     id: i, ch, x: i === 0 ? -TUNE.startX : TUNE.startX, y: 0, face: { x: i === 0 ? 1 : -1, y: 0 },
     hp: ch.health, power: ch.power.size * TUNE.startPower, kvx: 0, kvy: 0,
-    cast: null, block: null, med: null, dash: null, effects: {}, boons: [], boonSel: 0, god: 0, meditations: 0, lotus: false,
+    cast: null, block: null, med: null, dash: null, effects: {}, boons: [], chord: null, meditations: 0, lotus: false,
     trapsActive: 0, msg: null, stats: { dealt: 0, taken: 0 },
   };
 }
@@ -50,7 +52,7 @@ export function whyNot(m, p, move, extraPower = 0) {
   if (r.fullPower && p.power < p.ch.power.size - 1e-6) return 'NEEDS FULL POWER';
   if (r.maxHealth != null && !(p.hp < r.maxHealth)) return `HEALTH UNDER ${r.maxHealth}% ONLY`;
   if (r.minHealth != null && p.hp < r.minHealth) return 'NO HEALTH';
-  if (r.maxBoons != null && p.boons.length >= r.maxBoons) return 'BOONS FULL';
+  if (r.maxBoons != null && p.boons.length >= r.maxBoons) return 'USE YOUR BOON FIRST';
   // Ground rule 4: a move can bring its user to 0 health only if it says so.
   if (c.health && !move.selfKO && p.hp - c.health <= 0) return 'NO HEALTH';
   return null;
@@ -198,9 +200,7 @@ function newMoves(m, inputs, dt) {
   for (const p of m.players) {
     const inp = inputs[p.id], prev = m.prev[p.id] || {}, pr = (b) => !!inp[b] && !prev[b];
     if (p.cast?.done) { const c = p.cast; p.cast = null; release(m, p, c); } // after the scene
-    if (p.ch.gods && pr('god') && !p.med) p.god = (p.god + 1) % p.ch.gods.length;
-    if (pr('boonNext') && p.boons.length) p.boonSel = (p.boonSel + 1) % p.boons.length;
-    const act = ACTS.find(pr);
+    const act = chord(p, inp, ACTS.find(pr), dt);
     if (p.cast) progressCast(m, p, inp, dt);
     else if (p.med) {
       if (act || pr('block')) stopMed(m, p, 'MEDITATION STOPPED');
@@ -210,11 +210,27 @@ function newMoves(m, inputs, dt) {
   }
 }
 
+// Two special buttons together = use the boon. While a boon is held, a special press waits a moment
+// (TUNE.chord) for the second button before it goes off on its own.
+function chord(p, inp, act, dt) {
+  const held = SPECIALS.filter((b) => inp[b]).length;
+  if (p.chord) {
+    p.chord.t += dt;
+    if (held >= 2 && p.boons.length) { p.chord = null; return 'boon'; }
+    if (p.chord.t >= TUNE.chord - 1e-9 || !p.boons.length) { const slot = p.chord.slot; p.chord = null; return slot; }
+    return null;
+  }
+  if (!SPECIALS.includes(act) || !p.boons.length) return act;
+  if (held >= 2) return 'boon';
+  p.chord = { slot: act, t: 0 };
+  return null;
+}
+
 function tryAct(m, p, slot, inp) {
   let move, extra = 0;
   const opts = {};
   if (slot === 'boon') {
-    const b = p.boons[p.boonSel];
+    const b = p.boons[0];
     if (!b) return;
     move = findBoon(b.id); opts.boon = b;
   } else move = p.ch.moves[slot];
@@ -226,15 +242,14 @@ function tryAct(m, p, slot, inp) {
   const why = whyNot(m, p, move, extra);
   if (why) { say(p, why); return; }
   if (opts.boon) { // boons are single-use: gone as soon as the cast starts
-    p.boons.splice(p.boonSel, 1);
-    p.boonSel = Math.max(0, Math.min(p.boonSel, p.boons.length - 1));
+    p.boons.shift();
     ev(m, 'boonUsed', { pid: p.id, name: move.name });
   }
   pay(p, move, extra);
   if (move.kind === 'meditate') {
     const lvl = Math.min(p.meditations, TUNE.meditate.times.length - 1);
-    p.med = { meter: 0, need: TUNE.meditate.times[lvl], god: p.ch.gods[p.god], fast: p.lotus };
-    ev(m, 'meditate', { pid: p.id, god: p.med.god });
+    p.med = { meter: 0, need: TUNE.meditate.times[lvl], fast: p.lotus };
+    ev(m, 'meditate', { pid: p.id });
     return;
   }
   const l = Math.hypot(+inp.mx || 0, +inp.my || 0);
@@ -334,12 +349,12 @@ function progressMed(m, p, dt) {
   const o = opponent(m, p);
   if (dist(p, o) > TUNE.meditate.dist) p.med.meter += dt * (p.med.fast ? 2 : 1); // only fills while the opponent is far away
   if (p.med.meter < p.med.need - 1e-9) return;
-  const god = GODS[p.med.god], tier = god.tiers[Math.min(p.meditations, god.tiers.length - 1)];
+  const god = GODS[p.ch.gods[Math.floor(m.rand() * p.ch.gods.length)]], tier = god.tiers[Math.min(p.meditations, god.tiers.length - 1)];
   const boon = tier[Math.floor(m.rand() * tier.length)];
   p.meditations++; // completed meditations always count
   if (p.med.fast) p.lotus = false;
   p.med = null;
-  if (p.boons.length < 3) { // ground rule 11: up to 3 boons at a time
+  if (p.boons.length < TUNE.maxBoons) { // ground rule 11: 1 boon at a time
     p.boons.push({ id: boon.id, name: boon.name, god: god.name });
     ev(m, 'boon', { pid: p.id, name: boon.name, god: god.name }); // both players see which boon it was
   }
@@ -348,15 +363,19 @@ function stopMed(m, p, why) { p.med = null; say(p, why); ev(m, 'medStop', { pid:
 
 function handleBlock(m, p, inp, dt) {
   const def = p.ch.defence, o = opponent(m, p);
-  if (!inp.block) { p.block = null; return; }
+  if (!inp.block) { p.block = null; p.blockDone = false; return; }
   if (!p.block) {
-    if (p.cast || p.med || p.dash || p.effects.stun || p.power + 1e-9 < def.cost) return;
+    if (p.blockDone || p.cast || p.med || p.dash || p.effects.stun || p.power + 1e-9 < def.cost) return;
     p.power -= def.cost;
     p.block = { cap: def.strength, held: 0, broken: false };
     return;
   }
   if (p.effects.stun) { p.block = null; return; }
   p.block.held += dt;
+  if (p.block.held >= TUNE.block.maxTime - 1e-9) { // a defence lasts 3 s, then it's gone until block is pressed again
+    p.block = null; p.blockDone = true; ev(m, 'blockEnd', { pid: p.id });
+    return;
+  }
   if (p.block.broken) return;
   // ground rule 5: holding block longer while the opponent prepares an attack makes it stronger
   const preparing = (o.cast && !o.cast.done) || false;
