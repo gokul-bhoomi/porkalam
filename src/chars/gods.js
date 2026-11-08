@@ -1,4 +1,4 @@
-// Boon lists per god. The game is inspired by Hindu mythology: the real gods appear only as givers of boons.
+// Boon lists per god. The game is inspired by Indian mythology: the real gods appear only as givers of boons.
 // A fighter spends devotion (earned by meditating) on a boon from a random god: tiers[0] = small (3 segments),
 // tiers[1] = medium (6), tiers[2] = divine weapon (10). Divine weapons go through a meditation barrier.
 // Each boon is a single-use move with the same fields as any other move.

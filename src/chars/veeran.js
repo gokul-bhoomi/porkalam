@@ -1,4 +1,4 @@
-// Veeran (Warrior, bow): a South Indian archer-warrior. An original character; the game is inspired by Hindu mythology.
+// Veeran (Warrior, bow): a South Indian archer-warrior. An original character; the game is inspired by Indian mythology.
 // Numbers are first guesses, to be tuned in play with the owner.
 import { POWER } from '../config.js';
 
