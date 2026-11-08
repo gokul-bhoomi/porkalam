@@ -25,8 +25,10 @@ export const TUNE = {
   kbFriction: 6,        // knockback speed fades by e^-6 per second
   wallKb: 60,           // knocked into the wall faster than this = wall damage
   wallDmg: 4,
-  block: { prepMult: 2, maxTime: 3 }, // grows this many times faster while the opponent prepares an attack; disappears after maxTime s
-  frontDot: 0.2,        // a block covers hits coming from in front of the fighter
+  // Block builds a wall in front of the fighter. It grows while block is held (prepMult x faster while the
+  // opponent prepares an attack), for at most buildTime s. When block is let go, the wall stays where it is,
+  // at the size it reached, for standTime s.
+  block: { prepMult: 2, buildTime: 3, standTime: 3, gap: 14, halfWidth: [8, 20] },
   trap: { max: 3, delay: [5, 30], cost: 4, plantedDmg: 12, plantedR: 20, plantedKb: 120, waterR: 22, waterTime: 8, waterSlow: 0.5 },
   mark: { life: [5, 30], max: 40, offset: 12 }, // floor marks (scuffs and traps look the same)
   maxBoons: 1,          // ground rule 11

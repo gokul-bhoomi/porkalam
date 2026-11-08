@@ -20,7 +20,7 @@ export function createMatch({ seed = 1, time = TUNE.match.default, chars = ['kri
   return {
     seed, rand: rng(seed), t: 0, duration, timeLeft: duration, phase: 'fight', result: null, scene: null,
     players: chars.map((id, i) => makeFighter(CHARS[id], i)),
-    projectiles: [], strikes: [], areas: [], traps: [], marks: [], waters: [], units: [], arenaChange: null,
+    projectiles: [], strikes: [], areas: [], traps: [], marks: [], waters: [], units: [], walls: [], arenaChange: null,
     hits: [], events: [], prev: [{}, {}], nid: 1,
   };
 }
@@ -170,6 +170,8 @@ function movement(m, inputs, dt) {
   }
   m.projectiles = m.projectiles.filter((pr) => !pr.dead);
 
+  for (const w of m.walls) if (w.standing && (w.t -= dt) <= 0) w.dead = true;
+  m.walls = m.walls.filter((w) => !w.dead);
   for (const a of m.areas) a.t -= dt;
   for (const u of m.units) u.t -= dt;
   m.units = m.units.filter((u) => u.t > 0);
@@ -296,7 +298,7 @@ function release(m, p, c) {
         m.projectiles.push({
           id: m.nid++, owner: p.id, name: mv.name, shape: mv.shape, x: p.x + cx * TUNE.fighterR, y: p.y + cy * TUNE.fighterR,
           vx: cx * mv.speed, vy: cy * mv.speed, r: mv.radius, dmg, kb: mv.knockback, life: mv.life, legs: mv.legs ? mv.legs - 1 : 0,
-          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, pierceBlock: !!mv.pierceBlock, pierceUnits: !!mv.pierceUnits, hitUnits: [],
+          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, pierceBlock: !!mv.pierceBlock, pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [],
         });
       }
       break;
@@ -369,25 +371,62 @@ function progressMed(m, p, dt) {
 }
 function stopMed(m, p, why) { p.med = null; say(p, why); ev(m, 'medStop', { pid: p.id }); }
 
+// Block = build a wall (owner, 2026-11-07). While block is held the fighter stands still and the wall in
+// front of him grows. Let go (or reach buildTime) and the wall stays in place, at that size, for standTime s.
+// p.block is the wall being built right now; m.walls holds every wall, built or standing.
+function placeWall(p, w) {
+  const B = TUNE.block, k = w.cap / w.max;
+  w.hw = Math.max(w.hw || 0, B.halfWidth[0] + (B.halfWidth[1] - B.halfWidth[0]) * k); // it only ever grows wider
+  w.x = p.x + p.face.x * B.gap; w.y = p.y + p.face.y * B.gap; w.nx = p.face.x; w.ny = p.face.y;
+}
+function erect(m, p) {
+  const w = p.block;
+  p.block = null;
+  if (w.dead) return;
+  w.standing = true; w.t = TUNE.block.standTime;
+  ev(m, 'wallUp', { pid: p.id, x: w.x, y: w.y });
+}
 function handleBlock(m, p, inp, dt) {
-  const def = p.ch.defence, o = opponent(m, p);
-  if (!inp.block) { p.block = null; p.blockDone = false; return; }
+  const def = p.ch.defence, o = opponent(m, p), B = TUNE.block;
+  if (p.block && (p.block.dead || !inp.block || p.effects.stun || p.block.held >= B.buildTime - 1e-9)) {
+    if (inp.block) p.blockDone = true; // must let go before building another
+    erect(m, p);
+  }
+  if (!inp.block) { p.blockDone = false; return; }
   if (!p.block) {
     if (p.blockDone || p.cast || p.med || p.dash || p.effects.stun || p.power + 1e-9 < def.cost) return;
     p.power -= def.cost;
-    p.block = { cap: def.strength, held: 0, broken: false };
+    m.walls = m.walls.filter((w) => w.owner !== p.id); // one wall per fighter: a new one replaces the old
+    p.block = { id: m.nid++, owner: p.id, look: def.look, cap: def.strength, max: def.max, held: 0, t: B.standTime, standing: false };
+    placeWall(p, p.block);
+    m.walls.push(p.block);
     return;
   }
-  if (p.effects.stun) { p.block = null; return; }
   p.block.held += dt;
-  if (p.block.held >= TUNE.block.maxTime - 1e-9) { // a defence lasts 3 s, then it's gone until block is pressed again
-    p.block = null; p.blockDone = true; ev(m, 'blockEnd', { pid: p.id });
-    return;
-  }
-  if (p.block.broken) return;
   // ground rule 5: holding block longer while the opponent prepares an attack makes it stronger
   const preparing = (o.cast && !o.cast.done) || false;
-  p.block.cap = Math.min(def.max, p.block.cap + def.growth * dt * (preparing ? TUNE.block.prepMult : 1));
+  p.block.cap = Math.min(def.max, p.block.cap + def.growth * dt * (preparing ? B.prepMult : 1));
+  placeWall(p, p.block);
+}
+
+const wallEnds = (w) => [{ x: w.x - w.ny * w.hw, y: w.y + w.nx * w.hw }, { x: w.x + w.ny * w.hw, y: w.y - w.nx * w.hw }];
+function segDist(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  const t = l2 ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / l2, 0, 1) : 0;
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+}
+function segCross(a, b, c, d) {
+  const cr = (o, p, q) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+  const d1 = cr(c, d, a), d2 = cr(c, d, b), d3 = cr(a, b, c), d4 = cr(a, b, d);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+// a wall soaks up damage until its strength runs out, then it's gone
+function absorb(m, w, dmg) {
+  const a = Math.min(w.cap, dmg);
+  w.cap -= a;
+  ev(m, 'blocked', { pid: w.owner, amount: a, x: w.x, y: w.y });
+  if (w.cap <= 1e-9) { w.dead = true; ev(m, 'blockBreak', { pid: w.owner, x: w.x, y: w.y }); }
+  return dmg - a;
 }
 
 // ---------- 3. clashes ----------
@@ -408,6 +447,16 @@ function collectHits(m) {
   const FR = TUNE.fighterR;
   for (const pr of m.projectiles) {
     const o = m.players[1 - pr.owner];
+    if (!pr.pierceBlock) for (const w of m.walls) {
+      pr.hitWalls ||= [];
+      if (w.dead || w.owner === pr.owner || pr.hitWalls.includes(w.id)) continue;
+      const [a, b] = wallEnds(w);
+      if (segDist(pr, a, b) > pr.r + 1) continue;
+      pr.hitWalls.push(w.id);
+      pr.dmg = absorb(m, w, pr.dmg);
+      if (pr.dmg <= 1e-9) { pr.dead = true; break; }
+    }
+    if (pr.dead) continue;
     for (const u of m.units) {
       if (u.owner === pr.owner || pr.hitUnits.includes(u.id) || Math.hypot(u.x - pr.x, u.y - pr.y) > u.r + pr.r) continue;
       m.hits.push({ target: u, dmg: pr.dmg, kb: 0, from: pr, src: pr.name });
@@ -415,7 +464,7 @@ function collectHits(m) {
     }
     if (pr.dead || o.effects.invuln || Math.hypot(o.x - pr.x, o.y - pr.y) > FR + pr.r) continue;
     const d = unitDir(pr.vx, pr.vy);
-    m.hits.push({ target: o, dmg: pr.dmg, kb: pr.kb, dir: d, from: { x: pr.x - d.x * 20, y: pr.y - d.y * 20 }, effect: pr.effect, pierceBlock: pr.pierceBlock, src: pr.name, by: pr.owner });
+    m.hits.push({ target: o, dmg: pr.dmg, kb: pr.kb, dir: d, from: { x: pr.x - d.x * 20, y: pr.y - d.y * 20 }, effect: pr.effect, pierceBlock: pr.pierceBlock, walled: true, src: pr.name, by: pr.owner });
     pr.dead = true;
   }
   m.projectiles = m.projectiles.filter((pr) => !pr.dead);
@@ -437,11 +486,10 @@ function collectHits(m) {
 }
 
 // ---------- 4. damage and healing, all together ----------
-function fromFront(t, h) {
-  if (!h.from) return false;
-  const d = unitDir(h.from.x - t.x, h.from.y - t.y);
-  if (!d.x && !d.y) return false;
-  return t.face.x * d.x + t.face.y * d.y > TUNE.frontDot;
+// Is one of the target's walls between the attack and the target?
+function wallFor(m, t, h) {
+  if (!h.from || h.walled || h.pierceBlock || h.absolute || !t.ch) return null;
+  return m.walls.find((w) => !w.dead && w.owner === t.id && segCross(h.from, t, ...wallEnds(w))) || null;
 }
 
 function applyHits(m) {
@@ -453,12 +501,8 @@ function applyHits(m) {
     if (h.heal) { n.heal += h.heal; continue; }
     if (t.effects?.invuln && !h.absolute) continue;
     let dmg = h.dmg;
-    if (t.block && !t.block.broken && !h.pierceBlock && !h.absolute && fromFront(t, h)) {
-      const a = Math.min(t.block.cap, dmg);
-      t.block.cap -= a; dmg -= a;
-      ev(m, 'blocked', { pid: t.id, amount: a, x: t.x, y: t.y });
-      if (t.block.cap <= 1e-9) { t.block.broken = true; ev(m, 'blockBreak', { pid: t.id }); }
-    }
+    const w = wallFor(m, t, h);
+    if (w) dmg = absorb(m, w, dmg);
     if (!(dmg > 0)) continue;
     n.dmg += dmg; n.hit = true; n.srcs.push(h.src);
     if (h.by != null && m.players[h.by]) m.players[h.by].stats.dealt += Number.isFinite(dmg) ? dmg : 0;
@@ -483,6 +527,7 @@ function applyHits(m) {
     } else t.hp -= n.dmg;
   }
   m.units = m.units.filter((u) => u.hp > 0);
+  m.walls = m.walls.filter((w) => !w.dead); // a used-up wall is gone (handleBlock lets go of it next step)
   m.hits = [];
 }
 
