@@ -1,7 +1,7 @@
 // Computer opponent for 1-player mode. It only reads the match and returns the same button state a
 // player would give (mx, my, a1, a2, block, s1-s3), so it plays by exactly the same rules.
 // It has its own random numbers, so it never changes the match's random draws.
-import { ARENA, TUNE } from './config.js';
+import { ARENA, TUNE, RANGES } from './config.js';
 import { rng, dist } from './util.js';
 import { whyNot, opponent } from './sim.js';
 
@@ -27,7 +27,7 @@ export const LEVELS = {
 // about equally strong (CPU vs CPU near 50/50). Without it the Warrior's computer is much stronger at low skill
 // and the Mage's at high skill. Re-measure with tests/ai.test.js if moves change.
 export const SKILL_ADJUST = {
-  siddhan: { easy: 0.19, normal: 0.035, hard: -0.15 }, // skill 0.34 / 0.635 / 0.75
+  siddhan: { easy: 0.19, normal: 0.0, hard: -0.22 }, // skill 0.34 / 0.6 / 0.68
   veeran: { easy: -0.15, normal: 0, hard: 0.1 },      // skill 0.00 / 0.60 / 1.00
 };
 export const LEVEL_IDS = Object.keys(LEVELS);
@@ -35,7 +35,7 @@ export const LEVEL_IDS = Object.keys(LEVELS);
 export function createCpu(pid, level = 'normal', seed = 1) {
   return {
     pid, level: LEVELS[level] ? level : 'normal', L: null, r: rng((seed * 7919 + pid * 104729) | 0),
-    think: 0, rest: 1, hold: {}, holdT: 0, gap: 0, strafe: 1, strafeT: 0, dodge: null, dodgeT: 0, medWait: 0, wasMed: false,
+    think: 0, rest: 1, hold: {}, holdT: 0, gap: 0, strafe: 1, strafeT: 0, dodge: null, dodgeT: 0, medWait: 0, wasMed: false, medProg: null, medStuck: 0,
   };
 }
 
@@ -85,10 +85,18 @@ function decide(m, cpu, p, o, d) {
 
   // meditating: the barrier soaks hits, so only stop when it's nearly gone or the opponent has come close
   // (pressing block ends meditation; holding it on builds a wall)
+  // and get up when it isn't working: no progress for a while (opponent too close), or the opponent is
+  // meditating too (then go and hit them instead)
   if (p.med) {
+    const prog = p.devotion * 100 + p.med.meter;
+    if (cpu.medProg == null || prog > cpu.medProg + 1e-6) { cpu.medProg = prog; cpu.medStuck = 0; }
+    else cpu.medStuck += L.react;
+    const stop = { buttons: { block: true }, time: 0.05 };
     if (p.med.barrier < 8 && incoming(m, p) && R() < L.block) return { buttons: { block: true }, time: 0.7 };
-    return d < TUNE.meditate.dist * 0.6 && R() < 0.5 ? { buttons: { block: true }, time: 0.05 } : null;
+    if (cpu.medStuck > 1.2 || (o.med && R() < 0.5 + L.plan * 0.5)) { cpu.medProg = null; return stop; }
+    return null;
   }
+  cpu.medProg = null;
 
   // defence: an attack is on its way
   // the slow Mage can't sidestep well, so he raises his earth wall against any shot
@@ -114,7 +122,7 @@ function decide(m, cpu, p, o, d) {
     if ((dv >= want || (o.hp < 20 && R() < 0.5)) && R() < 0.7) return { buttons: COMBO.boon, time: 0.05 };
   }
   // meditate when the opponent is far and nothing is on its way (both classes)
-  if (dv < M.segments && can(mv.cls) && cpu.medWait <= 0 && !o.med && d > M.dist + 30 && !o.cast && !threat && R() < 0.5) {
+  if (dv < M.segments && can(mv.cls) && cpu.medWait <= 0 && !o.med && !o.chord && d > M.dist + 30 && !o.cast && !threat && R() < 0.5) {
     return { buttons: COMBO.cls, time: 0.05 };
   }
 
@@ -228,7 +236,10 @@ function steer(m, cpu, p, o, d, dt) {
   if (cpu.dodgeT > 0) { cpu.dodgeT -= dt; x += cpu.dodge.x * 2; y += cpu.dodge.y * 2; }
   // the Warrior uses his speed to stay out of bolt range (kite); the Mage wants to close in.
   // Against a meditating opponent, close in: meditation only fills while you keep away, and the barrier has to be broken.
-  const want = o.med ? 30 + 40 * (1 - cpu.L.plan) : p.ch.id === 'siddhan' ? 80 : 95 + cpu.L.kite * 65;
+  // (a Warrior against a short-range basic attack stays just beyond its reach)
+  const outReach = RANGES[o.ch.moves.a1.range]?.[1] ?? Infinity;
+  const kiteTo = Number.isFinite(outReach) && cpu.L.kite > 0.3 ? outReach + 12 : 95 + cpu.L.kite * 65;
+  const want = o.med ? 30 + 40 * (1 - cpu.L.plan) : p.ch.id === 'siddhan' ? 80 : kiteTo;
   const ux = d ? (o.x - p.x) / d : 1, uy = d ? (o.y - p.y) / d : 0;
   const push = Math.max(-1, Math.min(1, (d - want) / 30));
   x += ux * push; y += uy * push;

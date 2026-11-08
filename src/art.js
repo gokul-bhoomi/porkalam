@@ -4,9 +4,11 @@
 // is lined up on the same foot baseline.
 import { RES } from './config.js';
 
-export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, ready: false };
+export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, gods: {}, ready: false };
 // Dramatic scene paintings (art/scene_<key>.png), drawn by drawScene in render.js.
-const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel'];
+const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel', 'vishwaroopam'];
+// The boon gods, painted blessing (art/god_<name>.png, and the figure alone on magenta in god_<name>_fg.png).
+const GOD_ART = ['shiva', 'murugan', 'brahma', 'krishna'];
 
 // Effect sprites (walls, shots, ground patches, bursts): two sheets of 8 square cells, same format as the fighters.
 const FX_SHEETS = ['art/fx_sheet.png', 'art/fx2_sheet.png'];
@@ -104,6 +106,10 @@ export async function loadArt(base = '') {
   await Promise.all(['siddhan_sig', 'veeran_sig', 'veeran_elephant'].map(async (k) => { // only the fighters' scenes have layers
     const [bg, fg] = await Promise.all([loadImg(`${base}art/scene_${k}_bg.png`), loadImg(`${base}art/scene_${k}_fg.png`)]);
     if (bg && fg) ART.sceneLayers[k] = { bg, fg: keyOut(fg).c };
+  }));
+  await Promise.all(GOD_ART.map(async (g) => {
+    const [img, fg] = await Promise.all([loadImg(`${base}art/god_${g}.png`), loadImg(`${base}art/god_${g}_fg.png`)]);
+    if (img) ART.gods[g] = { img, fg: fg ? keyOut(fg).c : null };
   }));
   const fxImgs = await Promise.all(FX_SHEETS.map((f) => loadImg(base + f)));
   fxImgs.forEach((img, si) => { if (img) Object.assign(ART.fx, cutFx(img, FX_NAMES[si])); });

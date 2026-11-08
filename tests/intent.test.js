@@ -484,7 +484,7 @@ test('classes (owner, 2026-11-08): two classes, Mages and Warriors, and no Monst
 
 test('theme (owner, 2026-11-08): inspired by Hindu mythology; the fighters are original, the real gods only grant boons', () => {
   for (const c of Object.values(CHARS)) assert.ok(!/krishna|raja|chola|shiva|murugan|brahma|vishnu/i.test(`${c.id} ${c.name}`), c.name);
-  assert.deepEqual(Object.keys(GODS).sort(), ['brahma', 'murugan', 'shiva']);
+  assert.deepEqual(Object.keys(GODS).sort(), ['brahma', 'krishna', 'murugan', 'shiva']); // Krishna joined as a boon god (owner, 2026-11-08)
   assert.ok(src('render.js').includes('INSPIRED BY HINDU MYTHOLOGY'));
 });
 
@@ -518,7 +518,7 @@ test('class: a Warrior has one weapon, and his basic and special moves come from
   for (const s of ['a1', 'a2', 's1', 's2', 's3', 'sig']) assert.equal(warrior.moves[s].weapon, 'bow');
 });
 
-test('class: both classes meditate; it fills only while the opponent is far, and the fighter can\'t move', () => {
+test('class: both classes meditate; it fills wherever the opponent is (owner, 2026-11-08), and the fighter can\'t move', () => {
   for (const [c, pid] of [[mage, K], [warrior, R]]) {
     const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
     tap(m, pid, 'cls');
@@ -527,7 +527,7 @@ test('class: both classes meditate; it fills only while the opponent is far, and
     const filled = m.players[pid].med.meter, dv = m.players[pid].devotion;
     m.players[1 - pid].x = m.players[pid].x + (pid === K ? 1 : -1) * (M.dist - 5);
     run(m, [{}, {}], 1);
-    assert.ok(m.players[pid].med.meter === filled && m.players[pid].devotion === dv, 'no progress while the opponent is close');
+    assert.ok(m.players[pid].med.meter > filled || m.players[pid].devotion > dv, 'still fills with the opponent close by');
   }
 });
 

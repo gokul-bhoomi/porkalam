@@ -28,7 +28,7 @@ A South Indian archer-warrior: bronze and crimson armour, a tiger-stripe sash, a
 
 | Move | Range | Cost | Effect |
 |---|---|---|---|
-| Shot (basic) | Mid/long | Small | Tap for a quick arrow. Hold to charge (more damage the longer it's held) |
+| Shot (basic) | Mid/long | Small (3 power) | Tap for a quick arrow. Hold to charge (more damage the longer it's held). Arrows fly slow enough to dodge by moving (owner, 2026-11-08: arrow spam was too strong) |
 | Knife attack (basic) | Close | Small | Small damage, knockback |
 | Split shot | Mid | Small | 3 arrows fan out |
 | Pinning arrow | Mid/long | Medium | Pins the opponent in place for ~1.5 s |
@@ -44,5 +44,6 @@ Spending devotion buys a boon from a random god: 3 segments = small, 6 = medium,
 | Shiva | Third-eye spark (fire shot) | Damaru: stuns the opponent | Pashupatastra: huge damage from anywhere |
 | Murugan | Vel throw | Peacock dash: a quick escape that can't be hit | Shakti Vel: pierces any block |
 | Brahma | Kamandalu: restores 10% health | Lotus seat: next meditation is twice as fast | Brahmastra: both fighters reach 0 health, so it's a draw |
+| Krishna (joined 2026-11-08) | Flute charm: holds the opponent still for 1.5 s | Sudarshana Chakra: homing disc | Vishwaroopam: the cosmic form, large damage across the whole arena |
 
-Divine weapons go through a meditation barrier and play a power-up with the god's painting. Brahmastra is rare unless the caster's health is low (about 5% above 35% health, 20% at 15-35%, 50% at 15% or less).
+When a small or medium boon is invoked, the god appears as a vast vision over the arena, blessing, while the fight goes on. Divine weapons go through a meditation barrier and play a power-up with the god's painting. Strong hits crack the sand, and power moves throw the river up round the island. Brahmastra is rare unless the caster's health is low (about 5% above 35% health, 20% at 15-35%, 50% at 15% or less).

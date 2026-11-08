@@ -10,8 +10,9 @@ export default {
   defence: { type: 'barrier', name: 'Arrow wall', strength: 4, growth: 7, max: 18, cost: 1, look: 'arrows' },
   weapon: 'bow',
   moves: {
-    a1: { name: 'Shot', kind: 'projectile', weapon: 'bow', range: 'midlong', cost: { power: 1.5 }, req: {}, cast: 0.12, damage: 3, knockback: 30,
-      charge: { max: 1.2, damage: 10 }, speed: 230, radius: 3, life: 1.5, shape: 'arrow' },
+    // shot cost 1.5 -> 3 and speed 230 -> 170 (owner, 2026-11-08): arrow spam was too strong, and moving should dodge it
+    a1: { name: 'Shot', kind: 'projectile', weapon: 'bow', range: 'midlong', cost: { power: 3 }, req: {}, cast: 0.12, damage: 3, knockback: 30,
+      charge: { max: 1.2, damage: 10 }, speed: 170, radius: 3, life: 1.5, shape: 'arrow' },
     a2: { name: 'Knife attack', kind: 'melee', weapon: 'bow', range: 'close', cost: { power: 1.5 }, req: {}, cast: 0.12, damage: 3, knockback: 150, reach: 46 },
     s1: { name: 'Split shot', kind: 'projectile', weapon: 'bow', special: true, range: 'mid', cost: { power: 10 }, req: {}, cast: 0.3, damage: 4, knockback: 30,
       count: 3, spread: 0.28, speed: 200, radius: 3, life: 1.2, shape: 'arrow' },
