@@ -1,0 +1,9 @@
+# Layered signature arm halo
+
+Generated with the built-in image generation tool. `fx_hands_halo.png` contains two transparent cells: a curved, shaded forearm and a front-facing upright palm. The earlier circle artwork remains available as an original asset.
+
+The active animation uses three concentric symmetrical arcs with 19, 15, and 11 arms. Outer arms and palms are larger. Mirrored forearms join upright palms, unfold during the existing power-up scene, and extend toward the target in three coordinated waves. All waves land at the existing 0.4-second impact time after release. Damage, costs, cast duration, and the pause during the power-up are unchanged.
+
+## Generation prompt
+
+Use case: stylized-concept. Asset type: transparent 2D fantasy game sprite sheet, exactly TWO equal square cells side by side on a 2:1 wide canvas. Left cell: ONE entire long muscular spectral forearm WITHOUT A HAND. Vertical orientation, lower cut end centered at bottom, narrow wrist cut end centered at top. Gentle flowing S curve between these ends, broad sculpted forearm muscles, solid turquoise shaded skin, dark teal contour lines, slender gold bracelet at the upper wrist. Both ends on the vertical centerline. Isolated, fully contained with padding, no fingers or palm in left cell. Right cell: ONE large upright open hand, palm facing viewer, exactly five fingers clearly separated and pointing UP, wide readable palm, thumb on viewer's left, short wrist stump centered below palm. Match left cell turquoise painted material and small gold bracelet. Clear dark contours, opaque shaded teal anatomy, subtle pale cyan edge light, restrained glow. Hand painted fantasy fighting game sprites readable at small size, matching an Indian-mythology inspired spectral many-arm power. True transparent alpha background. No trails, no wisps, no energy beams, no multiple arms per cell, no body, no face, no text, no checkerboard.
