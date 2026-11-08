@@ -32,11 +32,12 @@ export const TUNE = {
   block: { prepMult: 2, buildTime: 3, standTime: 3, gap: 14, halfWidth: [8, 20] },
   chord: 0.08,          // special buttons pressed within this time count as one combo (boon / signature)
   // Meditation (ground rule 11, owner 2026-11-08): fills a devotion bar of `segments` parts, segTime s each,
-  // only while the opponent is further than `dist`. Only full segments count. A barrier of `barrier` strength
+  // wherever the opponent is (`dist` is only how far the computer likes to be before it starts). Only full segments count. A barrier of `barrier` strength
   // goes up around the meditating fighter. Boons cost `tiers` segments: small, medium, divine weapon.
   meditate: { dist: 90, cost: 2, segments: 10, segTime: 2.5, barrier: 25, tiers: [3, 6, 10] },
   // Brahmastra (a draw) is rare unless the caster is near the end of their health (owner, 2026-11-08):
   // its weight against the other divine weapons (weight 1 each) by the caster's health.
-  brahmastraOdds: [{ hp: 15, w: 2 }, { hp: 35, w: 0.5 }, { hp: 100, w: 0.1 }],
+  // (weights against 3 other divine weapons: about 5% above 35% health, 20% at 15-35%, 50% at 15% or less)
+  brahmastraOdds: [{ hp: 15, w: 3 }, { hp: 35, w: 0.75 }, { hp: 100, w: 0.16 }],
   scene: 2.5,           // dramatic scene length for power moves; the whole game pauses
 };

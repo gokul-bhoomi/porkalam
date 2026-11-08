@@ -226,7 +226,7 @@ function tryAct(m, p, slot, inp) {
   if (why) { say(p, why); return; }
   if (slot === 'boon') {
     p.devotion -= move.devotionCost;
-    ev(m, 'boon', { pid: p.id, name: move.name, god: move.god, tier: move.tier }); // both players see which boon it was
+    ev(m, 'boon', { pid: p.id, name: move.name, god: move.god, godId: move.godId, tier: move.tier }); // both players see which boon it was
     move = move.boon;
   }
   pay(p, move);
@@ -258,12 +258,12 @@ function pickBoon(m, p) {
   for (const g of GOD_IDS) for (const boon of GODS[g].tiers[ti]) {
     if (whyNot(m, p, boon)) continue;
     const w = boon.kind === 'brahmastra' ? TUNE.brahmastraOdds.find((o) => p.hp <= o.hp).w : 1;
-    opts.push({ boon, god: GODS[g].name, w });
+    opts.push({ boon, god: GODS[g].name, godId: g, w });
   }
   if (!opts.length) { say(p, 'NO BOON FITS HERE'); return null; }
   let r = m.rand() * opts.reduce((a, o) => a + o.w, 0), pick = opts[opts.length - 1];
   for (const o of opts) { if ((r -= o.w) < 0) { pick = o; break; } }
-  return { boon: pick.boon, name: pick.boon.name, god: pick.god, tier: TIER_NAMES[ti], devotionCost: tiers[ti], cost: {}, range: 'anywhere' };
+  return { boon: pick.boon, name: pick.boon.name, god: pick.god, godId: pick.godId, tier: TIER_NAMES[ti], devotionCost: tiers[ti], cost: {}, range: 'anywhere' };
 }
 
 function progressCast(m, p, inp, dt) {
@@ -311,7 +311,7 @@ function release(m, p, c) {
       m.areas.push({ id: m.nid++, owner: p.id, x: o.x, y: o.y, r: mv.radius, t: mv.delay, delay: mv.delay, dmg: mv.damage, kb: mv.knockback });
       break;
     case 'global': // across the whole arena
-      for (const t of [o, ...m.units.filter((u) => u.owner !== p.id)]) m.hits.push({ target: t, dmg: mv.damage, kb: mv.knockback, from: { x: p.x, y: p.y }, src: mv.name });
+      for (const t of [o, ...m.units.filter((u) => u.owner !== p.id)]) m.hits.push({ target: t, dmg: mv.damage, kb: mv.knockback, from: { x: p.x, y: p.y }, src: mv.name, divine: !!mv.divine, by: p.id });
       break;
     case 'brahmastra': // both fighters reach 0 health at once: a draw
       for (const t of m.players) m.hits.push({ target: t, dmg: Infinity, kb: 0, absolute: true, from: null, src: 'Brahmastra' });
@@ -337,11 +337,12 @@ function release(m, p, c) {
   }
 }
 
-// Meditation fills the devotion bar one segment at a time, only while the opponent keeps away.
+// Meditation fills the devotion bar one segment at a time, wherever the opponent is (owner, 2026-11-08: the
+// barrier is the defence, so a nearby opponent can't stall it).
 // Only full segments count: stopping (or having the barrier broken) loses the part-filled one.
 function progressMed(m, p, dt) {
-  const M = TUNE.meditate, o = opponent(m, p);
-  if (dist(p, o) > M.dist) p.med.meter += dt * (p.med.fast ? 2 : 1);
+  const M = TUNE.meditate;
+  p.med.meter += dt * (p.med.fast ? 2 : 1);
   if (p.med.meter < M.segTime - 1e-9) return;
   p.med.meter = 0;
   p.devotion = Math.min(M.segments, p.devotion + 1);

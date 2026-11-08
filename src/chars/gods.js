@@ -27,6 +27,15 @@ export const GODS = {
       [{ id: 'brahmastra', name: 'Brahmastra', kind: 'brahmastra', divine: true, scene: true, selfKO: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 5, damage: Infinity, knockback: 0 }],
     ],
   },
+  // Krishna joined as a boon god on 2026-11-08 (owner).
+  krishna: {
+    name: 'Krishna',
+    tiers: [
+      [{ id: 'flute', name: 'Flute charm', kind: 'projectile', range: 'mid', cost: { power: 0 }, req: {}, cast: 0.4, damage: 2, knockback: 0, speed: 110, radius: 10, life: 1.6, effect: { kind: 'hold', time: 1.5 }, shape: 'wave' }],
+      [{ id: 'sudarshana', name: 'Sudarshana Chakra', kind: 'projectile', range: 'anywhere', cost: { power: 0 }, req: {}, cast: 0.5, damage: 14, knockback: 90, speed: 130, radius: 6, life: 3, legs: 3, legTime: 0.9, shape: 'chakra' }],
+      [{ id: 'vishwaroopam', name: 'Vishwaroopam', kind: 'global', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 30, knockback: 60 }],
+    ],
+  },
 };
 
 export const findBoon = (id) => {

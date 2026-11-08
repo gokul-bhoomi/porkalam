@@ -1,4 +1,4 @@
-import { W, H, RES, STEP, TUNE } from './config.js';
+import { W, H, RES, STEP, TUNE, ARENA } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { setCtx, R, txt, drawFight, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
@@ -42,9 +42,17 @@ function merge(a, b) {
 }
 const go = (screen) => { S.screen = screen; S.sel = 0; S.screenAt = S.now; };
 
+// power moves that break the arena when they land
+const POWER_MOVES = new Set(['Thousand-Arm Form', 'Gaja Arrow', 'Pashupatastra', 'Shakti Vel', 'Brahmastra', 'Vishwaroopam']);
 function onEvent(e, m) {
   const now = S.clock, add = (f) => S.fx.push({ t0: now, life: 0.8, ...f });
+  const crack = (x, y, size) => { // a crack in the sand that fades slowly; only the newest 16 stay
+    add({ kind: 'crack', x, y, size, seed: Math.floor(Math.random() * 1e6), life: 30, ground: true });
+    const cracks = S.fx.filter((f) => f.kind === 'crack');
+    if (cracks.length > 16) S.fx.splice(S.fx.indexOf(cracks[0]), 1);
+  };
   if (e.type === 'hp') {
+    if (e.dmg >= 8) crack(e.x, e.y, Number.isFinite(e.dmg) ? Math.min(1.4, e.dmg / 25) : 1.6); // heavy hits break the sand
     if (e.dmg > 0) { add({ kind: 'pop', x: e.x, y: e.y, text: Number.isFinite(e.dmg) ? `-${Math.round(e.dmg * 10) / 10}` : 'X', color: '#ff6a5a' }); add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 }); }
     if (e.heal > 0) add({ kind: 'pop', x: e.x, y: e.y, text: `+${e.heal}`, color: '#7aff8a' });
   }
@@ -57,13 +65,19 @@ function onEvent(e, m) {
   if (e.type === 'blink') add({ kind: 'trail', x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'release') { // power moves land with a bang in the arena, right after their scene
     const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
+    if (POWER_MOVES.has(e.name)) { // the ground breaks around the target and the river is thrown up round the island
+      const o = m.players[1 - e.pid];
+      for (let i = 0; i < 4; i++) { const a = Math.random() * Math.PI * 2, r = 10 + Math.random() * 30; crack(o.x + Math.cos(a) * r, o.y + Math.sin(a) * r, 0.7 + Math.random() * 0.6); }
+      for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2 + Math.random() * 0.4; add({ kind: 'splash', x: Math.cos(a) * ARENA.r, y: Math.sin(a) * ARENA.r, life: 1.1, big: 1.6 }); }
+    }
     if (e.name === 'Thousand-Arm Form') { add({ kind: 'global', x: 0, y: 0, life: 0.6, color: '150,240,230' }); add({ kind: 'ghost', scene: 'siddhan_sig', x: 0, y: 0, life: 1.2 }); add({ kind: 'shock', x: p.x, y: p.y, life: 1.0, color: '255,214,120', r: 160 }); shake(4, 0.7); }
     if (e.name === 'Gaja Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Shakti Vel') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,200,90', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Pashupatastra') { add({ kind: 'bolt', x: p.x, y: p.y, life: 0.5 }); add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '170,220,255', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Brahmastra') { for (const q of m.players) add({ kind: 'pillar', x: q.x, y: q.y, life: 1.2 }); add({ kind: 'global', x: 0, y: 0, life: 0.9, color: '255,255,255' }); shake(5, 1.0); }
   }
-  if (e.type === 'wall') add({ kind: 'pop', x: e.x, y: e.y - 8, text: 'WALL', color: '#ffb46a' });
+  if (e.type === 'wall') { add({ kind: 'pop', x: e.x, y: e.y - 8, text: 'WALL', color: '#ffb46a' }); add({ kind: 'splash', x: e.x, y: e.y, life: 0.9, big: 1 }); }
+  if (e.type === 'boon' && e.tier !== 'divine') add({ kind: 'god', god: e.godId, x: 0, y: 0, life: 1.8 }); // the god appears in the sky, blessing
   if (e.type === 'boon') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()} INVOKES ${e.name.toUpperCase()}`, sub: `${e.tier.toUpperCase()} BOON FROM ${e.god.toUpperCase()}`, t0: S.now };
   if (e.type === 'medFull') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()}: DEVOTION FULL`, sub: 'A DIVINE WEAPON IS READY', t0: S.now };
 }
@@ -150,7 +164,7 @@ addEventListener('blur', autoPause);
 const r1 = (v) => Math.round(v * 10) / 10;
 window.__game = {
   get screen() { return S.screen; },
-  get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, scenes: Object.keys(ART.scenes).length, sceneLayers: Object.keys(ART.sceneLayers).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
+  get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, scenes: Object.keys(ART.scenes).length, sceneLayers: Object.keys(ART.sceneLayers).length, gods: Object.keys(ART.gods).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
   errors: S.errors,
   debug: {
     pause() { DBG.paused = true; }, resume() { DBG.paused = false; },

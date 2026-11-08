@@ -2,7 +2,7 @@
 
 These rules sit on top of [GROUND-RULES.md](GROUND-RULES.md) and never contradict it.
 
-**Theme (owner, 2026-11-08):** the game is *inspired by Hindu mythology*. The fighters are original characters: the mythology lives in the arena, costumes and ornament. The real gods (Shiva, Murugan, Brahma) appear only as givers of boons.
+**Theme (owner, 2026-11-08):** the game is *inspired by Hindu mythology*. The fighters are original characters: the mythology lives in the arena, costumes and ornament. The real gods (Shiva, Murugan, Brahma and Krishna) appear only as givers of boons.
 
 There are **two classes, Mages and Warriors**. There are no Monsters (removed to keep the game simple).
 

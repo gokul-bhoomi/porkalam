@@ -180,7 +180,7 @@ function drawFighter(m, p, now) {
     }
   }
   if (p.med) {
-    const M = TUNE.meditate, k = p.med.meter / M.segTime, far = Math.hypot(p.x - o.x, p.y - o.y) > M.dist;
+    const M = TUNE.meditate, k = p.med.meter / M.segTime;
     // the barrier: a golden dome that fades as it soaks up hits
     const bs = p.med.barrier / M.barrier, rx = Z(13), ry = Z(17), cy = y - Z(14), fl = 0.75 + 0.25 * Math.sin(now * 7);
     const g = G.createRadialGradient(x, cy, 2, x, cy, ry * 1.2);
@@ -191,7 +191,6 @@ function drawFighter(m, p, now) {
     ring(x, y - 6, 14, 12, 'rgba(0,0,0,.4)', 3);
     ring(x, y - 6, 14, 12, '#ffd34a', 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
     txt('MEDITATING', x, top, '#ffd34a', 'center'); top -= 10;
-    if (!far) { txt('TOO CLOSE', x, top, '#ff7a6a', 'center'); top -= 10; }
   }
   if (p.msg) txt(p.msg.text, x, top, '#ffb4a8', 'center');
 }
@@ -316,6 +315,7 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now) {
   if (cam) { G.translate(CX, H / 2); G.scale(cam.z, cam.z); G.translate(-cam.fx, -cam.fy); }
   drawBackdrop(now);
   if (m.scene) sceneSky(m);
+  for (const f of fx) if (f.kind === 'god') drawGod(f, fxNow); // a god appearing in the sky (small and medium boons)
   drawArena();
   for (const a of m.areas) {
     const k = 1 - a.t / a.delay;
@@ -353,7 +353,42 @@ function drawFx(f, now) {
     return;
   }
   switch (f.kind) {
-    case 'shake': break;
+    case 'shake': case 'god': break;
+    case 'crack': { // a fissure in the sand: a scorched dip, jagged branching cracks with a lit edge; fades late
+      const a = Math.min(1, (f.life - age) / 6), grow = Math.min(1, age / 0.12), sz = f.size * grow;
+      G.save(); G.beginPath(); G.ellipse(CX, CY, ARENA.r * SC, ARENA.r * SC * SQ, 0, 0, Math.PI * 2); G.clip(); // only on the sand
+      const dip = G.createRadialGradient(x, y, 0, x, y, Z(10) * sz);
+      dip.addColorStop(0, `rgba(80,40,15,${0.35 * a})`); dip.addColorStop(1, 'rgba(80,40,15,0)');
+      G.fillStyle = dip; G.beginPath(); G.ellipse(x, y, Z(10) * sz, Z(10) * sz * SQ, 0, 0, Math.PI * 2); G.fill();
+      const n = 4 + (f.seed % 4);
+      for (let i = 0; i < n; i++) {
+        let ang = (i / n) * Math.PI * 2 + hash(i, f.seed) * 0.9, px = x, py = y;
+        const len = Z(6 + hash(i, f.seed + 1) * 9) * sz, pts = [[px, py]];
+        for (let j = 1; j <= 5; j++) { ang += (hash(i * 7 + j, f.seed) - 0.5) * 1.3; px += Math.cos(ang) * len / 5; py += Math.sin(ang) * len / 5 * SQ; pts.push([px, py]); }
+        const path = () => { G.beginPath(); G.moveTo(pts[0][0], pts[0][1]); for (const [qx, qy] of pts.slice(1)) G.lineTo(qx, qy); };
+        G.lineCap = 'round'; G.lineJoin = 'round';
+        path(); G.strokeStyle = `rgba(255,228,180,${0.5 * a})`; G.lineWidth = 0.9; G.save(); G.translate(0, 0.45); G.stroke(); G.restore(); // lit lower lip
+        path(); G.strokeStyle = `rgba(55,26,10,${0.9 * a})`; G.lineWidth = 0.55 * (1.2 - 0.2 * sz); G.stroke();
+        if (hash(i, f.seed + 9) > 0.5) { // a small side branch
+          const [bx, by] = pts[2], ba = ang + (hash(i, f.seed + 3) > 0.5 ? 0.9 : -0.9);
+          G.beginPath(); G.moveTo(bx, by); G.lineTo(bx + Math.cos(ba) * len * 0.35, by + Math.sin(ba) * len * 0.35 * SQ); G.lineWidth = 0.4; G.stroke();
+        }
+      }
+      G.restore();
+      break;
+    }
+    case 'splash': { // river water thrown up: droplets arc outward and fall, with a ring on the water
+      const out = Math.hypot(f.x, f.y) > 1 ? unitDir2(f.x, f.y) : { x: 0, y: -1 }, b = f.big || 1;
+      ring(x, y, Z(6 + 14 * k) * b, Z(6 + 14 * k) * b * SQ, `rgba(230,245,255,${0.7 * (1 - k)})`, 1);
+      for (let i = 0; i < 14; i++) {
+        const spread = (hash(i, 50) - 0.5) * 1.6, sp = (20 + hash(i, 51) * 30) * b, ang = Math.atan2(out.y, out.x) + spread;
+        const dx = Math.cos(ang) * sp * age, up = (40 + hash(i, 52) * 40) * b * age - 120 * age * age;
+        if (up < -2) continue;
+        G.fillStyle = `rgba(200,232,255,${0.9 * (1 - k)})`;
+        G.beginPath(); G.arc(x + Z(dx), y + Z(Math.sin(ang) * sp * age) * SQ - Z(up), 0.7 + hash(i, 53) * 0.8, 0, Math.PI * 2); G.fill();
+      }
+      break;
+    }
     case 'shock': { // a ring of force rolling across the floor
       const r = Z(f.r) * easeOut(k), a = 1 - k;
       ring(x, y, r, r * SQ, `rgba(${f.color},${a})`, 3 * a + 0.5);
@@ -472,12 +507,13 @@ function drawHud(m, tags) {
 const SCENE_LOOK = {
   siddhan_sig: { face: [0.3, 0.3], at: [0.62, 0.35], glow: '120,240,230', spark: '200,255,250', bg: ['#123a4a', '#03080c'], sub: 'THE MAGE AWAKENS' },
   veeran_elephant: { fallback: 'veeran_sig', face: [0.25, 0.3], at: [0.6, 0.33], glow: '255,130,50', spark: '255,196,96', bg: ['#7a1a10', '#140404'], sub: 'THE WAR ELEPHANT' },
+  vishwaroopam: { face: [0.375, 0.21], at: [0.6, 0.16], glow: '255,214,120', spark: '255,236,170', bg: ['#2a1a5a', '#05030f'], sub: 'DIVINE BOON OF KRISHNA' },
   shakti_vel: { face: [0.4, 0.3], at: [0.7, 0.4], glow: '255,200,90', spark: '255,240,190', bg: ['#5a3a10', '#0a0604'], sub: 'DIVINE BOON OF MURUGAN' },
   brahmastra: { face: [0.4, 0.3], at: [0.7, 0.38], glow: '255,246,214', spark: '255,255,236', bg: ['#4a3a20', '#0a0806'], sub: 'DIVINE BOON OF BRAHMA' },
   pashupatastra: { face: [0.4, 0.3], at: [0.82, 0.37], glow: '160,215,255', spark: '210,240,255', bg: ['#1a2a6a', '#03050f'], sub: 'DIVINE BOON OF SHIVA' },
 };
 export const sceneKey = (name) => ({ 'Thousand-Arm Form': 'siddhan_sig', 'Gaja Arrow': 'veeran_elephant', Pashupatastra: 'pashupatastra',
-  Brahmastra: 'brahmastra', 'Shakti Vel': 'shakti_vel' })[name] || null;
+  Brahmastra: 'brahmastra', 'Shakti Vel': 'shakti_vel', Vishwaroopam: 'vishwaroopam' })[name] || null;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const easeOut = (v) => 1 - (1 - v) ** 3;
 
@@ -492,6 +528,21 @@ function star(x, y, r, a) { // a four-point glint
   G.fillStyle = `rgba(255,255,255,${a})`;
   G.beginPath(); G.moveTo(x, y - r); G.lineTo(x + r * 0.18, y - r * 0.18); G.lineTo(x + r, y); G.lineTo(x + r * 0.18, y + r * 0.18);
   G.lineTo(x, y + r); G.lineTo(x - r * 0.18, y + r * 0.18); G.lineTo(x - r, y); G.lineTo(x - r * 0.18, y - r * 0.18); G.closePath(); G.fill();
+}
+
+const unitDir2 = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
+// A god appears as a vast, translucent vision over the arena, blessing, while the fight goes on (small and medium
+// boons). Drawn before the fighters, so they stay in front.
+function drawGod(f, now) {
+  const g = ART.gods[f.god], age = now - f.t0, k = clamp01(age / f.life);
+  const a = clamp01(age / 0.3) * (1 - clamp01((age - f.life + 0.5) / 0.5)), rise = (1 - easeOut(clamp01(age / 0.7))) * 24;
+  if (a <= 0) return;
+  G.save();
+  const glow = G.createRadialGradient(CX, 120 + rise, 10, CX, 120 + rise, 230);
+  glow.addColorStop(0, `rgba(255,225,150,${0.4 * a})`); glow.addColorStop(1, 'rgba(255,225,150,0)');
+  G.fillStyle = glow; G.fillRect(-300, -300, W + 600, H + 600);
+  if (g) place(g.fg || g.img, 0.82 + 0.05 * k, 0.5, 0.3, CX, 108 + rise, (g.fg ? 0.62 : 0.45) * a);
+  G.restore();
 }
 
 // the camera during a power-up: zoom toward the caster, ease in, hold, ease back out
