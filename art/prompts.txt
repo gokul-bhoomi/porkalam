@@ -1,0 +1,12 @@
+Generation mode: built-in image generation. All designs original.
+Shared style: detailed crisp pixel art, deliberate pixel clusters, jewel palette, warm highlights, dark violet outlines; top-down three-quarter arena-brawler camera.
+
+arena.png: 16:9 Chola-era South Indian floating temple courtyard, light granite slabs in concentric rings, faint central carved kolam, Dravidian carved rim and deepa stambha lamps. Puffy clouds in blue-violet sky, heavy chains going off-screen, waterfall from floating rock above back edge. Empty arena, no characters, text or UI. Composition refinement: zoom out so floor spans x27%-73%, centered at x50% y58%, with visible rocky underside and generous sky.
+
+krishna_sheet.png: Eight evenly spaced full-body right-facing Krishna poses, blue skin, peacock-feather crown, yellow silk dhoti, gold jewellery and bamboo flute. Frames 1-4 idle breathing/flute sway, frames 5-8 walking. Consistent scale and baseline, character height about 80% of square frame. Solid #FF00FF background, no shadows, gradients, grid lines, labels or scenery.
+
+rajaraja_sheet.png: Use Krishna sheet as style reference. Eight evenly spaced full-body right-facing Raja Raja Chola archer-king poses, brown skin, black moustache, crimson/gold armour, tall gold crown, long bow and quiver. Frames 1-4 idle breathing, frames 5-8 walking. Same camera, scale, baseline and magenta background constraints.
+
+Export: generated poses packed into eight 512x512 square cells per sheet, nearest-neighbor scaling, aligned sole baseline y461, background normalized to exact RGB(255,0,255).
+
+Arena revision: Built-in image editing using previous arena as reference. Raise camera to roughly55-60 degrees; enlarge open floor to about60% canvas width, ellipse height half width, centre50% across56% down. Preserve pixel style, Chola carvings, granite rings, faint central kolam, rim-only lamps, chains, cloudy blue-violet sky and waterfall source rock above rear edge. Show only a little underside. Same1672x941 canvas. Prior arena retained as arena_low.png.
