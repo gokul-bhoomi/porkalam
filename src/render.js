@@ -545,17 +545,19 @@ function star(x, y, r, a) { // a four-point glint
 
 const GOD_GLOW = { shiva: '150,205,255', murugan: '255,200,90', brahma: '255,240,205', krishna: '130,175,255' };
 const unitDir2 = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
-// A god appears as a vast, translucent vision over the arena, blessing, while the fight goes on (small and medium
-// boons). Drawn before the fighters, so they stay in front.
+// A god rises in the sky and over the river around the island, blessing, while the fight goes on (small and
+// medium boons). Never over the sand, so every attack stays visible; the fighters are drawn in front.
 function drawGod(f, now) {
   const g = ART.gods[f.god], age = now - f.t0, k = clamp01(age / f.life);
   const a = clamp01(age / 0.3) * (1 - clamp01((age - f.life + 0.5) / 0.5)), rise = (1 - easeOut(clamp01(age / 0.7))) * 24;
   if (a <= 0) return;
   G.save();
-  const glow = G.createRadialGradient(CX, 120 + rise, 10, CX, 120 + rise, 230);
-  glow.addColorStop(0, `rgba(255,225,150,${0.4 * a})`); glow.addColorStop(1, 'rgba(255,225,150,0)');
+  G.beginPath(); G.rect(-300, -300, W + 600, H + 600);
+  G.ellipse(CX, CY, ARENA.r * SC * 1.03, ARENA.r * SC * SQ * 1.03 + 2, 0, 0, Math.PI * 2); G.clip('evenodd'); // everything but the sand
+  const glow = G.createRadialGradient(CX, 70 + rise, 10, CX, 70 + rise, 230);
+  glow.addColorStop(0, `rgba(255,225,150,${0.45 * a})`); glow.addColorStop(1, 'rgba(255,225,150,0)');
   G.fillStyle = glow; G.fillRect(-300, -300, W + 600, H + 600);
-  if (g) place(g.fg || g.img, 0.82 + 0.05 * k, 0.5, 0.3, CX, 108 + rise, (g.fg ? 0.62 : 0.45) * a);
+  if (g) place(g.fg || g.img, 0.62 + 0.04 * k, 0.5, 0.42, CX, 78 + rise, (g.fg ? 0.95 : 0.75) * a); // head and blessing hand above the far bank
   G.restore();
 }
 
@@ -660,6 +662,7 @@ export function drawTitle(now, pads) {
   }
   if (Math.floor(now * 2) % 2) txt('PRESS START / ENTER', CX, H - 14, '#ffcf6a', 'center');
   txt(`PADS: ${pads}`, W - 6, H - 14, '#9aa', 'right');
+  txt('M: SOUND ON/OFF', 6, H - 14, '#9aa');
 }
 
 export function drawSetup(now, o) {

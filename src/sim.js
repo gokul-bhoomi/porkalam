@@ -134,7 +134,7 @@ function movement(m, inputs, dt) {
       let mx = +inp.mx || 0, my = +inp.my || 0;
       const l = Math.hypot(mx, my);
       if (l > 1) { mx /= l; my /= l; }
-      const sp = p.ch.speed * (1 - (p.effects.slow?.mag || 0));
+      const sp = p.ch.speed * TUNE.pace.move * (1 - (p.effects.slow?.mag || 0));
       p.x += mx * sp * dt; p.y += my * sp * dt;
     }
     p.x += p.kvx * dt; p.y += p.kvy * dt;
@@ -295,7 +295,7 @@ function release(m, p, c) {
         const a = base + (n > 1 ? (i - (n - 1) / 2) * mv.spread : 0), cx = Math.cos(a), cy = Math.sin(a);
         m.projectiles.push({
           id: m.nid++, owner: p.id, name: mv.name, shape: mv.shape, x: p.x + cx * TUNE.fighterR, y: p.y + cy * TUNE.fighterR,
-          vx: cx * mv.speed, vy: cy * mv.speed, r: mv.radius, dmg, kb: mv.knockback, life: mv.life, legs: mv.legs ? mv.legs - 1 : 0,
+          vx: cx * mv.speed * TUNE.pace.shot, vy: cy * mv.speed * TUNE.pace.shot, r: mv.radius, dmg, kb: mv.knockback, life: mv.life, legs: mv.legs ? mv.legs - 1 : 0,
           legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, divine: !!mv.divine, boon: c.slot === 'boon', pierceBlock: !!mv.pierceBlock, pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [],
         });
       }

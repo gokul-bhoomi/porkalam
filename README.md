@@ -23,6 +23,7 @@ On the setup screen pick **1 player vs CPU** (choose your fighter and the CPU le
 | Meditate (down + special 1): fills devotion behind a barrier | S+R | ↓+I | Stick down + B |
 | Spend devotion on a boon (two specials together: 3 = small, 6 = medium, 10 = divine) | R+T (any two of R/T/Y) | I+O (any two of I/O/P) | B+Y (any two of B/Y/LB) |
 | Pause | Esc | Esc | Start |
+| Sound on/off | M | M | |
 
 ## Art
 
@@ -42,4 +43,5 @@ npm run verify
 - `src/chars/`: character sheets and moves (`siddhan.js`, `veeran.js`) and the gods' boon lists (`gods.js`). All numbers live here and in `src/config.js`.
 - `src/render.js`: drawing on a 480x270 layout (canvas 1920x1080), with the art from `src/art.js` or grey-box shapes. Only reads the state.
 - `src/ai.js`: the computer opponent. It only returns button states, so it plays by the same rules; it has its own random numbers so matches stay deterministic. Each level is a skill value (easy 0.15, normal 0.6, hard 0.9) blended between a novice and an expert, plus a per-fighter adjustment (`SKILL_ADJUST`) measured so the computer Mage and the computer Warrior are equally strong at each level.
+- `src/audio.js`: music and sound, synthesized with Web Audio (no files): a tanpura drone with mridangam rhythm in raga Mohanam, one effect per game event, and temple bells, choir and conch for boons and power-ups. It starts on the first key press.
 - `src/input.js`: keyboard and gamepads. `src/main.js`: screens, loop and the `window.__game.debug` API.

@@ -3,6 +3,7 @@ import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { setCtx, R, txt, drawFight, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
 import { createInput } from './input.js';
+import * as sound from './audio.js';
 import { createCpu, cpuInput, LEVELS, LEVEL_IDS } from './ai.js';
 
 const cv = document.getElementById('screen');
@@ -40,7 +41,7 @@ function merge(a, b) {
   for (const k of Object.keys({ ...a, ...b })) if (k !== 'mx' && k !== 'my') f[k] = !!(a[k] || b[k]);
   return f;
 }
-const go = (screen) => { S.screen = screen; S.sel = 0; S.screenAt = S.now; };
+const go = (screen) => { S.screen = screen; S.sel = 0; S.screenAt = S.now; sound.play('tick'); };
 
 // power moves that break the arena when they land
 const POWER_MOVES = new Set(['Thousand-Arm Form', 'Gaja Arrow', 'Pashupatastra', 'Shakti Vel', 'Brahmastra', 'Vishwaroopam']);
@@ -51,6 +52,28 @@ function onEvent(e, m) {
     const cracks = S.fx.filter((f) => f.kind === 'crack');
     if (cracks.length > 16) S.fx.splice(S.fx.indexOf(cracks[0]), 1);
   };
+  // ---- sounds ----
+  const me = m.players[e.pid];
+  if (e.type === 'cast' && e.slot === 'a1') sound.play(me?.ch.weapon === 'bow' ? 'bow' : 'bolt');
+  if (e.type === 'release' && me && me.ch.weapon === 'bow' && e.name !== 'Gaja Arrow' && !POWER_MOVES.has(e.name)) sound.play('bow');
+  if (e.type === 'cast' && /^s[123]$/.test(e.slot) && me?.ch.weapon !== 'bow') sound.play('bolt');
+  if (e.type === 'swing') sound.play('whoosh');
+  if (e.type === 'hp' && e.dmg > 0) sound.play('hit', Number.isFinite(e.dmg) ? Math.min(2, 0.6 + e.dmg / 12) : 2);
+  if (e.type === 'blocked') sound.play('block');
+  if (e.type === 'wallUp') sound.play('wallUp');
+  if (e.type === 'clash') sound.play('clash');
+  if (e.type === 'wall') sound.play('edge');
+  if (e.type === 'rain') sound.play('rain');
+  if (e.type === 'blink') sound.play('blink');
+  if (e.type === 'meditate') sound.play('meditate');
+  if (e.type === 'devotion') sound.play('devotion', e.devotion);
+  if (e.type === 'medFull') sound.play('medFull');
+  if (e.type === 'barrier') sound.play('barrier');
+  if (e.type === 'medStop' && me?.msg?.text === 'BARRIER BROKEN') sound.play('shatter');
+  if (e.type === 'boon') { sound.play('boon', e.tier === 'divine'); sound.duck(0.2, 2.4); }
+  if (e.type === 'scene') { sound.play('powerUp'); sound.duck(0.15, 2.6); }
+  if (e.type === 'release' && POWER_MOVES.has(e.name)) sound.play('powerLand');
+  if (e.type === 'end') { sound.play(e.reason === 'ko' || e.reason === 'double' || e.reason === 'brahmastra' ? 'ko' : 'tick'); if (e.winner != null) setTimeout(() => sound.play('win'), 1200); }
   if (e.type === 'hp') {
     if (e.dmg >= 8) crack(e.x, e.y, Number.isFinite(e.dmg) ? Math.min(1.4, e.dmg / 25) : 1.6); // heavy hits break the sand
     if (e.dmg > 0) { add({ kind: 'pop', x: e.x, y: e.y, text: Number.isFinite(e.dmg) ? `-${Math.round(e.dmg * 10) / 10}` : 'X', color: '#ff6a5a' }); add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 }); }
@@ -89,6 +112,8 @@ function onEvent(e, m) {
 
 function update(dt) {
   const inp = input.poll();
+  if (inp.pads) sound.unlock(); // a pad press may count as a gesture in some browsers
+  sound.setMusic(S.screen === 'fight' && !S.paused && S.match?.phase === 'fight' ? 'fight' : 'menu');
   S.pads = inp.pads;
   while (DBG.menu.length) { const { pid, action } = DBG.menu.shift(); inp.menu[pid][action] = true; }
   const m = inp.menu, any = (a) => m[0][a] || m[1][a];
@@ -152,10 +177,13 @@ function render() {
 }
 
 addEventListener('keydown', (e) => {
+  sound.unlock(); // browsers allow sound only after the first key press
+  if (e.code === 'KeyM') sound.toggleMute();
   if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) return;
   if (e.code === 'Digit0') setUseArt(!useArt); // 0 switches between the art and the grey-box
   if (e.code === 'Backquote') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); }
 });
+addEventListener('pointerdown', () => sound.unlock());
 addEventListener('error', (e) => S.errors.push(String(e.error?.stack || e.message)));
 // When the game can't be seen or played (window in the background, tab hidden, focus elsewhere), the browser
 // slows its frames to about one a second and the fight would crawl and look frozen. Pause it instead.
@@ -169,6 +197,8 @@ addEventListener('blur', autoPause);
 const r1 = (v) => Math.round(v * 10) / 10;
 window.__game = {
   get screen() { return S.screen; },
+  get sounds() { return [...sound.log]; },
+  get audio() { return { state: sound.state(), muted: sound.isMuted() }; },
   get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, scenes: Object.keys(ART.scenes).length, sceneLayers: Object.keys(ART.sceneLayers).length, gods: Object.keys(ART.gods).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
   errors: S.errors,
   debug: {
@@ -215,6 +245,7 @@ function frame(ts) {
   try {
     if (!DBG.paused) { acc += dt * timeScale(); while (acc >= STEP) { update(STEP); acc -= STEP; } }
     render();
+    sound.tickMusic();
   } catch (e) { S.errors.push(String(e?.stack || e)); console.error(e); }
   requestAnimationFrame(frame);
 }
