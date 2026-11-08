@@ -376,6 +376,36 @@ function drawFx(f, now) {
   }
   switch (f.kind) {
     case 'shake': case 'god': break;
+    case 'arms': { // Thousand-Arm Form: the spirit rises behind the caster, then glowing arms reach the target
+      const tx = sx(f.tx), ty = sy(f.ty), fade = 1 - clamp01((age - f.life + 0.4) / 0.4), rise = easeOut(clamp01(age / 0.35));
+      const face = tx >= x ? 1 : -1;
+      if (ART.arms) { // the spirit of arms, towering over the caster
+        const w = 230 * (0.85 + 0.15 * rise), h = w * ART.arms.height / ART.arms.width;
+        G.save(); G.globalCompositeOperation = 'lighter'; G.globalAlpha = 0.95 * fade * rise;
+        G.translate(x, y - 20 - 30 * rise); G.scale(face, 1); G.imageSmoothingEnabled = true;
+        G.drawImage(ART.arms, -w * 0.32, -h * 0.62, w, h);
+        G.restore();
+      }
+      const reach = easeOut(clamp01((age - 0.12) / 0.3)); // then the arms stretch across to the target
+      G.save(); G.globalCompositeOperation = 'lighter'; G.lineCap = 'round';
+      for (let i = 0; i < 7; i++) {
+        const off = (i - 3) * 9, sy0 = y - 30 + off * 0.6, cx1 = (x + tx) / 2 + face * 10, cy1 = Math.min(sy0, ty - 20) - 45 + Math.abs(off) * 1.5;
+        const ex = x + (tx - x) * reach, ey0 = sy0 + (ty - 22 + off * 0.25 - sy0) * reach, ccx = x + (cx1 - x) * reach, ccy = sy0 + (cy1 - sy0) * reach;
+        const a = fade * (0.55 + 0.45 * Math.sin(age * 14 + i));
+        for (const [lw, col] of [[6, `rgba(40,200,190,${0.25 * a})`], [3, `rgba(90,240,220,${0.7 * a})`], [1, `rgba(230,255,252,${a})`]]) {
+          G.strokeStyle = col; G.lineWidth = lw; G.beginPath(); G.moveTo(x, sy0); G.quadraticCurveTo(ccx, ccy, ex, ey0); G.stroke();
+        }
+        G.fillStyle = `rgba(160,255,240,${0.8 * a})`; G.beginPath(); G.arc(ex, ey0, 3 + 1.5 * Math.sin(age * 20 + i), 0, Math.PI * 2); G.fill(); // a glowing hand
+      }
+      if (reach > 0.95) { // the strike: a teal burst on the target
+        const k2 = clamp01((age - 0.42) / 0.5), r2 = 10 + 30 * k2;
+        const gb = G.createRadialGradient(tx, ty - 18, 0, tx, ty - 18, r2);
+        gb.addColorStop(0, `rgba(220,255,250,${(1 - k2) * fade})`); gb.addColorStop(1, 'rgba(60,220,200,0)');
+        G.fillStyle = gb; G.beginPath(); G.arc(tx, ty - 18, r2, 0, Math.PI * 2); G.fill();
+      }
+      G.restore();
+      break;
+    }
     case 'shatter': { // the island breaks: glowing fissures race out across the sand, chunks fly and fall, dust
       G.save(); G.beginPath(); G.ellipse(CX, CY, ARENA.r * SC, ARENA.r * SC * SQ, 0, 0, Math.PI * 2); G.clip();
       const run = easeOut(clamp01(age / 0.35)), glow = 1 - clamp01((age - 0.2) / 1.6);
