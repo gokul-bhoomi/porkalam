@@ -26,7 +26,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
   - knockback.
 - No cooldowns.
 - A move can bring its own user to 0 health only if that move explicitly says so.
-- Attacks automatically turn toward the opponent. Projectiles fly in a straight line and can be dodged by moving.
+- Attacks automatically turn toward the opponent. Projectiles fly in a straight line and can be dodged by moving. Exception (owner, 2026-11-08): a boon's attack always finds the opponent. It homes in, can be used from any distance, and walls don't stop it; only another attack or boon meeting it can weaken or cancel it (rule 6).
 - Power moves get a short dramatic scene. The game pauses for both players while it plays.
 
 ## 5. Defence
