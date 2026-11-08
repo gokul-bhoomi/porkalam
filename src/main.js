@@ -54,7 +54,13 @@ function onEvent(e, m) {
   if (e.type === 'trap') add(e.kind === 'planted' ? { kind: 'boom', x: e.x, y: e.y, life: 0.5, ground: true } : { kind: 'flash', x: e.x, y: e.y, life: 0.5 });
   if (e.type === 'rain') add({ kind: 'rain', x: e.x, y: e.y, r: e.r, life: 0.35 });
   if (e.type === 'blink') add({ kind: 'trail', x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.3 });
-  if (e.type === 'release' && e.name === 'Vishwaroopam') add({ kind: 'global', x: 0, y: 0, life: 0.6 });
+  if (e.type === 'release') { // power moves land with a bang in the arena, right after their scene
+    const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
+    if (e.name === 'Vishwaroopam') { add({ kind: 'global', x: 0, y: 0, life: 0.6 }); add({ kind: 'ghost', scene: 'vishwaroopam', x: 0, y: 0, life: 1.2 }); add({ kind: 'shock', x: p.x, y: p.y, life: 1.0, color: '255,214,120', r: 160 }); shake(4, 0.7); }
+    if (e.name === 'Tiger Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }
+    if (e.name === 'Pashupatastra') { add({ kind: 'bolt', x: p.x, y: p.y, life: 0.5 }); add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '170,220,255', r: 60 }); shake(3, 0.4); }
+    if (e.name === 'Brahmastra') { for (const q of m.players) add({ kind: 'pillar', x: q.x, y: q.y, life: 1.2 }); add({ kind: 'global', x: 0, y: 0, life: 0.9, color: '255,255,255' }); shake(5, 1.0); }
+  }
   if (e.type === 'wall') add({ kind: 'pop', x: e.x, y: e.y - 8, text: 'WALL', color: '#ffb46a' });
   if (e.type === 'boon') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()} GOT ${e.name.toUpperCase()}`, sub: `BOON FROM ${e.god.toUpperCase()}`, t0: S.now };
   if (e.type === 'boonUsed') S.banner = { text: `${e.name.toUpperCase()}!`, sub: 'BOON USED', t0: S.now };
@@ -86,7 +92,7 @@ function update(dt) {
       return;
     }
     if (match.phase === 'done') {
-      if (S.now - S.screenAt < 1.2) return;
+      if (S.now - S.screenAt < 1.6) return; // let the knockout play before the menu takes input
       if (any('up')) S.sel = (S.sel + 2) % 3;
       if (any('down')) S.sel = (S.sel + 1) % 3;
       if (any('confirm')) { if (S.sel === 0) startMatch(); else go(S.sel === 1 ? 'setup' : 'title'); }
@@ -119,7 +125,7 @@ function render() {
       txt(S.banner.text, CX, H - 30, '#ffcf6a', 'center');
       txt(S.banner.sub, CX, H - 18, '#ddd', 'center');
     }
-    if (S.match.phase === 'done') drawResult(S.match, S.sel);
+    if (S.match.phase === 'done') drawResult(S.match, S.sel, S.now - S.screenAt);
     if (S.paused) drawPause(S.sel);
   }
 }
@@ -142,7 +148,7 @@ addEventListener('blur', autoPause);
 const r1 = (v) => Math.round(v * 10) / 10;
 window.__game = {
   get screen() { return S.screen; },
-  get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, scenes: Object.keys(ART.scenes).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
+  get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, scenes: Object.keys(ART.scenes).length, sceneLayers: Object.keys(ART.sceneLayers).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
   errors: S.errors,
   debug: {
     pause() { DBG.paused = true; }, resume() { DBG.paused = false; },

@@ -173,7 +173,7 @@ await check('time-up shows the result, and rematch starts a new match', async ()
     d.resume(); return res;
   });
   expect(s && s.winner === 1 && s.reason === 'time', `bad result ${JSON.stringify(s)}`);
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2000); // the knockout / TIME! call plays first
   await page.screenshot({ path: join(SHOTS, 'result.png') });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(200);
@@ -213,6 +213,7 @@ await check('the Codex art loads: arena plus 8 frames for each fighter, and ?gre
   expect(a.frames.krishna === 8 && a.frames.rajaraja === 8, `frames: ${JSON.stringify(a.frames)}`);
   expect(a.fx === 16, `expected 16 effect sprites, got ${a.fx}`);
   expect(a.scenes === 5, `expected 5 dramatic scene paintings, got ${a.scenes}`);
+  expect(a.sceneLayers === 5, `expected backdrop + figure layers for 5 scenes, got ${a.sceneLayers}`);
   await game(() => { const d = window.__game.debug; d.start({ minutes: 5 }); d.setInput(0, { mx: 1 }); d.step(30); });
   await page.screenshot({ path: join(SHOTS, 'art.png') });
   await open('?seed=6&pause=1&grey=1');

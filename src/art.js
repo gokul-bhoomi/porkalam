@@ -4,7 +4,7 @@
 // is lined up on the same foot baseline.
 import { RES } from './config.js';
 
-export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, ready: false };
+export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, ready: false };
 // Dramatic scene paintings (art/scene_<key>.png), drawn by drawScene in render.js.
 const SCENES = ['vishwaroopam', 'tiger_arrow', 'brahmastra_krishna', 'brahmastra_king', 'pashupatastra'];
 
@@ -100,6 +100,11 @@ export async function loadArt(base = '') {
   }
   const sceneImgs = await Promise.all(SCENES.map((k) => loadImg(`${base}art/scene_${k}.png`)));
   SCENES.forEach((k, i) => { if (sceneImgs[i]) ART.scenes[k] = sceneImgs[i]; });
+  // optional layers for parallax: backdrop (plain) and the figure (on magenta, keyed out here)
+  await Promise.all(SCENES.map(async (k) => {
+    const [bg, fg] = await Promise.all([loadImg(`${base}art/scene_${k}_bg.png`), loadImg(`${base}art/scene_${k}_fg.png`)]);
+    if (bg && fg) ART.sceneLayers[k] = { bg, fg: keyOut(fg).c };
+  }));
   const fxImgs = await Promise.all(FX_SHEETS.map((f) => loadImg(base + f)));
   fxImgs.forEach((img, si) => { if (img) Object.assign(ART.fx, cutFx(img, FX_NAMES[si])); });
   ART.ready = true;
