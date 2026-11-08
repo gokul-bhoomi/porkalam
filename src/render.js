@@ -303,8 +303,8 @@ function trackMotion(m) {
     // flinch only when hit (damage taken), not when paying a move's health cost, e.g. a signature
     if (P && p.stats.taken > a.taken + 0.01) { a.pose = P.hit; a.until = now + 0.3; }
     else if (P && a.cast && !p.cast) { // a cast just ended: hold the follow-through
-      const after = { a1: P.shoot, s1: P.shoot, s2: p.ch.weapon === 'bow' ? P.shoot : null, a2: P.melee }[a.cast];
-      if (after != null) { a.pose = after; a.until = now + 0.22; }
+      const after = { a1: P.shoot, s1: P.shoot, s2: p.ch.weapon === 'bow' ? P.shoot : null, a2: P.melee, sig: p.ch.weapon === 'bow' ? P.shoot : P.cast }[a.cast];
+      if (after != null) { a.pose = after; a.until = now + (a.cast === 'sig' ? 0.8 : 0.22); } // a signature holds its release while it strikes
     }
     a.hp = p.hp; a.taken = p.stats.taken; a.cast = p.cast ? p.cast.slot : null;
   }
@@ -386,7 +386,7 @@ function drawFx(f, now) {
         G.drawImage(ART.arms, -w * 0.32, -h * 0.62, w, h);
         G.restore();
       }
-      const reach = easeOut(clamp01((age - 0.12) / 0.3)); // then the arms stretch across to the target
+      const reach = easeOut(clamp01(age / 0.4)); // the arms stretch across and arrive as the hit lands (strikeDelay 0.4 s)
       G.save(); G.globalCompositeOperation = 'lighter'; G.lineCap = 'round';
       for (let i = 0; i < 7; i++) {
         const off = (i - 3) * 9, sy0 = y - 30 + off * 0.6, cx1 = (x + tx) / 2 + face * 10, cy1 = Math.min(sy0, ty - 20) - 45 + Math.abs(off) * 1.5;
@@ -398,7 +398,7 @@ function drawFx(f, now) {
         G.fillStyle = `rgba(160,255,240,${0.8 * a})`; G.beginPath(); G.arc(ex, ey0, 3 + 1.5 * Math.sin(age * 20 + i), 0, Math.PI * 2); G.fill(); // a glowing hand
       }
       if (reach > 0.95) { // the strike: a teal burst on the target
-        const k2 = clamp01((age - 0.42) / 0.5), r2 = 10 + 30 * k2;
+        const k2 = clamp01((age - 0.4) / 0.5), r2 = 10 + 30 * k2;
         const gb = G.createRadialGradient(tx, ty - 18, 0, tx, ty - 18, r2);
         gb.addColorStop(0, `rgba(220,255,250,${(1 - k2) * fade})`); gb.addColorStop(1, 'rgba(60,220,200,0)');
         G.fillStyle = gb; G.beginPath(); G.arc(tx, ty - 18, r2, 0, Math.PI * 2); G.fill();

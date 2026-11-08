@@ -23,7 +23,7 @@ export default {
       speed: 90, radius: 12, life: 2, effect: { kind: 'hold', time: 3 }, shape: 'wave' },
     s3: { name: 'Blink', short: 'Short teleport', desc: 'Teleport a short way in the direction you hold (away from the opponent if none).', kind: 'blink', special: true, range: 'anywhere', cost: { power: 8 }, req: {}, cast: 0, damage: 0, knockback: 0, distance: 45 },
     sig: { name: 'Thousand-Arm Form', short: 'Whole arena, 35%', desc: 'A 4 s cast, then spectral arms strike across the whole arena: 35%. Costs 10% health.', kind: 'global', special: true, signature: true, scene: true, range: 'anywhere', cost: { power: 60, health: 10 }, req: {}, cast: 4,
-      damage: 35, knockback: 60 },
+      damage: 35, knockback: 60, strikeDelay: 0.4 }, // the arms take 0.4 s to reach
     cls: { name: 'Meditation', short: 'Earn devotion for boons', desc: 'Sit behind a barrier and fill devotion, one segment at a time.', kind: 'meditate', range: 'anywhere', cost: { power: 2 }, req: {}, cast: 0, damage: 0, knockback: 0 },
   },
 };
