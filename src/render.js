@@ -742,28 +742,26 @@ function drawCard(ch, x, y, w, h, now) { // the Codex card art, or the fighter d
   txt(ch.name.toUpperCase(), x + w / 2, y + h - 22, ch.color, 'center', 8);
   txt(ch.cls === 'mage' ? 'MAGE' : 'WARRIOR', x + w / 2, y + h - 11, '#c9b07a', 'center', 6);
 }
-const MOVE_ROWS = [['a1', 'BASIC 1'], ['a2', 'BASIC 2'], ['block', 'BLOCK'], ['s1', 'SPECIAL 1'], ['s2', 'SPECIAL 2'], ['s3', 'SPECIAL 3'], ['sig', 'ALL 3 SPECIALS'], ['cls', 'DOWN + SPECIAL 1']];
-function costText(mv) {
-  const c = mv.cost || {}, p = c.power === 'all' ? 'ALL' : c.power || 0;
-  return `${p} POWER${c.health ? ` + ${c.health}% HEALTH` : ''}`;
-}
-// a fighter's page: bio, then each move with its button, cost and what it does
+const MOVE_ROWS = [['a1', 'ATK 1'], ['a2', 'ATK 2'], ['block', 'BLOCK'], ['s1', 'SP 1'], ['s2', 'SP 2'], ['s3', 'SP 3'], ['sig', 'SP 1+2+3'], ['cls', 'DOWN+SP 1']];
+// a fighter's page, kept crisp: a button chip, the move's name and one short phrase, and its power cost
 function drawMoveList(ch, x, y, w) {
-  const cpl = Math.floor(w / 5.1); // characters per line at 5px
-  txt(`${ch.name.toUpperCase()}  -  ${ch.cls === 'mage' ? 'MAGE' : 'WARRIOR'}`, x, y, ch.color, 'left', 8);
-  let yy = y + 12;
-  for (const l of wrap(ch.bio || '', cpl).slice(0, 2)) { txt(l, x, yy, '#d8cfe8', 'left', 5); yy += 6; }
-  txt(`SPEED: ${ch.speed > 60 ? 'FAST' : 'SLOW'}    BLOCK: ${ch.defence.name.toUpperCase()}`, x, yy + 1, '#9aa', 'left', 5); yy += 11;
+  txt(ch.name.toUpperCase(), x, y, ch.color, 'left', 16);
+  txt(ch.cls === 'mage' ? 'MAGE' : 'WARRIOR', x + w, y + 6, '#c9b07a', 'right', 8);
+  wrap(ch.bio || '', Math.floor(w / 5.1)).slice(0, 2).forEach((l, i) => txt(l, x, y + 19 + i * 6, '#d8cfe8', 'left', 5));
+  let yy = y + 34;
   for (const [slot, btn] of MOVE_ROWS) {
-    const mv = slot === 'block' ? { name: ch.defence.name, desc: ch.defence.desc, cost: { power: ch.defence.cost } } : ch.moves[slot];
-    R(x, yy - 1, w, 0.5, 'rgba(201,162,74,.35)');
-    txt(mv.name.toUpperCase(), x, yy + 1, slot === 'sig' ? '#ffcf6a' : '#fff', 'left', 5);
-    txt(btn, x + w, yy + 1, '#9fe07a', 'right', 5);
-    yy += 7;
-    const lines = wrap(`${costText(mv)}. ${mv.desc || ''}`, cpl - 1).slice(0, 3);
-    lines.forEach((l, i) => { txt(l, x + 4, yy, i === 0 ? '#e8dcc0' : '#c8bcd8', 'left', 5); yy += 5.6; });
-    yy += 2;
+    const mv = slot === 'block' ? { name: ch.defence.name, short: ch.defence.short, cost: { power: ch.defence.cost } } : ch.moves[slot];
+    const sig = slot === 'sig';
+    box(x, yy, 50, 18, 3, sig ? 'rgba(120,80,20,.6)' : 'rgba(60,90,50,.45)', sig ? '#e8c060' : 'rgba(159,224,122,.6)');
+    txt(btn, x + 25, yy + 6, sig ? '#ffe7a0' : '#bff0a8', 'center', 5);
+    txt(mv.name.toUpperCase(), x + 58, yy + 2, sig ? '#ffcf6a' : '#fff', 'left', 8);
+    txt(mv.short || '', x + 58, yy + 11, '#c8bcd8', 'left', 6);
+    const c = mv.cost || {};
+    txt(`${c.power || 0}`, x + w, yy + 2, '#ffd34a', 'right', 8);
+    if (c.health) txt(`+${c.health}% HP`, x + w, yy + 11, '#ff9a8a', 'right', 5);
+    yy += 22;
   }
+  txt('NUMBERS = POWER COST', x + w, yy, '#8a809a', 'right', 5);
 }
 // how boons work, and every boon by tier
 function drawBoonsPage(now) {
@@ -791,6 +789,7 @@ export function drawSelect(now, o) {
   drawBackdrop(now);
   R(0, 0, W, H, 'rgba(8,6,14,.82)');
   if (o.boonsPage) { drawBoonsPage(now); txt('ANY KEY: BACK', CX, 260, '#ddd', 'center', 6); return; }
+  if (o.controlsPage) { drawControls(o.pads); txt('ANY KEY: BACK', CX, 260, '#ddd', 'center', 6); return; }
   txt('CHOOSE YOUR FIGHTER', CX, 6, '#ffcf6a', 'center', 16);
   const cw = 100, chh = 133, gap = 12, x0 = 14, y0 = 32;
   o.ids.forEach((id, i) => drawCard(o.chars[id], x0 + i * (cw + gap), y0, cw, chh, now));
@@ -804,44 +803,59 @@ export function drawSelect(now, o) {
   if (o.mode === '1p') txt('THE CPU TAKES THE OTHER FIGHTER', x0 + cw + gap / 2, y0 + chh + 18, '#9aa', 'center', 5);
   box(232, 28, 242, 222, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)');
   drawMoveList(o.chars[o.ids[o.cursor[o.focus || 0]]], 240, 34, 226);
-  txt(o.mode === '1p' ? 'LEFT/RIGHT CHOOSE   ENTER LOCK IN   DOWN: BOONS   ESC BACK' : 'EACH PLAYER: LEFT/RIGHT CHOOSE, ATTACK 1 / ENTER LOCK IN   DOWN: BOONS', CX, 258, '#ddd', 'center', 5);
+  txt(o.mode === '1p' ? 'LEFT/RIGHT CHOOSE   ENTER LOCK IN   UP: CONTROLS   DOWN: BOONS' : 'LEFT/RIGHT CHOOSE   ATTACK 1 LOCK IN   UP: CONTROLS   DOWN: BOONS', CX, 258, '#ddd', 'center', 5);
 }
 // pause menu pages: page 0 and 1 = the two fighters in this match, 2 = boons
 export function drawInfo(page, chs) {
   R(0, 0, W, H, 'rgba(8,6,14,.94)');
   if (page === 2) drawBoonsPage(0);
-  else { box(14, 10, 452, 240, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)'); drawMoveList(chs[page], 24, 18, 432); }
-  txt(`< ${['P1 FIGHTER', 'P2 FIGHTER', 'BOONS'][page]} >    LEFT/RIGHT: NEXT PAGE    ESC: BACK`, CX, 260, '#ddd', 'center', 6);
+  else if (page === 3) drawControls();
+  else { box(110, 12, 260, 236, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)'); drawMoveList(chs[page], 120, 20, 240); }
+  txt(`< ${['P1 FIGHTER', 'P2 FIGHTER', 'BOONS', 'CONTROLS'][page]} >    LEFT/RIGHT: NEXT PAGE    ESC: BACK`, CX, 260, '#ddd', 'center', 6);
 }
 
 // ---------- screens ----------
-export function drawTitle(now, pads) {
-  drawBackdrop(now); drawArena();
-  R(0, 0, W, H, 'rgba(10,12,20,.72)');
-  txt('MYTH FIGHTER', CX, 12, '#ffcf6a', 'center', 16);
-  txt('SIDDHAN (MAGE)  VS  VEERAN (WARRIOR)', CX, 34, '#fff', 'center');
-  txt('INSPIRED BY HINDU MYTHOLOGY', CX, 46, '#c9b07a', 'center');
+// The controls, for both key sets and the pad (moved off the title screen, owner 2026-11-08).
+function drawControls(pads = 0) {
+  R(0, 0, W, H, 'rgba(8,6,14,.94)');
+  txt('CONTROLS', CX, 8, '#ffcf6a', 'center', 16);
   const k3 = (k, n) => k.slice(0, n).map(KEY_NAME).join('+');
   const sp = (K) => ['s1', 's2', 's3'].map((s) => K[s][0]);
-  const combos = {
-    sig: ['Signature: all 3 specials', k3(sp(KEYS[0]), 3), k3(sp(KEYS[1]), 3), 'B+Y+LB'],
-    boon: ['Spend devotion: 2 specials', k3(sp(KEYS[0]), 2), k3(sp(KEYS[1]), 2), 'B+Y'],
-    cls: ['Meditate: down+sp1', `S+${KEY_NAME(KEYS[0].s1[0])}`, `DN+${KEY_NAME(KEYS[1].s1[0])}`, 'DOWN+B'],
-  };
-  const rows = ['move', ...ACTIONS, 'sig', 'boon', 'cls'];
-  let y = 62;
-  txt('ACTION', 8, y, '#9aa'); txt('P1', 290, y, '#9aa'); txt('P2', 340, y, '#9aa'); txt('PAD', 400, y, '#9aa');
-  y += 11;
-  for (const a of rows) {
-    const row = a === 'move' ? ['Move', 'WASD', 'ARROWS', 'STICK'] : combos[a]
-      || [LABELS[a], KEYS[0][a].map(KEY_NAME).join('/'), KEYS[1][a].map(KEY_NAME).join('/'), PAD_NAMES[PAD[a]]];
-    txt(row[0].toUpperCase().slice(0, 34), 8, y, combos[a] ? '#ffcf6a' : '#ddd');
-    row.slice(1).forEach((s, i) => txt(s, [290, 340, 400][i], y, '#fff'));
-    y += 11;
-  }
-  if (Math.floor(now * 2) % 2) txt('PRESS START / ENTER', CX, H - 14, '#ffcf6a', 'center');
-  txt(`PADS: ${pads}`, W - 6, H - 14, '#9aa', 'right');
-  txt('M: SOUND ON/OFF', 6, H - 14, '#9aa');
+  const rows = [['MOVE', 'WASD', 'ARROWS', 'STICK'],
+    ...['a1', 'a2', 'block', 's1', 's2', 's3'].map((a) => [{ a1: 'ATTACK 1', a2: 'ATTACK 2 (CLOSE)', block: 'BLOCK', s1: 'SPECIAL 1', s2: 'SPECIAL 2', s3: 'SPECIAL 3' }[a], KEYS[0][a].map(KEY_NAME).join('/'), KEYS[1][a].map(KEY_NAME).join('/'), PAD_NAMES[PAD[a]]]),
+    ['SIGNATURE: ALL 3 SPECIALS', k3(sp(KEYS[0]), 3), k3(sp(KEYS[1]), 3), 'B+Y+LB'],
+    ['BOON: 2 SPECIALS', k3(sp(KEYS[0]), 2), k3(sp(KEYS[1]), 2), 'B+Y'],
+    ['MEDITATE: DOWN + SPECIAL 1', `S+${KEY_NAME(KEYS[0].s1[0])}`, `DOWN+${KEY_NAME(KEYS[1].s1[0])}`, 'DOWN+B'],
+    ['PAUSE', 'ESC', 'ESC', 'START']];
+  let y = 40;
+  [['', 30], ['P1', 250], ['P2', 320], ['PAD', 405]].forEach(([t, x]) => txt(t, x, y, '#9aa', 'left', 8));
+  y += 14;
+  rows.forEach((r, i) => {
+    if (i % 2 === 0) R(24, y - 3, 432, 15, 'rgba(255,255,255,.04)');
+    const combo = i >= 7 && i <= 9;
+    txt(r[0], 30, y, combo ? '#ffcf6a' : '#ddd', 'left', 6);
+    r.slice(1).forEach((v, j) => txt(v, [250, 320, 405][j], y, '#fff', 'left', 6));
+    y += 15;
+  });
+  txt(`M: SOUND ON/OFF    \`: FULLSCREEN    PADS CONNECTED: ${pads}`, CX, y + 8, '#9aa', 'center', 6);
+}
+// Title screen: the Codex key art (art/title.png), the logo and 'press start'.
+export function drawTitle(now, pads) {
+  const img = ART.title;
+  if (img) { const sc = Math.max(W / img.width, H / img.height), w = img.width * sc, h = img.height * sc; G.imageSmoothingEnabled = true; G.drawImage(img, (W - w) / 2, (H - h) / 2, w, h); }
+  else { drawBackdrop(now); drawArena(); R(0, 0, W, H, 'rgba(10,12,20,.5)'); }
+  const top = G.createLinearGradient(0, 0, 0, 80); top.addColorStop(0, 'rgba(0,0,0,.6)'); top.addColorStop(1, 'rgba(0,0,0,0)');
+  G.fillStyle = top; G.fillRect(0, 0, W, 80);
+  const glow = 0.5 + 0.5 * Math.sin(now * 2);
+  G.save(); G.shadowColor = `rgba(255,190,90,${0.6 + 0.3 * glow})`; G.shadowBlur = 10;
+  txt('MYTH FIGHTER', CX, 16, '#ffcf6a', 'center', 32, 'rgba(60,20,0,.95)');
+  G.restore();
+  txt('INSPIRED BY HINDU MYTHOLOGY', CX, 54, '#f0dca8', 'center', 8);
+  const bot = G.createLinearGradient(0, H - 50, 0, H); bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(1, 'rgba(0,0,0,.7)');
+  G.fillStyle = bot; G.fillRect(0, H - 50, W, 50);
+  if (Math.floor(now * 2) % 2) txt('PRESS START / ENTER', CX, H - 26, '#fff2c0', 'center', 8);
+  txt('M: SOUND', 6, H - 10, '#c8bca0', 'left', 5);
+  txt(`PADS: ${pads}`, W - 6, H - 10, '#c8bca0', 'right', 5);
 }
 
 export function drawSetup(now, o) {

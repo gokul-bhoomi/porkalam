@@ -146,11 +146,12 @@ function update(dt) {
     if (any('down')) S.row = (S.row + 1) % n;
     if (any('left')) changeRow(-1);
     if (any('right')) changeRow(1);
-    if (any('confirm')) { go('select'); S.sel = 0; S.cursor = [0, CHAR_IDS.length > 1 ? 1 : 0]; S.locked = [false, false]; S.focus = 0; S.boonsPage = false; }
+    if (any('confirm')) { go('select'); S.sel = 0; S.cursor = [0, CHAR_IDS.length > 1 ? 1 : 0]; S.locked = [false, false]; S.focus = 0; S.boonsPage = S.controlsPage = false; }
     else if (any('back')) go('title');
   } else if (S.screen === 'select') { // character select: each player picks a card; in 1 player mode the computer takes the other one
-    if (S.boonsPage) { if (any('up') || any('back') || any('confirm') || any('down')) S.boonsPage = false; return; }
+    if (S.boonsPage || S.controlsPage) { if (any('up') || any('back') || any('confirm') || any('down')) S.boonsPage = S.controlsPage = false; return; }
     if (any('down')) { S.boonsPage = true; return; }
+    if (any('up')) { S.controlsPage = true; return; }
     const humans = S.mode === '1p' ? [0] : [0, 1], menu = (pid) => (S.mode === '1p' ? { ...m[1], ...Object.fromEntries(Object.entries(m[0]).filter(([, v]) => v)) } : m[pid]);
     for (const pid of humans) {
       const mm = menu(pid), n = CHAR_IDS.length;
@@ -171,8 +172,8 @@ function update(dt) {
     const match = S.match;
     if (S.paused) {
       if (S.info != null) { // moves & boons pages: left/right flip, back closes
-        if (any('left')) S.info = (S.info + 2) % 3;
-        if (any('right')) S.info = (S.info + 1) % 3;
+        if (any('left')) S.info = (S.info + 3) % 4;
+        if (any('right')) S.info = (S.info + 1) % 4;
         if (any('back') || any('confirm') || any('pause')) S.info = null;
         return;
       }
