@@ -26,7 +26,7 @@ Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: 
 
 ## Art
 
-`art/` holds the art made with Codex image generation: `arena.png` and one sprite sheet per fighter (`krishna_sheet.png`, `rajaraja_sheet.png`: 8 frames in a row, 1-4 idle and 5-8 walk, on flat magenta). `src/art.js` removes the magenta, finds the frames and lines up their feet. `art/arena.json` says where the arena floor is in `arena.png` (centre and half-widths as fractions of the image), so the game lines up with the picture. If a file is missing, the game draws its grey-box shapes instead. Press `0` in game, or open `?grey=1`, to switch to the grey-box.
+`art/` holds the art made with Codex image generation: `arena.png` (a sandbank on the Kaveri river at dusk; earlier tries are kept as `arena_sky.png` and `arena_temple.png`) and two sprite sheets per fighter, each 8 frames in a row on flat magenta: `*_sheet.png` (1-4 idle, 5-8 walk) and `*_actions.png` (attack wind-up and release, block, cast, hit, chant or meditate; see `POSES` in `src/art.js`). `src/art.js` removes the magenta, finds the frames and lines up their feet. `art/arena.json` says where the arena floor is in `arena.png` (centre and half-widths as fractions of the image), so the game lines up with the picture. If a file is missing, the game draws its grey-box shapes instead. Press `0` in game, or open `?grey=1`, to switch to the grey-box.
 
 ## Tests
 

@@ -1,6 +1,7 @@
 // Every amount is a percentage of a 100% bar. Every time is in seconds.
 // World units: the arena is a circle of radius ARENA.r around (0, 0). The renderer squashes y for a 3/4 view.
-export const W = 480, H = 270;
+export const W = 480, H = 270;   // game layout units
+export const RES = 4;             // the canvas is W*RES x H*RES (1920x1080) so the art stays sharp
 export const STEP = 1 / 60;
 
 export const ARENA = { r: 110 };
