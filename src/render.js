@@ -757,11 +757,11 @@ function drawMoveList(ch, x, y, w) {
     txt(mv.name.toUpperCase(), x + 58, yy + 2, sig ? '#ffcf6a' : '#fff', 'left', 8);
     txt(mv.short || '', x + 58, yy + 11, '#c8bcd8', 'left', 6);
     const c = mv.cost || {};
-    txt(`${c.power || 0}`, x + w, yy + 2, '#ffd34a', 'right', 8);
-    if (c.health) txt(`+${c.health}% HP`, x + w, yy + 11, '#ff9a8a', 'right', 5);
+    txt(`${c.power || 0}`, x + w, yy + 1, '#ffd34a', 'right', 8); // power cost, labelled so it reads as a cost
+    if (c.health) { G.font = `8px ${FONT}`; txt(`+${c.health}% HP`, x + w - G.measureText(`${c.power}`).width - 4, yy + 2, '#ff9a8a', 'right', 6); }
+    txt('POWER', x + w, yy + 11, '#c9a24a', 'right', 5);
     yy += 22;
   }
-  txt('NUMBERS = POWER COST', x + w, yy, '#8a809a', 'right', 5);
 }
 // how boons work, and every boon by tier
 function drawBoonsPage(now) {

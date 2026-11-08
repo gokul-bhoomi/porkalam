@@ -10,7 +10,7 @@ export default {
   power: POWER,
   speed: 42,
   bio: 'A slow but powerful young mystic who wins from range, with patience.',
-  defence: { type: 'barrier', short: 'Hold to raise an earth wall', desc: 'Hold block: a mound of earth rises in front of him and grows. Let go and it stands for 3 s.', name: 'Rising earth', strength: 6, growth: 5, max: 24, cost: 1, look: 'hill' },
+  defence: { type: 'barrier', short: 'Hold to raise a wall', desc: 'Hold block: a mound of earth rises in front of him and grows. Let go and it stands for 3 s.', name: 'Rising earth', strength: 6, growth: 5, max: 24, cost: 1, look: 'hill' },
   weapon: null,
   moves: {
     // mantra bolt cost 2 -> 3 (owner, 2026-11-07): cut spam. Hold to charge, like the Warrior's shot (owner, 2026-11-08).

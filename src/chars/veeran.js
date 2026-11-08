@@ -8,7 +8,7 @@ export default {
   power: POWER,
   speed: 80,
   bio: 'A fast archer-warrior who keeps his distance and picks his shots.',
-  defence: { type: 'barrier', short: 'Hold to raise an arrow wall', desc: 'Hold block: arrows stick into the ground in front of him, more the longer he holds. Let go and the wall stands for 3 s.', name: 'Arrow wall', strength: 4, growth: 7, max: 18, cost: 1, look: 'arrows' },
+  defence: { type: 'barrier', short: 'Hold to raise a wall', desc: 'Hold block: arrows stick into the ground in front of him, more the longer he holds. Let go and the wall stands for 3 s.', name: 'Arrow wall', strength: 4, growth: 7, max: 18, cost: 1, look: 'arrows' },
   weapon: 'bow',
   moves: {
     // shot cost 1.5 -> 3 and speed 230 -> 170 (owner, 2026-11-08): arrow spam was too strong, and moving should dodge it
