@@ -1,6 +1,5 @@
 // Sound and music, synthesized with the Web Audio API (no audio files; the owner chose not to download any).
-// The sound is a fighting game's: dark and heavy. Music is a low drone with war drums (taiko-like booms, toms
-// and rim hits) and a tense low string ostinato in a phrygian mode; menus get the drone and a slow drum.
+// The sound is a fighting game's: dark and heavy. The music is slow and cinematic (see the music section).
 // Effects are punchy and low: distorted punches, whooshes, metal clangs. Divine moments get a great gong,
 // a deep choir and brass. Browsers only allow sound after a key press, so everything starts on the first input.
 // M mutes.
@@ -91,49 +90,71 @@ function brass(t, d = 1.2, peak = 0.12, s = 0) { // a low horn blast
 }
 
 // ---------- music ----------
+// Cinematic, slow and dark (owner, 2026-11-08: the drum-loop music didn't work). At 66 bpm:
+//  - warm string pads moving through Dm - Bb - Gm - A (two bars each), with a sub bass under them
+//  - a bansuri-like flute playing slow, breathy phrases in D minor (a Kirwani-like colour), with rests
+//  - in a fight: a heartbeat pulse, and a big war drum with a short roll every four bars
+//  - menus: pads and flute only
+const BPM = 66, BEAT = 60 / BPM;
+const CHORDS = [[0, 3, 7], [-4, 0, 3], [-7, -2, 2], [-5, -1, 2]]; // Dm, Bb, Gm, A (semitones from D)
+const FLUTE = [0, 2, 3, 5, 7, 8, 11, 12, 14, 15]; // D minor with a raised 7th (harmonic minor)
 export function setMusic(mode) { // 'menu', 'fight', or null
   if (mode === musicMode) return;
   musicMode = mode; musicOn = !!mode;
-  musicLevel = mode === 'fight' ? 0.5 : mode === 'menu' ? 0.35 : 0;
-  if (ctx) musicBus.gain.setTargetAtTime(musicLevel, ctx.currentTime, 0.5);
+  musicLevel = mode === 'fight' ? 0.55 : mode === 'menu' ? 0.45 : 0;
+  if (ctx) musicBus.gain.setTargetAtTime(musicLevel, ctx.currentTime, 0.6);
 }
 export function duck(amount = 0.25, time = 1.6) {
   if (!ctx) return;
   const t = ctx.currentTime;
   musicBus.gain.cancelScheduledValues(t); musicBus.gain.setTargetAtTime(musicLevel * amount, t, 0.06); musicBus.gain.setTargetAtTime(musicLevel, t + time, 0.6);
 }
-let droneNodes = null;
-function drone(on) { // a low, slowly breathing drone on D and A
-  if (on && !droneNodes) {
-    const g = ctx.createGain(); g.gain.value = 0; g.gain.setTargetAtTime(0.09, ctx.currentTime, 1.5); g.connect(musicBus);
-    const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = 260; fl.Q.value = 2; fl.connect(g);
-    const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.08; lg.gain.value = 120; lfo.connect(lg); lg.connect(fl.frequency); lfo.start();
-    const os = [hz(0, -1), hz(0, 0), hz(7, -1)].map((f, i) => { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = i * 4 - 4; o.connect(fl); o.start(); return o; });
-    droneNodes = { g, os, lfo };
-  } else if (!on && droneNodes) {
-    const d = droneNodes; droneNodes = null; d.g.gain.setTargetAtTime(0, ctx.currentTime, 0.4);
-    setTimeout(() => { d.os.forEach((o) => o.stop()); d.lfo.stop(); }, 2000);
+function pad(chord, t, d) { // a string-section chord: detuned saws, soft attack, slow filter swell
+  for (const s of chord) for (const [oct, det] of [[0, -7], [0, 6], [1, 0]]) {
+    const o = ctx.createOscillator(), g = ctx.createGain(), fl = ctx.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.value = hz(s, 1 + oct); o.detune.value = det;
+    fl.type = 'lowpass'; fl.Q.value = 0.7; fl.frequency.setValueAtTime(400, t); fl.frequency.linearRampToValueAtTime(1100, t + d * 0.5); fl.frequency.linearRampToValueAtTime(500, t + d);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.022, t + d * 0.35); g.gain.setValueAtTime(0.022, t + d * 0.8); g.gain.linearRampToValueAtTime(0.0001, t + d + 0.8);
+    o.connect(fl); fl.connect(g); g.connect(musicBus); o.start(t); o.stop(t + d + 0.9);
+  }
+  osc('sine', hz(chord[0], 0), t, 0.4, 0.12, d, musicBus); // sub bass
+}
+let lastFlute = 7;
+function flute(semi, t, d) { // a breathy bamboo flute with a little glide into the note and slow vibrato
+  const f = hz(semi, 2), o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(hz(lastFlute, 2), t); o.frequency.exponentialRampToValueAtTime(f, t + 0.09);
+  lfo.frequency.value = 5; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * 0.012, t + d * 0.6); lfo.connect(lg); lg.connect(o.frequency);
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.07, t + 0.08); g.gain.setValueAtTime(0.06, t + d * 0.7); g.gain.linearRampToValueAtTime(0.0001, t + d);
+  o.connect(g); g.connect(musicBus); o.start(t); lfo.start(t); o.stop(t + d + 0.05); lfo.stop(t + d + 0.05);
+  osc('triangle', f * 2, t, 0.08, 0.008, d, musicBus); // a touch of brightness
+  noise(t, d, 0.012, musicBus, { f: f * 2, q: 2, a: 0.06 }); // breath
+  lastFlute = semi;
+}
+function phrase(t) { // 3-5 slow notes moving mostly by step, ending long on a chord tone
+  let i = FLUTE.indexOf(lastFlute); if (i < 0) i = 4;
+  let tt = t;
+  const n = 3 + Math.floor(Math.random() * 3);
+  for (let k = 0; k < n; k++) {
+    i = Math.max(0, Math.min(FLUTE.length - 1, i + [-2, -1, -1, 1, 1, 2][Math.floor(Math.random() * 6)]));
+    const last = k === n - 1, d = last ? BEAT * 3 : BEAT * [0.5, 1, 1, 1.5][Math.floor(Math.random() * 4)];
+    flute(last ? [0, 3, 7, 12][Math.floor(Math.random() * 4)] : FLUTE[i], tt, d * 0.95);
+    tt += d;
   }
 }
-const OSTINATO = [0, 0, 1, 0, 3, 0, 1, -2]; // D D Eb D F D Eb C: phrygian tension
 export function tickMusic() {
-  if (!ctx || ctx.state !== 'running') return;
-  drone(musicOn);
-  if (!musicOn) return;
-  const STEP8 = 60 / 96 / 2, now = ctx.currentTime; // eighth notes at 96 bpm
-  if (nextBeat < now) nextBeat = now + 0.05;
-  while (nextBeat < now + 0.25) {
-    const t = nextBeat, b = beat % 16;
-    if (musicMode === 'menu') { if (b === 0) boom(t, 0.35, 50); if (b === 8) tom(t, 0.15, 90); }
-    else {
-      if (b === 0 || b === 6 || b === 10) boom(t, b === 0 ? 0.55 : 0.4, 55);           // war drum
-      if (b === 4 || b === 12) tom(t, 0.3, 110);                                       // toms
-      if (b === 14) { tom(t, 0.22, 140); tom(t + STEP8 / 2, 0.2, 120); }
-      if (b % 2 === 1) rim(t, 0.05);                                                   // driving rim
-      osc('sawtooth', hz(OSTINATO[b % 8], 1), t, 0.005, 0.045, STEP8 * 0.8, musicBus, { lp: [700, 250, 3] }); // tense low strings
-      if (beat % 64 === 0) brass(t, 1.6, 0.05, 0);                                     // a horn every few bars
+  if (!ctx || ctx.state !== 'running' || !musicOn) return;
+  const now = ctx.currentTime;
+  if (nextBeat < now) nextBeat = now + 0.1;
+  while (nextBeat < now + 0.3) {
+    const t = nextBeat, b = beat % 32; // 8 bars of 4 beats
+    if (b % 8 === 0) pad(CHORDS[(b / 8) % 4], t, BEAT * 8);
+    if ((b === 2 || b === 18) && Math.random() < 0.85) phrase(t);
+    if (musicMode === 'fight') {
+      if (b % 2 === 0) { osc('sine', 55, t, 0.004, 0.22, 0.28, musicBus, { glide: 40 }); osc('sine', 55, t + BEAT * 0.28, 0.004, 0.14, 0.25, musicBus, { glide: 40 }); } // heartbeat
+      if (b % 16 === 0) { boom(t, 0.6, 46); noise(t, 1.2, 0.05, musicBus, { type: 'lowpass', f: 300, a: 0.01 }); }   // war drum
+      if (b % 16 === 15) for (let k = 0; k < 4; k++) tom(t + k * BEAT / 4, 0.1 + k * 0.04, 95, musicBus);          // roll into it
     }
-    nextBeat += STEP8; beat++;
+    nextBeat += BEAT; beat++;
   }
 }
 

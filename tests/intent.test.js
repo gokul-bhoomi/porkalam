@@ -107,7 +107,8 @@ test('rule 4: long-distance special moves have no distance requirement', () => {
   for (const mv of allMoves().filter((x) => x.special && (x.range === 'long' || x.range === 'midlong'))) {
     assert.ok(rangeOK(mv, 0) && rangeOK(mv, 1000), mv.name);
   }
-  assert.ok(!rangeOK(warrior.moves.a1, 5), 'a basic mid/long move still needs distance');
+  assert.ok(!rangeOK(mage.moves.s2, 200), 'a mid-range special still needs its distance');
+  assert.equal(whyNot(match({ k: { x: -100 }, r: { x: 100 } }), match().players[K], mage.moves.a1), null, 'basic attacks always go off; their range is their reach (owner, 2026-11-08)');
 });
 
 test('rule 4: no cooldowns (a move can be used again as soon as the last one ends)', () => {
