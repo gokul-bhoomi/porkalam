@@ -728,7 +728,7 @@ function wrap(text, max) { // split into lines of at most `max` characters, on s
   return out;
 }
 function drawCard(ch, x, y, w, h, now) { // the Codex card art, or the fighter drawn large on a backdrop
-  const img = ART.cards[ch.id];
+  const img = ART.cards?.[ch.id];
   G.save(); G.beginPath(); G.roundRect(x, y, w, h, 5); G.clip();
   if (img) { G.imageSmoothingEnabled = true; G.drawImage(img, x, y, w, h); }
   else {
