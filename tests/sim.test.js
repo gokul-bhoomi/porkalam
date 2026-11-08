@@ -89,7 +89,7 @@ test('split shot fires 3 arrows in a fan', () => {
 
 test('pinning arrow pins for ~1.5 s from any distance', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0, power: 50 } });
-  tap(m, R, 's2'); run(m, [{}, {}], 1.3);
+  tap(m, R, 's2'); run(m, [{}, {}], 1.5); // the arrow is slower at the new pace
   assert.ok(m.players[K].effects.hold && m.players[K].effects.hold.t <= 1.5);
 });
 

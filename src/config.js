@@ -7,7 +7,7 @@ export const STEP = 1 / 60;
 export const ARENA = { r: 121 }; // 110 -> 121, 10% larger (owner, 2026-11-08): more room to move and plan
 
 // Class rule: power bar size and refill speed are the same for every class.
-export const POWER = { size: 100, refill: 4 }; // % of the bar, % per second
+export const POWER = { size: 100, refill: 3.4 }; // % of the bar, % per second (4 -> 3.4, owner 2026-11-08: slower pace)
 
 // Range requirements, as [min, max] distance between the two fighters (world units).
 export const RANGES = {
@@ -19,6 +19,9 @@ export const RANGES = {
 };
 
 export const TUNE = {
+  // Overall pace (owner, 2026-11-08: the game felt rushed): fighters walk and every shot flies at this share of
+  // the speed in the character sheets.
+  pace: { move: 0.85, shot: 0.85 },
   match: { default: 300, min: 60, max: 600 },
   fighterR: 8,
   startX: 82,           // fighters start this far left/right of the centre (scaled with the arena)
