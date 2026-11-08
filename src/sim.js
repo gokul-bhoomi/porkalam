@@ -186,8 +186,8 @@ function newMoves(m, inputs, dt) {
     if (p.cast?.done) { const c = p.cast; p.cast = null; release(m, p, c); } // after the scene
     const act = chord(p, inp, ACTS.find(pr), dt);
     if (p.cast) progressCast(m, p, inp, dt);
-    else if (p.med) {
-      if (act || pr('block')) stopMed(m, p, 'MEDITATION STOPPED');
+    else if (p.med) { // a button gets up from meditation and does its thing straight away (e.g. two specials spend the devotion)
+      if (act || pr('block')) { stopMed(m, p, 'MEDITATION STOPPED'); if (act && act !== 'cls' && !p.effects.stun) tryAct(m, p, act, inp); }
       else progressMed(m, p, dt);
     } else if (act && !p.block && !p.effects.stun) tryAct(m, p, act, inp);
     handleBlock(m, p, inp, dt);

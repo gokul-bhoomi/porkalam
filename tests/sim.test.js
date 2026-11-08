@@ -134,6 +134,16 @@ test('Lotus seat makes the next meditation twice as fast, then it is used up', (
   assert.equal(m.players[R].lotus, false, 'used up when that meditation ends');
 });
 
+test('two specials while meditating get up and spend the devotion straight away (bug fix 2026-11-08)', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+  tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.segTime * 3 + 0.2);
+  assert.ok(m.players[R].med && m.players[R].devotion === 3);
+  useBoon(m, R);
+  assert.equal(m.players[R].med, null);
+  assert.equal(events(m, 'boon').length, 1, 'the boon was invoked');
+  assert.equal(m.players[R].devotion, 0);
+});
+
 test('pressing a move while meditating stops the meditation', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
   tap(m, R, 'cls'); run(m, [{}, {}], 1); tap(m, R, 'a1');
