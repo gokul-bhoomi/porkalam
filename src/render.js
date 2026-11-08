@@ -234,10 +234,14 @@ function drawProjectile(pr0, now) {
   }
   const name = { note: 'notes', chakra: 'chakra', wave: 'wave', tiger: 'tiger', elephant: ART.fx.elephant ? 'elephant' : 'tiger', fire: 'fire', spear: 'spear' }[pr.shape] || 'arrow';
   if (fxArt(name)) {
-    const size = { notes: 11, chakra: pr0.r * 2.8, wave: pr0.r * 2.4, tiger: 30, elephant: 34, fire: pr0.r * 4, spear: 18, arrow: 16 }[name] * SC * (name === 'tiger' || name === 'elephant' ? 1.6 : 1);
+    const size = { notes: 11, chakra: pr0.r * 2.8, wave: pr0.r * 2.4, tiger: 30, elephant: 34, fire: pr0.r * 4, spear: 18, arrow: 16 }[name] * SC * (name === 'tiger' || name === 'elephant' ? 1.6 : 1) * (pr0.boon ? 1.5 : 1);
     const hy = sy(pr.y) - 18; // shots fly at chest height, with a shadow on the sand
     ell(x, sy(pr.y), size * 0.3, size * 0.1, 'rgba(0,0,0,.25)');
     const flip = name === 'notes' && pr.vx < 0; // notes stay upright
+    if (pr0.boon) { // a god's gift: bigger, with a glowing trail
+      for (let i = 1; i <= 5; i++) ell(x - ca * i * 5, hy - sa * i * 5, size * (0.45 - i * 0.06), size * (0.45 - i * 0.06), `rgba(255,230,160,${0.35 - i * 0.06})`);
+      ell(x, hy, size * 0.75, size * 0.75, 'rgba(255,240,190,.25)');
+    }
     if (name === 'tiger' || name === 'elephant') for (let i = 3; i >= 1; i--) fxSprite(G, 'fire', x - ca * i * 16, hy - sa * i * 16, size * (0.9 - i * 0.15), { rot: Math.cos(a) < 0 ? a - Math.PI : a, flip: Math.cos(a) < 0, alpha: 0.6 - i * 0.12 }); // flame trail
     if (pr0.name === 'Pashupatastra') { // crackling lightning behind Shiva's arrow
       G.strokeStyle = 'rgba(190,230,255,.85)'; G.lineWidth = 1; G.beginPath(); G.moveTo(x, hy);
@@ -354,6 +358,15 @@ function drawFx(f, now) {
   }
   switch (f.kind) {
     case 'shake': case 'god': break;
+    case 'invoke': { // the god's light comes down on the fighter who called them
+      const col = GOD_GLOW[f.god] || '255,225,150', a = Math.sin(Math.PI * Math.min(1, k * 1.1)), w = Z(9) * (1 + 0.3 * Math.sin(age * 14));
+      const beam = G.createLinearGradient(x - w, 0, x + w, 0);
+      beam.addColorStop(0, `rgba(${col},0)`); beam.addColorStop(0.5, `rgba(${col},${0.7 * a})`); beam.addColorStop(1, `rgba(${col},0)`);
+      G.fillStyle = beam; G.fillRect(x - w, -10, w * 2, y + 10);
+      for (let i = 0; i < 3; i++) { const t = (age * 1.4 + i / 3) % 1; ring(x, y, Z(6 + 22 * t), Z(6 + 22 * t) * SQ, `rgba(${col},${(1 - t) * a})`, 1.2); }
+      for (let i = 0; i < 18; i++) { const t = (age * 0.9 + hash(i, 60)) % 1; G.fillStyle = `rgba(255,255,240,${(1 - t) * a})`; G.beginPath(); G.arc(x + (hash(i, 61) - 0.5) * Z(20), y - t * 70, 0.6 + hash(i, 62), 0, Math.PI * 2); G.fill(); }
+      break;
+    }
     case 'crack': { // a fissure in the sand: a scorched dip, jagged branching cracks with a lit edge; fades late
       const a = Math.min(1, (f.life - age) / 6), grow = Math.min(1, age / 0.12), sz = f.size * grow;
       G.save(); G.beginPath(); G.ellipse(CX, CY, ARENA.r * SC, ARENA.r * SC * SQ, 0, 0, Math.PI * 2); G.clip(); // only on the sand
@@ -530,6 +543,7 @@ function star(x, y, r, a) { // a four-point glint
   G.lineTo(x, y + r); G.lineTo(x - r * 0.18, y + r * 0.18); G.lineTo(x - r, y); G.lineTo(x - r * 0.18, y - r * 0.18); G.closePath(); G.fill();
 }
 
+const GOD_GLOW = { shiva: '150,205,255', murugan: '255,200,90', brahma: '255,240,205', krishna: '130,175,255' };
 const unitDir2 = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
 // A god appears as a vast, translucent vision over the arena, blessing, while the fight goes on (small and medium
 // boons). Drawn before the fighters, so they stay in front.

@@ -4,7 +4,7 @@ export const W = 480, H = 270;   // game layout units
 export const RES = 4;             // the canvas is W*RES x H*RES (1920x1080) so the art stays sharp
 export const STEP = 1 / 60;
 
-export const ARENA = { r: 110 };
+export const ARENA = { r: 121 }; // 110 -> 121, 10% larger (owner, 2026-11-08): more room to move and plan
 
 // Class rule: power bar size and refill speed are the same for every class.
 export const POWER = { size: 100, refill: 4 }; // % of the bar, % per second
@@ -21,7 +21,7 @@ export const RANGES = {
 export const TUNE = {
   match: { default: 300, min: 60, max: 600 },
   fighterR: 8,
-  startX: 75,           // fighters start this far left/right of the centre
+  startX: 82,           // fighters start this far left/right of the centre (scaled with the arena)
   startPower: 0.5,      // half power at the start
   kbFriction: 6,        // knockback speed fades by e^-6 per second
   wallKb: 60,           // knocked into the wall faster than this = wall damage

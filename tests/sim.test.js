@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMatch, stepMatch } from '../src/sim.js';
-import { TUNE } from '../src/config.js';
+import { TUNE, ARENA } from '../src/config.js';
 import { CHARS } from '../src/chars/index.js';
 import { findBoon } from '../src/chars/gods.js';
 import { rng } from '../src/util.js';
@@ -70,7 +70,7 @@ test('a block stops the binding chant\'s hold', () => {
 test('blink with no direction goes away from the opponent and stays inside the arena', () => {
   const m = match({ k: { x: -90, y: 0, power: 50 }, r: { x: 0, y: 0 } });
   tap(m, K, 's3');
-  assert.ok(m.players[K].x < -90 && Math.hypot(m.players[K].x, m.players[K].y) <= 110);
+  assert.ok(m.players[K].x < -90 && Math.hypot(m.players[K].x, m.players[K].y) <= ARENA.r);
 });
 
 test('Thousand-Arm Form hits across the whole arena after its scene', () => {
@@ -203,7 +203,7 @@ function mash(seed, seconds) {
     stepMatch(m, inp);
     for (const p of m.players) {
       assert.ok(p.hp >= 0 && p.hp <= 100 && p.power >= 0 && p.power <= 100, 'bars stay in range');
-      assert.ok(Math.hypot(p.x, p.y) <= 110 + 1e-6, 'inside the arena');
+      assert.ok(Math.hypot(p.x, p.y) <= ARENA.r + 1e-6, 'inside the arena');
       assert.ok(p.devotion >= 0 && p.devotion <= TUNE.meditate.segments, 'devotion stays in range');
     }
   }
