@@ -352,6 +352,10 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   }
   for (const u of m.units) { ell(sx(u.x), sy(u.y) - 4, Z(u.r), Z(u.r), '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
   for (const f of fx) if (f.ground) drawFx(f, fxNow);
+  if (m.scene?.name === 'Thousand-Arm Form') {
+    const p = m.players[m.scene.pid];
+    drawSignatureHalo(sx(p.x), sy(p.y) - 18, m.scene.t);
+  }
   const order = [...m.players, ...m.walls].sort((a, b) => a.y - b.y); // back to front
   for (const o of order) if (o.ch) drawFighter(m, o, now); else drawWall(o);
   for (const pr of m.projectiles) drawProjectile(pr, now);
@@ -360,6 +364,42 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   G.restore();
   if (!m.scene) drawHud(m, tags, hints);
   else sceneTitle(m);
+}
+
+// Three concentric, symmetrical arcs. Palm orientation stays upright while the curved arms fan out.
+const SIGNATURE_HANDS = [
+  { radius: 84, count: 19, size: 18 },
+  { radius: 62, count: 15, size: 16 },
+  { radius: 41, count: 11, size: 14 },
+].flatMap((row, rowIndex) => Array.from({ length: row.count }, (_, index) => ({
+  ...row, row: rowIndex, index, angle: -Math.PI - 0.16 + index / (row.count - 1) * (Math.PI + 0.32),
+})));
+const handDeparture = (h) => 0.08 + (2 - h.row) * 0.055 + Math.abs(h.index - (h.count - 1) / 2) * 0.002;
+function drawSignaturePalm(x, y, size, alpha, flip) {
+  if (useArt && ART.fx.haloPalm) fxSprite(G, 'haloPalm', x, y, size, { alpha, flip });
+  else { ell(x, y, size * 0.3, size * 0.4, `rgba(95,220,200,${alpha})`); }
+}
+function drawSignatureHalo(cx, cy, age, releasing = false, fade = 1, target = null) {
+  // Back rows are drawn first; mirrored curves and shaded anatomy give the arms depth.
+  for (const h of SIGNATURE_HANDS) {
+    const open = releasing ? 1 : easeOut(clamp01((age - (2 - h.row) * 0.12) / 0.65));
+    if (open <= 0) continue;
+    const departure = handDeparture(h), armFade = releasing ? 1 - clamp01((age - 0.4) / 0.2) : 1;
+    const alpha = fade * armFade * (0.8 + h.row * 0.1);
+    if (alpha <= 0) continue;
+    let ex = cx + Math.cos(h.angle) * h.radius * open, ey = cy + Math.sin(h.angle) * h.radius * open;
+    if (releasing && target && age >= departure) {
+      const fl = clamp01((age - departure) / (0.4 - departure)), travel = fl * fl * (3 - 2 * fl);
+      ex += (target.x + Math.cos(h.angle) * (5 + h.row * 3) - ex) * travel;
+      ey += (target.y + Math.sin(h.angle) * (5 + h.row * 3) - ey) * travel;
+    }
+    const rx = cx + Math.cos(h.angle) * 7, ry = cy + 15;
+    const wristY = ey + h.size * 0.53, dx = ex - rx, dy = wristY - ry, len = Math.hypot(dx, dy);
+    if (useArt && ART.fx.haloArm) {
+      fxSprite(G, 'haloArm', rx, ry, h.size * 0.72 * open, { h: len, rot: Math.atan2(dy, dx) + Math.PI / 2, anchor: 'bottom', flip: Math.cos(h.angle) < -1e-6, alpha });
+    } else { line(rx, ry, ex, wristY, `rgba(40,175,155,${alpha})`, 5 * open); }
+    if (!releasing || age < departure) drawSignaturePalm(ex, ey, h.size * open, fade * (0.85 + h.row * 0.075), Math.cos(h.angle) < -1e-6);
+  }
 }
 
 function drawFx(f, now) {
@@ -376,51 +416,24 @@ function drawFx(f, now) {
   }
   switch (f.kind) {
     case 'shake': case 'god': break;
-    case 'arms': { // Thousand-Arm Form: a precise ring opens, holds, then sends its palms forward
-      const tx = sx(f.tx), ty = sy(f.ty) - 18, cx = x, cy = y - 30;
-      const fade = 1 - clamp01((age - f.life + 0.4) / 0.4), open = easeOut(clamp01(age / 0.12));
-      const N = 16, radius = 62, launchAt = 0.22, impactAt = 0.4;
-      const angle = (i) => -Math.PI / 2 + (i % N) / N * Math.PI * 2;
-      // Every palm shares one radius and pulse; the vertical circle isn't squashed into the arena plane.
-      const pulse = (t) => radius * (1 + 0.012 * Math.sin(t * Math.PI * 4));
-      const haveArt = useArt && !!ART.fx.circlePalm;
-      G.save();
-      if (f.part === 'fan') for (let i = 0; i < N; i++) {
-        const a = angle(i), departure = launchAt + i * 0.004;
-        const armFade = fade * (1 - clamp01((age - departure) / 0.12));
-        if (armFade <= 0) continue;
-        const r = pulse(Math.min(age, departure)) * open, ex = cx + Math.cos(a) * r, ey = cy + Math.sin(a) * r;
-        // Solid tapered forearms leave the palm silhouettes clear instead of stacking wispy arm paintings.
-        G.save(); G.translate(cx, cy); G.rotate(a); G.globalAlpha = armFade;
-        const shade = G.createLinearGradient(0, 0, r, 0);
-        shade.addColorStop(0, 'rgba(20,130,125,0)'); shade.addColorStop(0.35, 'rgba(20,150,140,0.65)'); shade.addColorStop(1, '#39d5c1');
-        G.fillStyle = shade; G.beginPath(); G.moveTo(8, -2); G.lineTo(Math.max(8, r - 9), -4);
-        G.lineTo(Math.max(8, r - 9), 4); G.lineTo(8, 2); G.closePath(); G.fill(); G.restore();
-        // Palm sprites are upright in the sheet: rotate their fingers outward along each spoke.
-        if (age < departure) {
-          if (haveArt) fxSprite(G, 'circlePalm', ex, ey, 23 * open, { rot: a + Math.PI / 2, alpha: fade });
-          else ell(ex, ey, 3 * open, 4 * open, `rgba(200,255,250,${fade})`);
-        }
-      }
-      if (f.part === 'palms') for (let i = 0; i < N; i++) {
-        const t0 = launchAt + i * 0.004, flight = impactAt - t0, fl = clamp01((age - t0) / flight);
+    case 'arms': { // the halo is already unfolded during the power-up; its rows strike in coordinated waves
+      const cx = x, cy = y - 18, tx = sx(f.tx), ty = sy(f.ty) - 18;
+      const fade = 1 - clamp01((age - f.life + 0.4) / 0.4);
+      if (f.part === 'fan') drawSignatureHalo(cx, cy, age, true, fade, { x: tx, y: ty });
+      if (f.part === 'palms') for (const h of SIGNATURE_HANDS) {
+        const t0 = handDeparture(h), impactAt = 0.4;
         if (age < t0) continue;
-        const a = angle(i), r = pulse(t0), ox = cx + Math.cos(a) * r, oy = cy + Math.sin(a) * r;
-        // A small, evenly spaced impact ring replaces the scattered random strike positions.
-        const ex = tx + Math.cos(a) * 8, ey = ty + Math.sin(a) * 8;
-        const travel = fl * fl * (3 - 2 * fl), px = ox + (ex - ox) * travel, py = oy + (ey - oy) * travel;
+        const fl = clamp01((age - t0) / (impactAt - t0)), travel = fl * fl * (3 - 2 * fl);
+        const ox = cx + Math.cos(h.angle) * h.radius, oy = cy + Math.sin(h.angle) * h.radius;
+        const ex = tx + Math.cos(h.angle) * (5 + h.row * 3), ey = ty + Math.sin(h.angle) * (5 + h.row * 3);
         if (fl < 1) {
-          const dir = Math.atan2(ey - oy, ex - ox), turn = travel * travel;
-          const from = a + Math.PI / 2, to = dir + Math.PI / 2;
-          const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
-          if (haveArt) fxSprite(G, 'circlePalm', px, py, 23, { rot: from + delta * turn, alpha: fade });
-          else ell(px, py, 3, 4, `rgba(200,255,250,${fade})`);
-        } else {
-          const flash = clamp01((age - t0 - flight) / 0.2);
-          if (flash < 1) { const rr = 3 + 7 * flash; const glow = G.createRadialGradient(ex, ey, 0, ex, ey, rr); glow.addColorStop(0, `rgba(230,255,252,${(1 - flash) * fade})`); glow.addColorStop(1, 'rgba(80,230,210,0)'); G.fillStyle = glow; G.beginPath(); G.arc(ex, ey, rr, 0, Math.PI * 2); G.fill(); }
+          const px = ox + (ex - ox) * travel, py = oy + (ey - oy) * travel;
+          drawSignaturePalm(px, py, h.size, fade, ox < cx);
+        } else if (h.index % 3 === 0) {
+          const flash = clamp01((age - impactAt) / 0.2), rr = 3 + 7 * flash;
+          if (flash < 1) { const glow = G.createRadialGradient(ex, ey, 0, ex, ey, rr); glow.addColorStop(0, `rgba(230,255,252,${(1 - flash) * fade * 0.5})`); glow.addColorStop(1, 'rgba(80,230,210,0)'); G.fillStyle = glow; G.beginPath(); G.arc(ex, ey, rr, 0, Math.PI * 2); G.fill(); }
         }
       }
-      G.restore();
       break;
     }
     case 'crack': { // a fissure in the sand: a scorched dip, jagged branching cracks with a lit edge; fades late

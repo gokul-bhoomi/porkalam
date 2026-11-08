@@ -120,6 +120,8 @@ export async function loadArt(base = '') {
   if (hands) Object.assign(ART.fx, cutFx(hands, ['arm1', 'arm2', 'arm3', 'arm4', 'palm1', 'palm2', 'palm3', 'palm4']));
   const circleHands = await loadImg(base + 'art/fx_hands_circle.png');
   if (circleHands) Object.assign(ART.fx, cutFx(circleHands, ['circleArm', 'circlePalm']));
+  const haloHands = await loadImg(base + 'art/fx_hands_halo.png');
+  if (haloHands) Object.assign(ART.fx, cutFx(haloHands, ['haloArm', 'haloPalm']));
   const ele = await loadImg(base + 'art/fx_elephant.png'); // single sprite: the Gaja Arrow's war elephant
   if (ele) Object.assign(ART.fx, cutFx(ele, ['elephant']));
   ART.ready = true;
