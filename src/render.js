@@ -460,14 +460,26 @@ function drawFx(f, now) {
   }
   switch (f.kind) {
     case 'shake': case 'god': break;
-    case 'arms': { // the painted blessing halo glides as one formation, makes contact, then returns
+    case 'arms': { // the painted halo strikes, carries through to the far bank, then dissolves
       const cx = x, cy = y - 18, tx = sx(f.tx), ty = sy(f.ty) - 18;
       const fade = 1 - clamp01((age - f.life + 0.4) / 0.4);
       if (f.part === 'fan') {
         const face = tx >= cx ? 1 : -1, gap = Math.min(64, Math.abs(tx - cx) * 0.35);
-        const travel = smooth(age / 0.4) * (1 - smooth((age - 0.5) / 0.6));
-        const mx = cx + (tx - face * gap - cx) * travel, my = cy + (ty - cy) * travel;
-        drawSignatureHalo(mx, my, age, true, fade);
+        const travel = smooth(age / 0.4), hitX = tx - face * gap;
+        // Continue along the attack's world-space direction, including diagonal and vertical attacks.
+        const dx = f.tx - f.x, dy = f.ty - f.y, distance = Math.hypot(dx, dy);
+        const ux = distance > 0 ? dx / distance : face, uy = distance > 0 ? dy / distance : 0;
+        const dot = f.tx * ux + f.ty * uy;
+        const toEdge = Math.max(0, -dot + Math.sqrt(Math.max(0, dot * dot + ARENA.r ** 2 - f.tx ** 2 - f.ty ** 2)));
+        const exitX = sx(f.tx + ux * (toEdge + 90 / SC)), exitY = sy(f.ty + uy * (toEdge + 90 / SC)) - 18;
+        const carry = smooth((age - 0.4) / 0.9), dissolve = smooth((carry - 0.2) / 0.8);
+        const mx = cx + (hitX - cx) * travel + (exitX - hitX) * carry;
+        const my = cy + (ty - cy) * travel + (exitY - ty) * carry;
+        drawSignatureHalo(mx, my, age, true, fade * (1 - dissolve));
+        if (dissolve > 0 && dissolve < 1) for (let i = 0; i < 14; i++) {
+          const a = i / 14 * Math.PI * 2, r = 28 + dissolve * 55;
+          star(mx + Math.cos(a) * r, my - 28 + Math.sin(a) * r * 0.65 - dissolve * 12, 0.7 + dissolve, Math.sin(dissolve * Math.PI) * 0.6 * fade);
+        }
       } else drawDivineImpact(tx, ty, age, fade);
       break;
     }
