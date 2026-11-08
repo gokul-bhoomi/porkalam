@@ -2,13 +2,24 @@
 // so the game always runs. Sprite sheets are one row of frames on a flat key colour (magenta): the
 // colour is keyed out here, the frames are found by the empty columns between them, and every frame
 // is lined up on the same foot baseline.
+import { RES } from './config.js';
+
 export const ART = { arena: null, fit: null, sheets: {}, ready: false };
 
 // Where the arena floor sits in arena.png, as fractions of the image: centre and half-axes.
 // Measured by hand from the image; art/arena.json overrides it when present.
 const DEFAULT_FIT = { cx: 0.5, cy: 0.58, rx: 0.23, ry: 0.115 };
-const SHEETS = { krishna: 'art/krishna_sheet.png', rajaraja: 'art/rajaraja_sheet.png' };
-export const SPRITE_H = 46; // on-screen height of a fighter, in game pixels
+// Per fighter: walk = 1-4 idle, 5-8 walk; act = the 8 action poses (see POSES).
+const SHEETS = {
+  krishna: { walk: 'art/krishna_sheet.png', act: 'art/krishna_actions.png' },
+  rajaraja: { walk: 'art/rajaraja_sheet.png', act: 'art/rajaraja_actions.png' },
+};
+// Frame numbers in each action sheet (0-based).
+export const POSES = {
+  krishna: { shootWind: 0, shoot: 1, meleeWind: 2, melee: 3, block: 4, cast: 5, hit: 6, chant: 7 },
+  rajaraja: { shootWind: 0, shoot: 1, meleeWind: 2, melee: 3, block: 4, cast: 5, hit: 6, meditate: 7 },
+};
+export const SPRITE_H = 46; // on-screen height of a fighter, in layout units (x RES real pixels)
 
 const loadImg = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
 
@@ -38,7 +49,8 @@ function frames(c, d, expect = 8) {
     if (on && s < 0) s = x;
     if (!on && s >= 0) { if (x - s > W / expect / 6) runs.push([s, x]); s = -1; }
   }
-  const cells = runs.length === expect ? runs : Array.from({ length: expect }, (_, i) => [Math.round((i * W) / expect), Math.round(((i + 1) * W) / expect)]);
+  const square = W === Hh * expect; // the agreed format: 8 square cells, character centred in each
+  const cells = !square && runs.length === expect ? runs : Array.from({ length: expect }, (_, i) => [Math.round((i * W) / expect), Math.round(((i + 1) * W) / expect)]);
   return { cells: cells.map(([a, b]) => ({ x: a, w: b - a, cx: (a + b) / 2 })), top, bottom };
 }
 
@@ -54,7 +66,7 @@ function prescale(c, f, k) {
   const out = document.createElement('canvas'); out.width = tw; out.height = th;
   const g = out.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(src, 0, 0, tw, th);
   return {
-    canvas: out, top: Math.floor(f.top * k), bottom: Math.ceil(f.bottom * k),
+    canvas: out, top: Math.floor(f.top * k), bottom: Math.ceil(f.bottom * k), base: Math.ceil((f.base ?? f.bottom) * k),
     cells: f.cells.map((cl) => ({ x: Math.floor(cl.x * k), w: Math.ceil(cl.w * k), cx: cl.cx * k })),
   };
 }
@@ -67,25 +79,30 @@ export async function loadArt(base = '') {
   ART.arena = arena;
   ART.fit = { ...DEFAULT_FIT, ...(fitJson || {}) };
   for (const [id, src] of Object.entries(SHEETS)) {
-    const img = await loadImg(base + src);
-    if (!img) continue;
-    const { c, d } = keyOut(img);
-    const f = frames(c, d);
-    ART.sheets[id] = prescale(c, f, SPRITE_H / Math.max(1, f.bottom - f.top + 1));
+    const [walkImg, actImg] = await Promise.all([loadImg(base + src.walk), loadImg(base + src.act)]);
+    if (!walkImg) continue;
+    const w = keyOut(walkImg), wf = frames(w.c, w.d);
+    const k = (SPRITE_H * RES) / Math.max(1, wf.bottom - wf.top + 1); // the walk sheet sets the size...
+    ART.sheets[id] = { walk: prescale(w.c, wf, k), act: null };
+    if (actImg && actImg.width === walkImg.width && actImg.height === walkImg.height) {
+      const a = keyOut(actImg), af = frames(a.c, a.d);
+      ART.sheets[id].act = prescale(a.c, { ...af, base: wf.bottom }, k); // ...and the feet line for both sheets
+    }
   }
   ART.ready = true;
   return ART;
 }
 
-// Draw frame `i` of a fighter's sheet with its feet at (x, y). flip = facing left.
-export function drawSprite(g, id, i, x, y, flip) {
-  const s = ART.sheets[id];
+// Draw frame `i` of a fighter's walk or act sheet with its feet at (x, y). flip = facing left.
+export function drawSprite(g, id, set, i, x, y, flip) {
+  const s = ART.sheets[id]?.[set];
   if (!s) return false;
-  const f = s.cells[i % s.cells.length], h = s.bottom - s.top + 1;
+  const f = s.cells[i % s.cells.length], h = s.bottom - s.top + 1, up = s.base - s.top + 1;
   g.save();
-  g.translate(Math.round(x), Math.round(y));
+  g.translate(Math.round(x * RES) / RES, Math.round(y * RES) / RES);
   if (flip) g.scale(-1, 1);
-  g.drawImage(s.canvas, f.x, s.top, f.w, h, Math.round(-(f.cx - f.x)), -h, f.w, h);
+  g.imageSmoothingEnabled = true;
+  g.drawImage(s.canvas, f.x, s.top, f.w, h, -(f.cx - f.x) / RES, -up / RES, f.w / RES, h / RES); // 1 sheet pixel = 1 screen pixel
   g.restore();
   return true;
 }

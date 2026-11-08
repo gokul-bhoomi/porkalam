@@ -3,7 +3,7 @@
 import { W, H, ARENA, TUNE } from './config.js';
 import { ACTIONS, LABELS, KEYS, KEY_NAME, PAD, PAD_NAMES } from './input.js';
 import { opponent, chargeOf } from './sim.js';
-import { ART, drawSprite } from './art.js';
+import { ART, drawSprite, POSES } from './art.js';
 
 export const FONT = '"Press Start 2P", monospace';
 export const CX = 240;                // screen centre
@@ -105,8 +105,11 @@ function drawFighter(m, p, now) {
   let top = y - 30;
   if (useArt && ART.sheets[p.ch.id]) {
     ring(x, y + 1, Z(9), Z(9) * SQ, p.id === 0 ? 'rgba(90,160,255,.9)' : 'rgba(255,90,70,.9)', 1); // player ring
-    const moving = anim[p.id].moving, fps = moving ? 10 : 5, i = Math.floor(now * fps) % 4 + (moving ? 4 : 0);
-    drawSprite(G, p.ch.id, i, x, y + 1, p.face.x < 0);
+    const pose = poseOf(m, p);
+    if (pose == null || !drawSprite(G, p.ch.id, 'act', pose, x, y + 1, p.face.x < 0)) {
+      const moving = anim[p.id].moving, fps = moving ? 10 : 5, i = Math.floor(now * fps) % 4 + (moving ? 4 : 0);
+      drawSprite(G, p.ch.id, 'walk', i, x, y + 1, p.face.x < 0);
+    }
     top = y - ART_TOP;
   } else {
     ell(x, y - 4, 8, 7, c);
@@ -160,14 +163,38 @@ function drawProjectile(pr0, now) {
 
 // ---------- the whole fight view ----------
 // walking or standing, from how far each fighter moved since the last frame
-const anim = [{ x: 0, y: 0, moving: false, still: 0 }, { x: 0, y: 0, moving: false, still: 0 }];
+// plus short poses that outlive a cast: the release of a shot or strike, and flinching from a hit
+const anim = [0, 1].map(() => ({ x: 0, y: 0, moving: false, still: 0, hp: 100, cast: null, pose: null, until: 0 }));
 const ART_TOP = 58;
 function trackMotion(m) {
+  const now = m.t; // match clock: poses freeze with the game
   for (const p of m.players) {
-    const a = anim[p.id], d = Math.hypot(p.x - a.x, p.y - a.y);
+    const a = anim[p.id], d = Math.hypot(p.x - a.x, p.y - a.y), P = POSES[p.ch.id];
     if (d > 0.2) { a.moving = true; a.still = 0; } else if (++a.still > 4) a.moving = false;
     a.x = p.x; a.y = p.y;
+    if (P && p.hp < a.hp - 0.01) { a.pose = P.hit; a.until = now + 0.3; }
+    else if (P && a.cast && !p.cast) { // a cast just ended: hold the follow-through
+      const after = { a1: P.shoot, s1: P.shoot, s2: p.ch.weapon === 'bow' ? P.shoot : null, a2: P.melee }[a.cast];
+      if (after != null) { a.pose = after; a.until = now + 0.22; }
+    }
+    a.hp = p.hp; a.cast = p.cast ? p.cast.slot : null;
   }
+}
+// which action frame a fighter shows right now (null = idle / walk)
+function poseOf(m, p) {
+  const P = POSES[p.ch.id], a = anim[p.id], now = m.t;
+  if (!P) return null;
+  if (a.pose != null && now < a.until) return a.pose;
+  if (p.effects.stun) return P.hit;
+  if (p.block) return P.block;
+  if (p.med) return P.meditate ?? P.cast;
+  if (!p.cast) return null;
+  const c = p.cast, k = c.move.cast > 0 ? c.t / c.move.cast : 1;
+  if (c.slot === 'a1' || (c.slot === 's1' && c.move.kind === 'projectile' && p.ch.weapon === 'bow') || (c.slot === 's2' && p.ch.weapon === 'bow')) return P.shootWind;
+  if (c.slot === 'a2') return k < 0.6 ? P.meleeWind : P.melee;
+  if (c.slot === 's2' && p.ch.id === 'krishna') return P.shootWind; // Venu Ganam: playing the flute
+  if (c.move.kind === 'brahmastra') return P.chant ?? P.cast;
+  return P.cast;
 }
 
 export function drawFight(m, now, fx) {

@@ -1,4 +1,4 @@
-import { W, H, STEP, TUNE } from './config.js';
+import { W, H, RES, STEP, TUNE } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { setCtx, R, txt, drawFight, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
@@ -80,7 +80,7 @@ function update(dt) {
 }
 
 function render() {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(RES, 0, 0, RES, 0, 0); // draw in 480x270 layout units on the full-HD canvas
   R(0, 0, W, H, '#000');
   if (S.screen === 'title') drawTitle(S.now, S.pads);
   else if (S.screen === 'setup') drawSetup(S.now, S.minutes);
@@ -107,7 +107,7 @@ addEventListener('error', (e) => S.errors.push(String(e.error?.stack || e.messag
 const r1 = (v) => Math.round(v * 10) / 10;
 window.__game = {
   get screen() { return S.screen; },
-  get art() { return { ready: ART.ready, arena: !!ART.arena, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.cells.length])) }; },
+  get art() { return { ready: ART.ready, arena: !!ART.arena, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
   errors: S.errors,
   debug: {
     pause() { DBG.paused = true; }, resume() { DBG.paused = false; },
