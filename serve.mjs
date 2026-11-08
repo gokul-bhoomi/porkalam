@@ -15,4 +15,4 @@ createServer(async (req, res) => {
     const body = await readFile(join(ROOT, path.endsWith('/') ? path + 'index.html' : path));
     res.writeHead(200, { 'content-type': TYPES[extname(path) || '.html'] || 'application/octet-stream', 'cache-control': 'no-store' }).end(body);
   } catch { res.writeHead(404).end('not found'); }
-}).listen(PORT, '127.0.0.1', () => console.log(`Myth Fighter: http://127.0.0.1:${PORT}`));
+}).listen(PORT, '127.0.0.1', () => console.log(`Porkalam: http://127.0.0.1:${PORT}`));

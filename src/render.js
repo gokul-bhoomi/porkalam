@@ -847,10 +847,15 @@ export function drawTitle(now, pads) {
   const top = G.createLinearGradient(0, 0, 0, 80); top.addColorStop(0, 'rgba(0,0,0,.6)'); top.addColorStop(1, 'rgba(0,0,0,0)');
   G.fillStyle = top; G.fillRect(0, 0, W, 80);
   const glow = 0.5 + 0.5 * Math.sin(now * 2);
+  // the name: Porkalam ('the battlefield'), in pixel letters and in Tamil script (owner, 2026-11-08)
   G.save(); G.shadowColor = `rgba(255,190,90,${0.6 + 0.3 * glow})`; G.shadowBlur = 10;
-  txt('MYTH FIGHTER', CX, 16, '#ffcf6a', 'center', 32, 'rgba(60,20,0,.95)');
+  txt('PORKALAM', CX, 10, '#ffcf6a', 'center', 32, 'rgba(60,20,0,.95)');
+  G.font = '900 22px "Noto Serif Tamil", serif'; G.textAlign = 'center'; G.textBaseline = 'top';
+  const tg = G.createLinearGradient(0, 46, 0, 72); tg.addColorStop(0, '#fff2b0'); tg.addColorStop(1, '#e09a2a');
+  G.lineWidth = 3; G.strokeStyle = 'rgba(60,20,0,.95)'; G.strokeText('போர்க்களம்', CX, 44);
+  G.fillStyle = tg; G.fillText('போர்க்களம்', CX, 44);
   G.restore();
-  txt('INSPIRED BY HINDU MYTHOLOGY', CX, 54, '#f0dca8', 'center', 8);
+  txt('INSPIRED BY HINDU MYTHOLOGY', CX, 76, '#f0dca8', 'center', 7);
   const bot = G.createLinearGradient(0, H - 50, 0, H); bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(1, 'rgba(0,0,0,.7)');
   G.fillStyle = bot; G.fillRect(0, H - 50, W, 50);
   if (Math.floor(now * 2) % 2) txt('PRESS START / ENTER', CX, H - 26, '#fff2c0', 'center', 8);

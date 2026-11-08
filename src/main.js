@@ -302,6 +302,6 @@ function frame(ts) {
 }
 if (qs.get('grey') === '1') setUseArt(false);
 Promise.all([
-  Promise.race([document.fonts.load('8px "Press Start 2P"'), new Promise((r) => setTimeout(r, 1500))]),
+  Promise.race([Promise.all([document.fonts.load('8px "Press Start 2P"'), document.fonts.load('900 20px "Noto Serif Tamil"', 'போர்க்களம்')]), new Promise((r) => setTimeout(r, 1500))]),
   loadArt().then(fitView).catch((e) => S.errors.push(String(e))),
 ]).finally(() => requestAnimationFrame((ts) => { last = ts; frame(ts); })); // start the clock on the first frame
