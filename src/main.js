@@ -102,7 +102,11 @@ function onEvent(e, m) {
   if (e.type === 'blink') add({ kind: 'trail', x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'release') { // power moves land with a bang in the arena, right after their scene
     const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
-    if (e.name === 'Thousand-Arm Form') { add({ kind: 'global', x: 0, y: 0, life: 0.6, color: '150,240,230' }); add({ kind: 'ghost', scene: 'siddhan_sig', x: 0, y: 0, life: 1.2 }); add({ kind: 'shock', x: p.x, y: p.y, life: 1.0, color: '255,214,120', r: 160 }); shake(4, 0.7); }
+    if (e.name === 'Thousand-Arm Form') { // a spirit of a thousand teal arms rises behind Siddhan and reaches out to strike
+      const o = m.players[1 - e.pid];
+      add({ kind: 'arms', x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 });
+      add({ kind: 'shock', x: p.x, y: p.y, life: 1.0, color: '90,240,220', r: 160 }); shake(4, 0.7);
+    }
     if (e.name === 'Gaja Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Shakti Vel') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,200,90', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Pashupatastra') { add({ kind: 'bolt', x: p.x, y: p.y, life: 0.5 }); add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '170,220,255', r: 60 }); shake(3, 0.4); }

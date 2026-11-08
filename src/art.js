@@ -4,7 +4,7 @@
 // is lined up on the same foot baseline.
 import { RES } from './config.js';
 
-export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, gods: {}, cards: {}, title: null, ready: false };
+export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, gods: {}, cards: {}, title: null, arms: null, ready: false };
 // Dramatic scene paintings (art/scene_<key>.png), drawn by drawScene in render.js.
 const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel', 'vishwaroopam'];
 // The boon gods, painted blessing (art/god_<name>.png, and the figure alone on magenta in god_<name>_fg.png).
@@ -113,6 +113,7 @@ export async function loadArt(base = '') {
   }));
   await Promise.all(Object.keys(SHEETS).map(async (id) => { const c = await loadImg(`${base}art/card_${id}.png`); if (c) ART.cards[id] = c; })); // character-select cards
   ART.title = await loadImg(base + 'art/title.png'); // the title screen key art
+  if (ART.sceneLayers.siddhan_sig) ART.arms = cutArms(ART.sceneLayers.siddhan_sig.bg); // the Thousand-Arm Form's spirit, for the arena
   const fxImgs = await Promise.all(FX_SHEETS.map((f) => loadImg(base + f)));
   fxImgs.forEach((img, si) => { if (img) Object.assign(ART.fx, cutFx(img, FX_NAMES[si])); });
   const ele = await loadImg(base + 'art/fx_elephant.png'); // single sprite: the Gaja Arrow's war elephant
@@ -191,4 +192,22 @@ export function drawPortrait(g, id, cx, cy, r) {
   g.drawImage(s.canvas, c.cx - side / 2, s.top, side, side, cx - r, cy - r, r * 2, r * 2);
   g.restore();
   return true;
+}
+
+// Keep only the glowing teal arms of the Thousand-Arm painting (bright, more green-blue than red), crop to
+// the left part where the figure of arms is, and shrink it: a transparent spirit sprite for the arena.
+function cutArms(img) {
+  const sx = 0, sy = 0, sw = Math.round(img.width * 0.62), sh = Math.round(img.height * 0.9), k = 0.5;
+  const c = document.createElement('canvas'); c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingQuality = 'high'; g.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  const d = g.getImageData(0, 0, c.width, c.height), px = d.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i], gg = px[i + 1], b = px[i + 2], teal = Math.min(gg, b) - r * 0.7, bright = (gg + b) / 2;
+    const j = i / 4, xx = j % c.width, yy = Math.floor(j / c.width);
+    const edge = Math.min(1, xx / (c.width * 0.08), (c.width - xx) / (c.width * 0.3), yy / (c.height * 0.08), (c.height - yy) / (c.height * 0.2)); // soft edges, no hard crop line
+    px[i + 3] = Math.max(0, Math.min(255, (teal - 30) * 2.2 * Math.min(1, bright / 140) * Math.max(0, edge)));
+  }
+  g.putImageData(d, 0, 0);
+  return c;
 }
