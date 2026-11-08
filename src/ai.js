@@ -6,18 +6,36 @@ import { rng, dist } from './util.js';
 import { whyNot, opponent } from './sim.js';
 import { findBoon } from './chars/gods.js';
 
+// How a computer fighter plays, from a beginner (skill 0) to an expert (skill 1). Every value is blended
+// between these two ends, so a higher skill is always a stronger player.
 // react: seconds between decisions; aggr: chance to attack when it can; block / dodge: chance to defend
-// against an attack it sees coming; reserve: power it keeps back for defence; sig: chance to try the signature.
+// against an attack it sees coming; reserve: power it keeps back; sig: chance to try the signature;
+// charge: how long it dares to charge a bow shot; minCharge: the shortest charge (a little charge out-damages
+// a flute note in a clash); punish: chance to break a slow cast with a quick hit; plan: chance to play its
+// fighter's own game plan (see tactics); kite: how hard the fast King keeps his distance.
+const NOVICE = { react: 0.5, aggr: 0.6, block: 0.2, dodge: 0.15, reserve: 24, sig: 0.1, rest: [0.4, 1.0], charge: 0.2, minCharge: 0, punish: 0.05, plan: 0.2, kite: 0 };
+const EXPERT = { react: 0.1, aggr: 0.98, block: 0.8, dodge: 0.85, reserve: 6, sig: 0.85, rest: [0.03, 0.18], charge: 0.85, minCharge: 0.3, punish: 0.85, plan: 0.95, kite: 1 };
+export function skillParams(k) {
+  const mix = (a, b) => (Array.isArray(a) ? a.map((v, i) => v + (b[i] - v) * k) : a + (b - a) * k);
+  return Object.fromEntries(Object.keys(NOVICE).map((key) => [key, mix(NOVICE[key], EXPERT[key])]));
+}
 export const LEVELS = {
-  easy: { name: 'EASY', react: 0.4, aggr: 0.7, block: 0.3, dodge: 0.25, reserve: 20, sig: 0.2, rest: [0.3, 0.8], charge: 0.3 },
-  normal: { name: 'NORMAL', react: 0.25, aggr: 0.85, block: 0.5, dodge: 0.5, reserve: 12, sig: 0.4, rest: [0.12, 0.45], charge: 0.5 },
-  hard: { name: 'HARD', react: 0.12, aggr: 0.97, block: 0.75, dodge: 0.8, reserve: 8, sig: 0.8, rest: [0.04, 0.22], charge: 0.8 },
+  easy: { name: 'EASY', skill: 0.15 },
+  normal: { name: 'NORMAL', skill: 0.6 },
+  hard: { name: 'HARD', skill: 0.9 },
+};
+// Per-fighter adjustment, measured so that at each level the computer Krishna and the computer King are
+// about equally strong (CPU vs CPU near 50/50). Without it the King's computer is much stronger at low skill
+// and Krishna's at high skill. Re-measure with tests/ai.test.js if moves change.
+export const SKILL_ADJUST = {
+  krishna: { easy: 0.12, normal: -0.03, hard: -0.2 }, // skill 0.27 / 0.57 / 0.70
+  rajaraja: { easy: -0.15, normal: 0, hard: 0.1 },    // skill 0.00 / 0.60 / 1.00
 };
 export const LEVEL_IDS = Object.keys(LEVELS);
 
 export function createCpu(pid, level = 'normal', seed = 1) {
   return {
-    pid, level, L: LEVELS[level] || LEVELS.normal, r: rng((seed * 7919 + pid * 104729) | 0),
+    pid, level: LEVELS[level] ? level : 'normal', L: null, r: rng((seed * 7919 + pid * 104729) | 0),
     think: 0, rest: 1, hold: {}, holdT: 0, gap: 0, strafe: 1, strafeT: 0, dodge: null, dodgeT: 0, medWait: 0, wasMed: false,
   };
 }
@@ -25,7 +43,12 @@ export function createCpu(pid, level = 'normal', seed = 1) {
 const COMBO = { sig: { s1: true, s2: true, s3: true }, boon: { s1: true, s2: true }, cls: { s1: true, my: 1 } };
 
 export function cpuInput(m, cpu, dt) {
-  const p = m.players[cpu.pid], o = opponent(m, p), L = cpu.L, R = cpu.r;
+  const p = m.players[cpu.pid], o = opponent(m, p), R = cpu.r;
+  if (!cpu.L) { // settle the skill once we know which fighter it plays
+    const k = LEVELS[cpu.level].skill + (SKILL_ADJUST[p.ch.id]?.[cpu.level] || 0);
+    cpu.L = skillParams(Math.max(0, Math.min(1, k)));
+  }
+  const L = cpu.L;
   const out = { mx: 0, my: 0 };
   if (m.phase !== 'fight' || m.scene) return out;
   const d = dist(p, o);
@@ -69,7 +92,8 @@ function decide(m, cpu, p, o, d) {
   }
 
   // defence: an attack is on its way
-  const threat = incoming(m, p), big = threat && (threat.dmg >= 6 || threat.r >= 6);
+  // slow Krishna can't sidestep well, so he raises the hill against any shot
+  const threat = incoming(m, p), big = threat && (threat.dmg >= 6 || threat.r >= 6 || p.ch.id === 'krishna');
   const bigCast = o.cast && !o.cast.done && o.cast.move.cast >= 0.5 && o.cast.t < o.cast.move.cast;
   if ((threat || bigCast) && p.power >= p.ch.defence.cost) {
     if (R() < (big || bigCast ? L.block : L.block * 0.25)) { // small pokes aren't worth stopping for
@@ -96,8 +120,10 @@ function decide(m, cpu, p, o, d) {
     return { buttons: COMBO.cls, time: 0.05 };
   }
 
-  if (cpu.rest > 0) return null;
   const done = (b) => { cpu.rest = L.rest[0] + R() * (L.rest[1] - L.rest[0]); return b; };
+  const plan = tactics(m, cpu, p, o, d, can, threat);
+  if (plan) return done(plan);
+  if (cpu.rest > 0) return null;
 
   // signature move when there's power to spare
   if (can(mv.sig) && p.hp > 20 && R() < L.sig * 0.5) return done({ buttons: COMBO.sig, time: 0.05 });
@@ -120,10 +146,65 @@ function decide(m, cpu, p, o, d) {
     const s = specials[Math.floor(R() * specials.length)];
     if (!(s === 's2' && p.ch.id === 'krishna' && d < 60)) return done({ buttons: { [s]: true }, time: 0.05 }); // Venu Ganam is slow: not up close
   }
+  // Krishna keeps a flute note in hand only while he isn't saving up for the chakra
+  if (p.ch.id === 'krishna' && p.power - (mv.a1.cost?.power || 0) < mv.s1.cost.power && R() < L.plan * 0.5) return null;
   if (can(mv.a1)) {
     const safe = !m.projectiles.some((pr) => pr.owner !== p.id) && d > 70; // charging can be interrupted: only when nothing is coming
-    const charge = mv.a1.charge ? mv.a1.cast + (safe ? R() * mv.a1.charge.max * L.charge : 0.02) : 0.05; // hold a bow shot to charge it
+    const charge = mv.a1.charge ? mv.a1.cast + L.minCharge + (safe ? R() * mv.a1.charge.max * L.charge : 0) : 0.05; // hold a bow shot to charge it
     return done({ buttons: { a1: true }, time: charge });
+  }
+  return null;
+}
+
+// Each fighter's own game plan, on top of the shared basics. Returns a press or null.
+//  - Both: break the opponent's slow casts with a quick hit (ground rule 7), and cash in when they're held.
+//  - Krishna (slow, strong magic): the chakra reaches anywhere, Venu Ganam and Vishwaroopam when the King
+//    is busy, blink in when the King is out of flute range.
+//  - King (fast, bow): pin then charge a full shot, rain arrows on a fighter standing still, Tiger Arrow from afar.
+function tactics(m, cpu, p, o, d, can, threat) {
+  const L = cpu.L, R = cpu.r, mv = p.ch.moves, K = p.ch.id === 'krishna';
+  const oc = o.cast && !o.cast.done ? o.cast : null;
+  const oLeft = oc ? (oc.move.charge ? oc.move.charge.max + oc.move.cast - oc.t : oc.move.cast - oc.t) : 0;
+  const busy = !!(o.med || o.block || o.effects.hold || o.effects.stun || (oc && oLeft > 0.8)); // can't dodge right now
+  const tap = (slot, extra = {}) => ({ buttons: { [slot]: true, ...extra }, time: 0.05 });
+  const shotTime = (move) => (move.cast || 0) + d / (move.speed || 1e9);
+
+  // punish: a quick shot that lands before their cast goes off
+  if (oc && oLeft > 0.3 && R() < L.punish) {
+    for (const s of ['a1', 's1']) {
+      const mvq = mv[s];
+      if (mvq && mvq.kind === 'projectile' && can(mvq) && shotTime(mvq) < oLeft && !(K && s === 's1')) return tap(s);
+    }
+  }
+  if (R() > L.plan) return null;
+
+  if (K) {
+    if (can(mv.sig) && p.hp > 20 && (o.med || o.effects.stun || (o.effects.hold && o.effects.hold.t > 2))) return { buttons: { s1: true, s2: true, s3: true }, time: 0.05 };
+    if (can(mv.s2) && d > 55 && d < 135 && busy && !o.effects.hold) return tap('s2'); // Venu Ganam
+    if (can(mv.s1) && (busy || d > 150 || R() < 0.15)) return tap('s1');             // chakra
+    if (d > 150 && can(mv.s3) && p.power > mv.s3.cost.power + mv.s1.cost.power * 0.5 && R() < 0.4) {
+      return tap('s3', { mx: (o.x - p.x) / d, my: (o.y - p.y) / d });                  // blink in
+    }
+    return null;
+  }
+  // King
+  if (o.effects.hold && o.effects.hold.t > mv.a1.cast + mv.a1.charge.max * 0.8 && can(mv.a1) && !threat) {
+    return { buttons: { a1: true }, time: mv.a1.cast + mv.a1.charge.max };            // free full charge
+  }
+  if (can(mv.s3) && busy && p.power > mv.s3.cost.power + L.reserve) return tap('s3'); // arrow rain on a sitting target
+  if (can(mv.s2) && !o.effects.hold && p.power > mv.s2.cost.power + mv.a1.cost.power * 3 && R() < 0.3) return tap('s2'); // pin
+  if (can(mv.sig) && p.hp > 25 && d > 150 && !threat && (!oc && o.power < 30)) return { buttons: { s1: true, s2: true, s3: true }, time: 0.05 };
+  if (can(mv.s1) && d < 110 && R() < 0.3) return tap('s1');                         // split shot up close
+  return null;
+}
+
+// The opponent's wall standing between us, or null (a wall only protects what's behind it).
+function wallBetween(m, p, o) {
+  const cr = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  for (const w of m.walls) {
+    if (w.owner !== o.id || w.dead) continue;
+    const e1 = { x: w.x - w.ny * w.hw, y: w.y + w.nx * w.hw }, e2 = { x: w.x + w.ny * w.hw, y: w.y - w.nx * w.hw };
+    if (cr(e1, e2, p) * cr(e1, e2, o) < 0 && cr(p, o, e1) * cr(p, o, e2) < 0) return { w, e1, e2 };
   }
   return null;
 }
@@ -148,7 +229,8 @@ function steer(m, cpu, p, o, d, dt) {
   const R = cpu.r;
   let x = 0, y = 0;
   if (cpu.dodgeT > 0) { cpu.dodgeT -= dt; x += cpu.dodge.x * 2; y += cpu.dodge.y * 2; }
-  const want = p.boons.length || !p.ch.gods ? 85 : 95; // a King without a boon stays a bit further out
+  // the King uses his speed to stay out of flute-note range (kite); Krishna wants to close in
+  const want = p.ch.id === 'krishna' ? 80 : 95 + cpu.L.kite * 65;
   const ux = d ? (o.x - p.x) / d : 1, uy = d ? (o.y - p.y) / d : 0;
   const push = Math.max(-1, Math.min(1, (d - want) / 30));
   x += ux * push; y += uy * push;
@@ -157,9 +239,17 @@ function steer(m, cpu, p, o, d, dt) {
   x += -uy * cpu.strafe * 0.6; y += ux * cpu.strafe * 0.6;
   // meditating King keeps away (meditation only fills while the opponent is far)
   if (p.ch.gods && !p.boons.length && d < TUNE.meditate.dist + 30 && p.power > 10) { x -= ux * 0.8; y -= uy * 0.8; }
+  // a wall in the way: run round its nearer end to shoot past it (the fast King does this best)
+  const wb = cpu.L.plan > 0.4 ? wallBetween(m, p, o) : null;
+  if (wb) {
+    const end = Math.hypot(wb.e1.x - p.x, wb.e1.y - p.y) < Math.hypot(wb.e2.x - p.x, wb.e2.y - p.y) ? wb.e1 : wb.e2;
+    const ex = end.x + (end.x - wb.w.x) * 0.6 - p.x, ey = end.y + (end.y - wb.w.y) * 0.6 - p.y, el = Math.hypot(ex, ey) || 1;
+    x += (ex / el) * 2; y += (ey / el) * 2;
+  }
   // stay off the edge
   const r = Math.hypot(p.x, p.y);
-  if (r > ARENA.r * 0.7) { const k = (r - ARENA.r * 0.7) / (ARENA.r * 0.3) * 2.5; x -= (p.x / r) * k; y -= (p.y / r) * k; }
+  const edge = p.ch.id === 'krishna' ? 0.7 : 0.7 + 0.15 * cpu.L.kite; // a kiting King uses more of the floor
+  if (r > ARENA.r * edge) { const k = (r - ARENA.r * edge) / (ARENA.r * (1 - edge)) * 2.5; x -= (p.x / r) * k; y -= (p.y / r) * k; }
   // step out of arrow-rain circles and water
   for (const a of [...m.areas.filter((a) => a.owner !== p.id), ...m.waters]) {
     const ad = Math.hypot(p.x - a.x, p.y - a.y);

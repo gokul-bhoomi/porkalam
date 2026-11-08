@@ -10,7 +10,7 @@ npm run serve
 
 Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: press any button to connect; pad 1 is P1 (Krishna), pad 2 is P2 (Raja Raja Chola). The title screen lists every control.
 
-On the setup screen pick **1 player vs CPU** (choose your fighter and the CPU level: easy, normal or hard) or **2 players**, and the match length. In 1-player mode either key set, or pad 1, controls your fighter.
+On the setup screen pick **1 player vs CPU** (choose your fighter and the CPU level: easy, normal or hard) or **2 players**, and the match length. In 1-player mode either key set, or pad 1, controls your fighter. The fight pauses itself if the window loses focus or goes into the background.
 
 | Action | P1 keys | P2 keys | Pad |
 |---|---|---|---|
@@ -43,5 +43,5 @@ npm run verify
 - `src/sim.js`: fight rules. Pure and deterministic, fixed 1/60 s step. Input = button states, output = match state.
 - `src/chars/`: character sheets and moves (`krishna.js`, `rajaraja.js`) and the gods' boon lists (`gods.js`). All numbers live here and in `src/config.js`.
 - `src/render.js`: drawing on a 480x270 layout (canvas 1920x1080), with the art from `src/art.js` or grey-box shapes. Only reads the state.
-- `src/ai.js`: the computer opponent. It only returns button states, so it plays by the same rules; it has its own random numbers so matches stay deterministic.
+- `src/ai.js`: the computer opponent. It only returns button states, so it plays by the same rules; it has its own random numbers so matches stay deterministic. Each level is a skill value (easy 0.15, normal 0.6, hard 0.9) blended between a novice and an expert, plus a per-fighter adjustment (`SKILL_ADJUST`) measured so the computer Krishna and the computer King are equally strong at each level.
 - `src/input.js`: keyboard and gamepads. `src/main.js`: screens, loop and the `window.__game.debug` API.
