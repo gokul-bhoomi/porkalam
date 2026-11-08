@@ -11,7 +11,8 @@ export default {
   defence: { type: 'barrier', name: 'Govardhana', strength: 6, growth: 5, max: 24, cost: 1, look: 'hill' },
   weapon: null,
   moves: {
-    a1: { name: 'Flute note', kind: 'projectile', range: 'mid', cost: { power: 2 }, req: {}, cast: 0.2, damage: 4, knockback: 30,
+    // flute note cost 2 -> 3 (owner, 2026-11-07): cut note spam
+    a1: { name: 'Flute note', kind: 'projectile', range: 'mid', cost: { power: 3 }, req: {}, cast: 0.2, damage: 4, knockback: 30,
       speed: 150, radius: 4, life: 1.6, shape: 'note' },
     a2: { name: 'Palm push', kind: 'melee', range: 'close', cost: { power: 2 }, req: {}, cast: 0.15, damage: 3, knockback: 240, reach: 46 },
     s1: { name: 'Sudarshana Chakra', kind: 'projectile', special: true, range: 'anywhere', cost: { power: 30 }, req: {}, cast: 0.6, damage: 12, knockback: 90,

@@ -24,6 +24,8 @@ These follow [GROUND-RULES.md](GROUND-RULES.md) and [CLASS-RULES.md](CLASS-RULES
 | Signature: Vishwaroopam | Anywhere | Very large + health | Dramatic scene. Large damage across the whole arena |
 | Ultimate: Brahmastra | Anywhere | All power. Requires health below 5% | ~5 s chant that a hit breaks. Both fighters reach 0 health, so it's a draw |
 
+**Tuning (owner, 2026-11-07):** the flute note costs 3 power (was 2). Krishna was winning mostly by spamming notes, which beat the King's basic shot in every clash; the higher cost pushes him toward his specials.
+
 Arena changes (Yamuna flood, Maya) and Call a King are left out of Krishna's first version. The God class still allows them for later.
 
 ## Raja Raja Chola (King, bow)
