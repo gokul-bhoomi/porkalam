@@ -13,7 +13,7 @@ A young wandering mystic-sorcerer: saffron and indigo robes, rudraksha beads, a 
 
 | Move | Range | Cost | Effect |
 |---|---|---|---|
-| Mantra bolt (basic) | Mid | Small (3 power) | A glowing teal orb, small damage |
+| Mantra bolt (basic) | Mid | Small (3 power) | A glowing teal orb. Tap for a quick bolt, hold to charge (more damage and a bigger orb, up to 11%) |
 | Palm push (basic) | Close | Small | Small damage, big knockback |
 | Spinning chakra | Anywhere | Large | Homing disc, medium damage |
 | Binding chant | Mid | Medium | 2 s cast, then the opponent is held still for 3 s |

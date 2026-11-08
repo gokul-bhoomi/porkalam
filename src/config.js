@@ -32,7 +32,7 @@ export const TUNE = {
   // Block builds a wall in front of the fighter. It grows while block is held (prepMult x faster while the
   // opponent prepares an attack), for at most buildTime s. When block is let go, the wall stays where it is,
   // at the size it reached, for standTime s.
-  block: { prepMult: 2, buildTime: 3, standTime: 3, gap: 14, halfWidth: [8, 20] },
+  block: { prepMult: 2, buildTime: 3, standTime: 3, gap: 14, halfWidth: [8, 20], maxWalls: 3 }, // up to 3 walls standing at once
   chord: 0.08,          // special buttons pressed within this time count as one combo (boon / signature)
   // Meditation (ground rule 11, owner 2026-11-08): fills a devotion bar of `segments` parts, segTime s each,
   // wherever the opponent is (`dist` is only how far the computer likes to be before it starts). Only full segments count. A barrier of `barrier` strength

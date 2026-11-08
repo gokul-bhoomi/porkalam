@@ -245,7 +245,12 @@ test('rule 5: building stops after 3 s and the wall stands; let go before buildi
   assert.equal(m.players[K].block, null, 'holding on does not start a new one');
   stepMatch(m, [{}, {}]); stepMatch(m, [{ block: true }, {}]);
   assert.ok(m.players[K].block, 'a new press builds a new one');
-  assert.equal(m.walls.length, 1, 'one wall per fighter: the new one replaces the old');
+  assert.equal(m.walls.length, 2, 'the first wall still stands while a second is built elsewhere (owner, 2026-11-08)');
+  run(m, [{}, {}], TUNE.block.standTime + 0.1);
+  assert.ok(m.walls.every((w) => w !== m.walls[0] || w.standing), 'each wall lasts its own time');
+  const n = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+  for (let i = 0; i < 5; i++) { stepMatch(n, [{ block: true }, {}]); stepMatch(n, [{ block: true }, {}]); stepMatch(n, [{}, {}]); }
+  assert.ok(n.walls.filter((w) => w.owner === K).length <= TUNE.block.maxWalls, `at most ${TUNE.block.maxWalls} walls at once`);
 });
 
 // ---------- 6. Clashes ----------

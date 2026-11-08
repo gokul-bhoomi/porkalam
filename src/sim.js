@@ -383,7 +383,10 @@ function handleBlock(m, p, inp, dt) {
   if (!p.block) {
     if (p.blockDone || p.cast || p.med || p.dash || p.effects.stun || p.power + 1e-9 < def.cost) return;
     p.power -= def.cost;
-    m.walls = m.walls.filter((w) => w.owner !== p.id); // one wall per fighter: a new one replaces the old
+    // several walls can stand at once, each until its own time runs out (owner, 2026-11-08); only past
+    // TUNE.block.maxWalls does the oldest one go
+    const mine = m.walls.filter((w) => w.owner === p.id);
+    if (mine.length >= B.maxWalls) m.walls = m.walls.filter((w) => w !== mine[0]);
     p.block = { id: m.nid++, owner: p.id, look: def.look, cap: def.strength, max: def.max, held: 0, t: B.standTime, standing: false };
     placeWall(p, p.block);
     m.walls.push(p.block);

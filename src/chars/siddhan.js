@@ -12,9 +12,9 @@ export default {
   defence: { type: 'barrier', name: 'Rising earth', strength: 6, growth: 5, max: 24, cost: 1, look: 'hill' },
   weapon: null,
   moves: {
-    // mantra bolt cost 2 -> 3 (owner, 2026-11-07): cut spam
+    // mantra bolt cost 2 -> 3 (owner, 2026-11-07): cut spam. Hold to charge, like the Warrior's shot (owner, 2026-11-08).
     a1: { name: 'Mantra bolt', kind: 'projectile', range: 'mid', cost: { power: 3 }, req: {}, cast: 0.2, damage: 4, knockback: 30,
-      speed: 150, radius: 4, life: 1.6, shape: 'orb' },
+      charge: { max: 1.4, damage: 11 }, speed: 150, radius: 4, life: 1.6, shape: 'orb' },
     a2: { name: 'Palm push', kind: 'melee', range: 'close', cost: { power: 2 }, req: {}, cast: 0.15, damage: 3, knockback: 240, reach: 46 },
     s1: { name: 'Spinning chakra', kind: 'projectile', special: true, range: 'anywhere', cost: { power: 30 }, req: {}, cast: 0.6, damage: 12, knockback: 90,
       speed: 120, radius: 6, life: 3, legs: 3, legTime: 0.9, shape: 'chakra' },

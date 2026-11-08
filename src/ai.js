@@ -27,7 +27,7 @@ export const LEVELS = {
 // about equally strong (CPU vs CPU near 50/50). Without it the Warrior's computer is much stronger at low skill
 // and the Mage's at high skill. Re-measure with tests/ai.test.js if moves change.
 export const SKILL_ADJUST = {
-  siddhan: { easy: 0.13, normal: -0.07, hard: -0.26 }, // skill 0.28 / 0.53 / 0.64
+  siddhan: { easy: 0.39, normal: -0.04, hard: -0.22 }, // skill 0.54 / 0.56 / 0.68
   veeran: { easy: -0.15, normal: 0, hard: 0.1 },      // skill 0.00 / 0.60 / 1.00
 };
 export const LEVEL_IDS = Object.keys(LEVELS);
@@ -156,7 +156,10 @@ function decide(m, cpu, p, o, d) {
   const reach = RANGES[mv.a1.range]?.[1] ?? Infinity;
   if (can(mv.a1) && d < reach + 10) { // basics always fire, but don't waste one that would fall short
     const safe = !m.projectiles.some((pr) => pr.owner !== p.id) && d > 70; // charging can be interrupted: only when nothing is coming
-    const charge = mv.a1.charge ? mv.a1.cast + L.minCharge + (safe ? R() * mv.a1.charge.max * L.charge : 0) : 0.05; // hold a bow shot to charge it
+    // the slow Mage only charges when the Warrior can't punish it (busy meditating, held, stunned or casting)
+    const busy = !!(o.med || o.effects.hold || o.effects.stun || (o.cast && !o.cast.done && !o.cast.move.charge && o.cast.move.cast - o.cast.t > 0.8)); // a long cast, not a quick shot
+    const canCharge = p.ch.weapon === 'bow' ? safe : safe && busy;
+    const charge = mv.a1.charge ? mv.a1.cast + (canCharge ? L.minCharge + R() * mv.a1.charge.max * L.charge : 0) : 0.05; // hold a bow shot to charge it
     return done({ buttons: { a1: true }, time: charge });
   }
   return null;
@@ -239,7 +242,7 @@ function steer(m, cpu, p, o, d, dt) {
   // Against a meditating opponent, close in: meditation only fills while you keep away, and the barrier has to be broken.
   // (a Warrior against a short-range basic attack stays just beyond its reach)
   const outReach = RANGES[o.ch.moves.a1.range]?.[1] ?? Infinity;
-  const kiteTo = Number.isFinite(outReach) && cpu.L.kite > 0.3 ? outReach + 12 : 95 + cpu.L.kite * 65;
+  const kiteTo = Number.isFinite(outReach) ? outReach + 12 : 95 + cpu.L.kite * 65; // even a beginner backs off out of reach
   const want = o.med ? 30 + 40 * (1 - cpu.L.plan) : p.ch.id === 'siddhan' ? 80 : kiteTo;
   const ux = d ? (o.x - p.x) / d : 1, uy = d ? (o.y - p.y) / d : 0;
   const push = Math.max(-1, Math.min(1, (d - want) / 30));
