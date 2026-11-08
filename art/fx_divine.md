@@ -2,7 +2,7 @@
 
 `fx_divine_halo.png` was generated with the built-in image generation tool using the owner's approved jade-and-gold preview as its reference. It preserves a painted two-tier blessing halo, ivory palms, soft jade arms, gold bracelets, golden aureole and lotus. Earlier signature artwork remains available.
 
-The halo unfolds during the existing power-up, then glides as ONE intact formation toward the opponent. It reaches its contact position at the existing 0.4-second hit time, holds briefly, and returns behind Siddhan. There is no stretching or independent movement of the painted arms. Golden impact ripples and petal flecks replace this move's shattering arena, cracks and heavy shake. The power-up retains the sunlit arena with a gentler gold aura. Costs, damage, knockback, casting, and scene duration are unchanged.
+The halo unfolds during the existing power-up, then glides as ONE intact formation toward the opponent. It reaches its contact position at the existing 0.4-second hit time, continues in the attack direction beyond the far arena bank, and dissolves into golden glints. It does not return to Siddhan. There is no stretching or independent movement of the painted arms. Golden impact ripples and petal flecks replace this move's shattering arena, cracks and heavy shake. The power-up retains the sunlit arena with a gentler gold aura. Costs, damage, knockback, casting, and scene duration are unchanged.
 
 ## Generation prompt
 
