@@ -9,18 +9,19 @@ import { GODS, findBoon } from './chars/gods.js';
 // Same button layout for every fighter (ground rule 14).
 // Combos instead of extra buttons (owner, 2026-11-07):
 //   all three special buttons together = signature move
-//   two special buttons together       = use the boon
-//   down + special 1                   = class move (meditate / Brahmastra)
-export const BUTTONS = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3'];
+//   two special buttons together       = spend devotion on a boon
+//   down + special 1                   = meditate (both classes)
+// Traps were removed by the owner on 2026-11-08.
+export const BUTTONS = ['a1', 'a2', 'block', 's1', 's2', 's3'];
 const ACTS = ['s1', 's2', 's3', 'a2', 'a1']; // if several are pressed in one step, the first wins
 const SPECIALS = ['s1', 's2', 's3'];
 
-export function createMatch({ seed = 1, time = TUNE.match.default, chars = ['krishna', 'rajaraja'] } = {}) {
+export function createMatch({ seed = 1, time = TUNE.match.default, chars = ['siddhan', 'veeran'] } = {}) {
   const duration = clamp(time, TUNE.match.min, TUNE.match.max);
   return {
     seed, rand: rng(seed), t: 0, duration, timeLeft: duration, phase: 'fight', result: null, scene: null,
     players: chars.map((id, i) => makeFighter(CHARS[id], i)),
-    projectiles: [], strikes: [], areas: [], traps: [], marks: [], waters: [], units: [], walls: [], arenaChange: null,
+    projectiles: [], strikes: [], areas: [], units: [], walls: [], arenaChange: null,
     hits: [], events: [], prev: [{}, {}], nid: 1,
   };
 }
@@ -29,8 +30,9 @@ function makeFighter(ch, i) {
   return {
     id: i, ch, x: i === 0 ? -TUNE.startX : TUNE.startX, y: 0, face: { x: i === 0 ? 1 : -1, y: 0 },
     hp: ch.health, power: ch.power.size * TUNE.startPower, kvx: 0, kvy: 0,
-    cast: null, block: null, med: null, dash: null, effects: {}, boons: [], chord: null, meditations: 0, lotus: false,
-    trapsActive: 0, msg: null, stats: { dealt: 0, taken: 0 },
+    cast: null, block: null, med: null, dash: null, effects: {}, chord: null, lotus: false,
+    devotion: 0, // full devotion segments, earned by meditating and spent on boons (ground rule 11)
+    msg: null, stats: { dealt: 0, taken: 0 },
   };
 }
 
@@ -55,7 +57,6 @@ export function whyNot(m, p, move, extraPower = 0) {
   if (r.fullPower && p.power < p.ch.power.size - 1e-6) return 'NEEDS FULL POWER';
   if (r.maxHealth != null && !(p.hp < r.maxHealth)) return `HEALTH UNDER ${r.maxHealth}% ONLY`;
   if (r.minHealth != null && p.hp < r.minHealth) return 'NO HEALTH';
-  if (r.maxBoons != null && p.boons.length >= r.maxBoons) return 'USE YOUR BOON FIRST';
   // Ground rule 4: a move can bring its user to 0 health only if it says so.
   if (c.health && !move.selfKO && p.hp - c.health <= 0) return 'NO HEALTH';
   return null;
@@ -176,28 +177,6 @@ function movement(m, inputs, dt) {
   for (const u of m.units) u.t -= dt;
   m.units = m.units.filter((u) => u.t > 0);
   if (m.arenaChange && (m.arenaChange.t -= dt) <= 0) m.arenaChange = null;
-  for (const mk of m.marks) mk.t -= dt;
-  m.marks = m.marks.filter((mk) => mk.t > 0);
-
-  // traps: go off after their random delay and hurt anyone on them, the setter included
-  for (const tr of m.traps) {
-    if ((tr.t -= dt) > 0) continue;
-    tr.dead = true;
-    m.players[tr.owner].trapsActive--;
-    ev(m, 'trap', { kind: tr.kind, x: tr.x, y: tr.y, owner: tr.owner });
-    if (tr.kind === 'planted') {
-      for (const p of m.players) if (Math.hypot(p.x - tr.x, p.y - tr.y) <= TUNE.trap.plantedR + TUNE.fighterR)
-        m.hits.push({ target: p, dmg: TUNE.trap.plantedDmg, kb: TUNE.trap.plantedKb, from: { x: tr.x, y: tr.y }, src: 'trap' });
-      for (const u of m.units) if (Math.hypot(u.x - tr.x, u.y - tr.y) <= TUNE.trap.plantedR + u.r)
-        m.hits.push({ target: u, dmg: TUNE.trap.plantedDmg, kb: 0, from: tr, src: 'trap' });
-    } else m.waters.push({ x: tr.x, y: tr.y, r: TUNE.trap.waterR, t: TUNE.trap.waterTime });
-  }
-  m.traps = m.traps.filter((tr) => !tr.dead);
-  for (const w of m.waters) {
-    w.t -= dt;
-    for (const p of m.players) if (Math.hypot(p.x - w.x, p.y - w.y) <= w.r) applyEffect(p, 'slow', 0.2, TUNE.trap.waterSlow);
-  }
-  m.waters = m.waters.filter((w) => w.t > 0);
 }
 
 // ---------- 2. new moves ----------
@@ -231,41 +210,58 @@ function chord(p, inp, act, dt) {
   if (c.seen.length >= 3) { p.chord = null; return 'sig'; }
   if (c.t < TUNE.chord - 1e-9) return null;
   p.chord = null;
-  if (c.seen.length === 2 && p.boons.length) return 'boon';
+  if (c.seen.length === 2 && p.devotion >= TUNE.meditate.tiers[0]) return 'boon';
   if (c.slot === 's1' && c.down) return 'cls';
   return c.slot;
 }
 
 function tryAct(m, p, slot, inp) {
-  let move, extra = 0;
-  const opts = {};
-  if (slot === 'boon') {
-    const b = p.boons[0];
-    if (!b) return;
-    move = findBoon(b.id); opts.boon = b;
+  let move;
+  if (slot === 'boon') { // spend devotion: the biggest tier it pays for, from a random god
+    move = pickBoon(m, p);
+    if (!move) return;
   } else move = p.ch.moves[slot];
   if (!move) return;
-  // ground rule 10: a trap is set during a normal close-range attack, with the same swing
-  if (slot === 'a2' && (inp.trapPlant || inp.trapWater) && p.trapsActive < TUNE.trap.max) {
-    opts.trap = inp.trapPlant ? 'planted' : 'water'; extra = TUNE.trap.cost;
-  }
-  const why = whyNot(m, p, move, extra);
+  const why = whyNot(m, p, move);
   if (why) { say(p, why); return; }
-  if (opts.boon) { // boons are single-use: gone as soon as the cast starts
-    p.boons.shift();
-    ev(m, 'boonUsed', { pid: p.id, name: move.name });
+  if (slot === 'boon') {
+    p.devotion -= move.devotionCost;
+    ev(m, 'boon', { pid: p.id, name: move.name, god: move.god, tier: move.tier }); // both players see which boon it was
+    move = move.boon;
   }
-  pay(p, move, extra);
+  pay(p, move);
   if (move.kind === 'meditate') {
-    const lvl = Math.min(p.meditations, TUNE.meditate.times.length - 1);
-    p.med = { meter: 0, need: TUNE.meditate.times[lvl], fast: p.lotus };
+    const M = TUNE.meditate;
+    if (p.devotion >= M.segments) { say(p, 'DEVOTION FULL'); return; }
+    p.med = { meter: 0, barrier: M.barrier, fast: p.lotus }; // the barrier goes up by itself
     ev(m, 'meditate', { pid: p.id });
     return;
   }
   const l = Math.hypot(+inp.mx || 0, +inp.my || 0);
-  p.cast = { move, slot, t: 0, trap: opts.trap || null, dir: l > 0.3 ? { x: inp.mx / l, y: inp.my / l } : null };
+  p.cast = { move, slot, t: 0, dir: l > 0.3 ? { x: inp.mx / l, y: inp.my / l } : null };
   ev(m, 'cast', { pid: p.id, name: move.name, slot });
   if (move.cast <= 0 && !move.charge) finishCast(m, p);
+}
+
+// Which boon spending devotion buys right now: tier by how much is banked (3 / 6 / 10 segments), then a random
+// god, then a random boon of that god's tier that can be used from here. Null (and nothing spent) if none fits.
+const GOD_IDS = Object.keys(GODS);
+const TIER_NAMES = ['small', 'medium', 'divine'];
+function pickBoon(m, p) {
+  const tiers = TUNE.meditate.tiers;
+  let ti = -1;
+  for (let i = tiers.length - 1; i >= 0; i--) if (p.devotion >= tiers[i]) { ti = i; break; }
+  if (ti < 0) return null;
+  const gods = [...GOD_IDS];
+  for (let i = gods.length - 1; i > 0; i--) { const j = Math.floor(m.rand() * (i + 1)); [gods[i], gods[j]] = [gods[j], gods[i]]; }
+  for (const g of gods) {
+    const ok = GODS[g].tiers[ti].filter((b) => !whyNot(m, p, b));
+    if (!ok.length) continue;
+    const boon = ok[Math.floor(m.rand() * ok.length)];
+    return { boon, name: boon.name, god: GODS[g].name, tier: TIER_NAMES[ti], devotionCost: tiers[ti], cost: {}, range: 'anywhere' };
+  }
+  say(p, 'NO BOON FITS HERE');
+  return null;
 }
 
 function progressCast(m, p, inp, dt) {
@@ -298,7 +294,7 @@ function release(m, p, c) {
         m.projectiles.push({
           id: m.nid++, owner: p.id, name: mv.name, shape: mv.shape, x: p.x + cx * TUNE.fighterR, y: p.y + cy * TUNE.fighterR,
           vx: cx * mv.speed, vy: cy * mv.speed, r: mv.radius, dmg, kb: mv.knockback, life: mv.life, legs: mv.legs ? mv.legs - 1 : 0,
-          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, pierceBlock: !!mv.pierceBlock, pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [],
+          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, divine: !!mv.divine, pierceBlock: !!mv.pierceBlock, pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [],
         });
       }
       break;
@@ -307,7 +303,6 @@ function release(m, p, c) {
       m.strikes.push({ id: m.nid++, owner: p.id, name: mv.name, x: p.x + p.face.x * 18, y: p.y + p.face.y * 18, r: 20, dmg: mv.damage,
         kb: mv.knockback, reach: mv.reach, from: { x: p.x, y: p.y } });
       ev(m, 'swing', { pid: p.id, x: p.x + p.face.x * 18, y: p.y + p.face.y * 18 });
-      floorMark(m, p, c.trap);
       break;
     }
     case 'area':
@@ -340,36 +335,19 @@ function release(m, p, c) {
   }
 }
 
-// Every close attack leaves a floor mark. A trap's mark is made the same way, so they look identical.
-function floorMark(m, p, trap) {
-  const T = TUNE.mark, r = m.rand;
-  const x = p.x + p.face.x * T.offset, y = p.y + p.face.y * T.offset;
-  const life = TUNE.trap.delay[0] + r() * (TUNE.trap.delay[1] - TUNE.trap.delay[0]); // scuffs and traps share one lifetime range
-  const mark = { id: m.nid++, x, y, rot: r() * Math.PI, size: 3 + Math.floor(r() * 3), t: life };
-  m.marks.push(mark);
-  if (trap) {
-    m.traps.push({ id: m.nid++, owner: p.id, kind: trap, x, y, t: life, mark: mark.id });
-    p.trapsActive++;
-  }
-  const traps = new Set(m.traps.map((t) => t.mark));
-  while (m.marks.length > T.max) { const i = m.marks.findIndex((mk) => !traps.has(mk.id)); if (i < 0) break; m.marks.splice(i, 1); }
-}
-
+// Meditation fills the devotion bar one segment at a time, only while the opponent keeps away.
+// Only full segments count: stopping (or having the barrier broken) loses the part-filled one.
 function progressMed(m, p, dt) {
-  const o = opponent(m, p);
-  if (dist(p, o) > TUNE.meditate.dist) p.med.meter += dt * (p.med.fast ? 2 : 1); // only fills while the opponent is far away
-  if (p.med.meter < p.med.need - 1e-9) return;
-  const god = GODS[p.ch.gods[Math.floor(m.rand() * p.ch.gods.length)]], tier = god.tiers[Math.min(p.meditations, god.tiers.length - 1)];
-  const boon = tier[Math.floor(m.rand() * tier.length)];
-  p.meditations++; // completed meditations always count
-  if (p.med.fast) p.lotus = false;
-  p.med = null;
-  if (p.boons.length < TUNE.maxBoons) { // ground rule 11: 1 boon at a time
-    p.boons.push({ id: boon.id, name: boon.name, god: god.name });
-    ev(m, 'boon', { pid: p.id, name: boon.name, god: god.name }); // both players see which boon it was
-  }
+  const M = TUNE.meditate, o = opponent(m, p);
+  if (dist(p, o) > M.dist) p.med.meter += dt * (p.med.fast ? 2 : 1);
+  if (p.med.meter < M.segTime - 1e-9) return;
+  p.med.meter = 0;
+  p.devotion = Math.min(M.segments, p.devotion + 1);
+  ev(m, 'devotion', { pid: p.id, devotion: p.devotion });
+  if (p.devotion >= M.segments) { endMed(p); ev(m, 'medFull', { pid: p.id }); say(p, 'DEVOTION FULL'); }
 }
-function stopMed(m, p, why) { p.med = null; say(p, why); ev(m, 'medStop', { pid: p.id }); }
+function endMed(p) { if (p.med?.fast) p.lotus = false; p.med = null; } // a Lotus seat speeds up one meditation
+function stopMed(m, p, why) { endMed(p); say(p, why); ev(m, 'medStop', { pid: p.id }); }
 
 // Block = build a wall (owner, 2026-11-07). While block is held the fighter stands still and the wall in
 // front of him grows. Let go (or reach buildTime) and the wall stays in place, at that size, for standTime s.
@@ -464,7 +442,7 @@ function collectHits(m) {
     }
     if (pr.dead || o.effects.invuln || Math.hypot(o.x - pr.x, o.y - pr.y) > FR + pr.r) continue;
     const d = unitDir(pr.vx, pr.vy);
-    m.hits.push({ target: o, dmg: pr.dmg, kb: pr.kb, dir: d, from: { x: pr.x - d.x * 20, y: pr.y - d.y * 20 }, effect: pr.effect, pierceBlock: pr.pierceBlock, walled: true, src: pr.name, by: pr.owner });
+    m.hits.push({ target: o, dmg: pr.dmg, kb: pr.kb, dir: d, from: { x: pr.x - d.x * 20, y: pr.y - d.y * 20 }, effect: pr.effect, divine: pr.divine, pierceBlock: pr.pierceBlock, walled: true, src: pr.name, by: pr.owner });
     pr.dead = true;
   }
   m.projectiles = m.projectiles.filter((pr) => !pr.dead);
@@ -503,6 +481,13 @@ function applyHits(m) {
     let dmg = h.dmg;
     const w = wallFor(m, t, h);
     if (w) dmg = absorb(m, w, dmg);
+    // the meditation barrier takes the damage instead of health; only divine weapons go through it
+    if (t.med && !h.divine && !h.absolute && dmg > 0) {
+      const a = Math.min(t.med.barrier, dmg);
+      t.med.barrier -= a; dmg -= a;
+      ev(m, 'barrier', { pid: t.id, amount: a, left: t.med.barrier, x: t.x, y: t.y });
+      if (t.med.barrier <= 1e-9) stopMed(m, t, 'BARRIER BROKEN');
+    }
     if (!(dmg > 0)) continue;
     n.dmg += dmg; n.hit = true; n.srcs.push(h.src);
     if (h.by != null && m.players[h.by]) m.players[h.by].stats.dealt += Number.isFinite(dmg) ? dmg : 0;
@@ -520,7 +505,7 @@ function applyHits(m) {
       t.hp = clamp(t.hp - n.dmg + n.heal, 0, t.ch.health); // healing never goes above 100%
       if (n.dmg > 0) t.stats.taken += Number.isFinite(n.dmg) ? n.dmg : before;
       if (n.dmg > 0 || n.heal > 0) ev(m, 'hp', { pid: t.id, dmg: n.dmg, heal: n.heal, x: t.x, y: t.y, srcs: n.srcs });
-      if (n.hit) { // ground rule 7: any hit breaks casting and meditation; the cost stays spent
+      if (n.hit) { // ground rule 7: a hit that gets through breaks casting and meditation; the cost stays spent
         if (t.cast && !t.cast.done) { ev(m, 'broken', { pid: t.id, name: t.cast.move.name }); say(t, `${t.cast.move.name.toUpperCase()} BROKEN`); t.cast = null; }
         if (t.med) stopMed(m, t, 'MEDITATION BROKEN');
       }

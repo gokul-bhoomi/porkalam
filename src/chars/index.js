@@ -1,4 +1,5 @@
-import krishna from './krishna.js';
-import rajaraja from './rajaraja.js';
+import siddhan from './siddhan.js';
+import veeran from './veeran.js';
 
-export const CHARS = { krishna, rajaraja };
+// P1 is the Mage, P2 the Warrior.
+export const CHARS = { siddhan, veeran };

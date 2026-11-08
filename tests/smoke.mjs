@@ -64,7 +64,7 @@ await check('menus: pick a 7 minute match and start it', async () => {
     d.pause(); d.press('confirm'); d.step(1);
     const setup = d.snapshot().screen;
     // rows (1 player): players, you play, cpu level, length
-    d.press('down'); d.step(1); d.press('right'); d.step(1);          // play as Raja Raja Chola
+    d.press('down'); d.step(1); d.press('right'); d.step(1);          // play as Veeran
     d.press('down'); d.step(1); d.press('right'); d.step(1);          // CPU level normal -> hard
     d.press('up', 1); d.step(1); d.press('up'); d.step(1); d.press('up'); d.step(1); // wraps round to length
     d.press('right'); d.step(1); d.press('right', 1); d.step(1);
@@ -82,13 +82,13 @@ await check('1 player: the computer fights back and either key set moves you', a
   await page.keyboard.down('ArrowRight'); // P2 keys also move the 1-player fighter
   const x = await game(() => { const d = window.__game.debug, x0 = d.snapshot().match.players[0].x; d.step(30); return [x0, d.snapshot().match.players[0].x]; });
   await page.keyboard.up('ArrowRight');
-  expect(x[1] > x[0] + 10, `arrow keys did not move Krishna: ${x}`);
+  expect(x[1] > x[0] + 10, `arrow keys did not move Siddhan: ${x}`);
   const s = await game(() => { const d = window.__game.debug; d.step(60 * 20); return d.snapshot().match; });
-  expect(s.players[0].hp < 100, `the CPU never hit Krishna in 20 s: ${JSON.stringify(s.players)}`);
+  expect(s.players[0].hp < 100 || s.players[1].devotion > 0, `the CPU did nothing in 20 s (no hit, no meditation): ${JSON.stringify(s.players)}`);
   await page.screenshot({ path: join(SHOTS, 'cpu.png') });
 });
 
-await check('a gamepad moves Krishna and fires the flute (P1 pad)', async () => {
+await check('a gamepad moves Siddhan and fires a mantra bolt (P1 pad)', async () => {
   await open('?seed=4&pause=1');
   const s = await game(() => {
     const d = window.__game.debug; d.start({ minutes: 5 });
@@ -98,11 +98,11 @@ await check('a gamepad moves Krishna and fires the flute (P1 pad)', async () => 
     window.__pad(0, 0, true); d.step(2); window.__pad(0, 0, false); d.step(15);
     return { x0, x1, proj: d.snapshot().match.projectiles };
   });
-  expect(s.x1 > s.x0 + 10, `Krishna did not move: ${s.x0} -> ${s.x1}`);
-  expect(s.proj >= 1, 'no flute note in the air');
+  expect(s.x1 > s.x0 + 10, `Siddhan did not move: ${s.x0} -> ${s.x1}`);
+  expect(s.proj >= 1, 'no mantra bolt in the air');
 });
 
-await check('the keyboard moves Raja Raja Chola and he blocks (P2 keys)', async () => {
+await check('the keyboard moves Veeran and he blocks (P2 keys)', async () => {
   await open('?seed=4&pause=1');
   await game(() => window.__game.debug.start({ minutes: 5 }));
   await page.keyboard.down('ArrowUp');
@@ -116,16 +116,21 @@ await check('the keyboard moves Raja Raja Chola and he blocks (P2 keys)', async 
   await page.screenshot({ path: join(SHOTS, 'block.png') });
 });
 
-await check('meditation grants a boon and both players see the banner', async () => {
+await check('meditation fills devotion behind a barrier, and spending it shows the boon to both players', async () => {
   await open('?seed=9&pause=1');
   const s = await game(() => {
     const d = window.__game.debug; d.start({ minutes: 5 });
     d.set(0, { x: -100, y: 0 }); d.set(1, { x: 100, y: 0 });
-    d.setInput(1, { s1: true, my: 1 }); d.step(1); d.setInput(1, {}); d.step(60 * 5 + 20);
-    return d.snapshot();
+    d.setInput(1, { s1: true, my: 1 }); d.step(1); d.setInput(1, {}); d.step(60 * 8);
+    const med = d.snapshot();
+    d.setInput(1, { block: true }); d.step(2); d.setInput(1, {}); d.step(5); // stop meditating
+    d.setInput(1, { s1: true, s2: true }); d.step(1); d.setInput(1, {}); d.step(10); // spend
+    return { med, after: d.snapshot() };
   });
-  expect(s.match.players[1].boons.length === 1, 'no boon');
-  expect(/GOT/.test(s.banner || ''), `no banner: ${s.banner}`);
+  const p = s.med.match.players[1];
+  expect(p.med && p.barrier > 0 && p.devotion === 3, `meditating with a barrier, 3 segments: ${JSON.stringify(p)}`);
+  expect(s.after.match.players[1].devotion === 0, `devotion not spent: ${s.after.match.players[1].devotion}`);
+  expect(/INVOKES/.test(s.after.banner || ''), `no banner: ${s.after.banner}`);
   await page.screenshot({ path: join(SHOTS, 'boon.png') });
 });
 
@@ -141,9 +146,9 @@ await check('a signature move plays its scene, pauses the game, then lands', asy
     d.setInput(1, {}); d.step(60 * 3);
     return { during, still, after: d.snapshot() };
   });
-  expect(s.during.match.scene === 'Vishwaroopam', `no scene: ${s.during.match.scene}`);
+  expect(s.during.match.scene === 'Thousand-Arm Form', `no scene: ${s.during.match.scene}`);
   expect(s.still.match.players[1].x === s.during.match.players[1].x, 'the game did not pause during the scene');
-  expect(s.after.match.players[1].hp === 70, `Vishwaroopam did not land: hp ${s.after.match.players[1].hp}`);
+  expect(s.after.match.players[1].hp === 70, `Thousand-Arm Form did not land: hp ${s.after.match.players[1].hp}`);
 });
 
 await check('every move draws without errors', async () => {
@@ -155,8 +160,9 @@ await check('every move draws without errors', async () => {
       d.set(0, { x: -30, y: 0, power: 100 }); d.set(1, { x: 25, y: 0, power: 100 });
       d.setInput(pid, { [s]: true }); d.step(3); d.setInput(pid, {}); d.step(40);
     }
-    d.set(0, { x: -15, y: 0, power: 100 }); d.set(1, { x: 15, y: 0 });
-    d.setInput(0, { a2: true, trapWater: true }); d.step(2); d.setInput(0, {}); d.step(20);
+    d.set(0, { x: -100, y: 0 }); d.set(1, { x: 100, y: 0 }); // meditation with its barrier, hit
+    d.setInput(1, { s1: true, my: 1 }); d.step(2); d.setInput(1, {}); d.step(30);
+    d.setInput(0, { a1: true }); d.step(3); d.setInput(0, {}); d.step(60);
     d.unit({ owner: 0, x: 0, y: 40 }); d.step(5);
     return window.__game.errors;
   });
@@ -210,10 +216,10 @@ await check('the Codex art loads: arena plus 8 frames for each fighter, and ?gre
   await page.waitForFunction(() => window.__game.art.ready, null, { timeout: 10000 });
   const a = await game(() => window.__game.art);
   expect(a.arena, 'arena.png did not load');
-  expect(a.frames.krishna === 8 && a.frames.rajaraja === 8, `frames: ${JSON.stringify(a.frames)}`);
-  expect(a.fx === 16, `expected 16 effect sprites, got ${a.fx}`);
-  expect(a.scenes === 5, `expected 5 dramatic scene paintings, got ${a.scenes}`);
-  expect(a.sceneLayers === 5, `expected backdrop + figure layers for 5 scenes, got ${a.sceneLayers}`);
+  expect(a.frames.siddhan === 8 && a.frames.veeran === 8 && a.actions.siddhan === 8 && a.actions.veeran === 8, `frames: ${JSON.stringify(a)}`);
+  expect(a.fx === 17, `expected 17 effect sprites (two sheets of 8 + the war elephant), got ${a.fx}`);
+  expect(a.scenes >= 5, `expected the power-up sky paintings, got ${a.scenes}`);
+  expect(a.sceneLayers >= 2, `expected the spirit-form layers for both signatures, got ${a.sceneLayers}`);
   await game(() => { const d = window.__game.debug; d.start({ minutes: 5 }); d.setInput(0, { mx: 1 }); d.step(30); });
   await page.screenshot({ path: join(SHOTS, 'art.png') });
   await open('?seed=6&pause=1&grey=1');

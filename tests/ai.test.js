@@ -27,7 +27,7 @@ test('computer vs computer finishes a match at every level, with real fighting',
   }
 });
 
-test('the computer uses its specials, walls and (as the King) meditation', () => {
+test('the computer uses its specials, walls and meditation', () => {
   const seen = { s: [0, 0], wall: [0, 0], med: 0, boon: 0 };
   for (const seed of [1, 2, 3]) {
     const m = createMatch({ seed, time: 180 });
@@ -44,7 +44,7 @@ test('the computer uses its specials, walls and (as the King) meditation', () =>
   }
   assert.ok(seen.s[0] > 2 && seen.s[1] > 2, `specials ${seen.s}`);
   assert.ok(seen.wall[0] > 0 && seen.wall[1] > 0, `walls ${seen.wall}`);
-  assert.ok(seen.med > 0, 'the King never meditated');
+  assert.ok(seen.med > 0, 'nobody meditated');
 });
 
 test('a harder computer beats an easier one more often than not', () => {
@@ -73,7 +73,7 @@ test('a human-controlled side gets no computer input', () => {
 // Whichever fighter you pick, a level should mean the same difficulty: the computer Krishna and the computer
 // King are tuned (SKILL_ADJUST in src/ai.js) to be about equally strong at each level. If move numbers change,
 // this may drift: re-measure and adjust SKILL_ADJUST rather than loosening the test.
-test('at each level the computer Krishna and the computer King are about equally strong', () => {
+test('at each level the computer Mage and the computer Warrior are about equally strong', () => {
   for (const lv of LEVEL_IDS) {
     let k = 0;
     const n = 40;
@@ -82,6 +82,6 @@ test('at each level the computer Krishna and the computer King are about equally
       for (let i = 0; i < 130 / STEP && m.phase === 'fight'; i++) stepMatch(m, c.map((x) => cpuInput(m, x, STEP)));
       const w = m.result?.winner; k += w === 0 ? 1 : w == null ? 0.5 : 0;
     }
-    assert.ok(k / n >= 0.3 && k / n <= 0.7, `${lv}: Krishna won ${Math.round((100 * k) / n)}% of CPU-vs-CPU matches`);
+    assert.ok(k / n >= 0.3 && k / n <= 0.7, `${lv}: the Mage won ${Math.round((100 * k) / n)}% of CPU-vs-CPU matches`);
   }
 });

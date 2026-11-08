@@ -1,7 +1,7 @@
 import { createMatch, stepMatch } from '../src/sim.js';
 import { STEP } from '../src/config.js';
 
-export const K = 0, R = 1; // Krishna is P1, Raja Raja Chola is P2
+export const K = 0, R = 1; // P1 = Siddhan (Mage), P2 = Veeran (Warrior)
 
 // A match with the fighters placed where a test wants them.
 export function match(o = {}) {
@@ -24,7 +24,7 @@ export function tap(m, pid, button, extra = {}) {
   stepMatch(m, a); stepMatch(m, b);
   for (let i = 0; i < 30 && m.players[pid].chord; i++) stepMatch(m, b);
 }
-// use the held boon: two special buttons pressed together
+// spend devotion on a boon: two special buttons pressed together
 export function useBoon(m, pid, a = 's1', b = 's2') { tap(m, pid, a, { [b]: true }); }
 // collect every event of a type over a run
 export function events(m, type) { return m.events.filter((e) => e.type === type); }

@@ -1,33 +1,26 @@
-# Class rules (agreed 2026-11-07)
+# Class rules (agreed 2026-11-07, changed by the owner 2026-11-08)
 
 These rules sit on top of [GROUND-RULES.md](GROUND-RULES.md) and never contradict it.
+
+**Theme (owner, 2026-11-08):** the game is *inspired by Hindu mythology*. The fighters are original characters: the mythology lives in the arena, costumes and ornament. The real gods (Shiva, Murugan, Brahma) appear only as givers of boons.
+
+There are **two classes, Mages and Warriors**. There are no Monsters (removed to keep the game simple).
 
 ## Shared by both classes
 - **Power bar size and refill speed are the same for every class.**
 - **Each character has their own special block.** The ground rules still apply: holding block longer makes it stronger.
-- **Every character has the same number of basic moves: 2 basic attacks + 1 block.** Traps come on top, from the ground rules.
+- **Every character has the same number of basic moves: 2 basic attacks + 1 block.**
+- **Class move: meditation**, for both classes (ground rule 11). The god who answers is random; nobody picks one.
+- **Boons are strictly single-use**: each one is paid for with devotion.
+- **Brahmastra** is a divine-weapon boon that only Brahma grants. Both fighters reach 0 health at once, which makes it a draw.
 
-## God
+## Mage
 - **Movement:** slow, can't run. A short blink costs power.
 - **Basic moves:** mostly mid/long range. Weak up close.
 - **Special moves:** may have *anywhere* range.
-- **Arena changes:** may apply arena changes, one at a time.
-- **Call a King:** may call any King as an AI helper for 15 s.
-- **Ultimate: Brahmastra.**
-  - Requirements: health below 5%, plus all of the God's power.
-  - Cast: a long chant (~5 s) that a hit breaks.
-  - Effect: both fighters reach 0 health at once, which makes it a draw.
+- **Arena changes:** may apply arena changes later, one at a time (not in this version).
 
-## King
+## Warrior
 - **Movement:** fast.
-- **Weapon:** **one weapon per King.** Basic and special moves come from it.
+- **Weapon:** **one weapon per Warrior.** Basic and special moves come from it.
 - **No arena changes.**
-- **Class ability: meditation.**
-  - The god who answers is random. The King doesn't pick one. (Changed by the owner on 2026-11-07.)
-  - 5–10 s of continuous meditation. The King can't move.
-  - The meter only fills while the opponent is beyond a set distance.
-  - A hit breaks the meditation, and only that attempt is lost. **Completed meditations always count**, so the boon level never resets.
-  - The boon is random from that god's list. 1st = small, 2nd = medium, 3rd and later = big.
-- **Boons are strictly single-use.** A King can hold 1 at a time, under the ground rules, and can't meditate again until it's used.
-- **The opponent god** may later answer a meditation, but rarely. (Not in this version.)
-- **Brahmastra as a boon only ever comes from Brahma.**

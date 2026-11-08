@@ -1,6 +1,6 @@
 // Drawing on a 480x270 canvas: the generated art (src/art.js) where it exists, grey-box shapes otherwise.
 // Only reads the match state.
-import { W, H, ARENA, TUNE } from './config.js';
+import { W, H, RES, ARENA, TUNE } from './config.js';
 import { ACTIONS, LABELS, KEYS, KEY_NAME, PAD, PAD_NAMES } from './input.js';
 import { opponent, chargeOf } from './sim.js';
 import { ART, drawSprite, drawFx as fxSprite, drawPortrait, POSES } from './art.js';
@@ -112,12 +112,6 @@ function drawArena() {
   ring(CX, CY, r, r * SQ, '#d8d0bf', 1);
 }
 
-function drawMark(mk) { // scuffs and traps share this exact drawing
-  if (fxArt('scuff')) { const w = Z(mk.size) * 2.6; fxSprite(G, 'scuff', sx(mk.x), sy(mk.y), w, { h: w * SQ, flip: mk.rot > 0, alpha: 0.85 }); return; }
-  const x = sx(mk.x), y = sy(mk.y), c = Math.cos(mk.rot) * Z(mk.size), s = Math.sin(mk.rot) * Z(mk.size) * SQ;
-  line(x - c, y - s, x + c, y + s, 'rgba(50,40,30,.55)', 1);
-  line(x - s * 0.6, y + c * 0.4, x + s * 0.6, y - c * 0.4, 'rgba(50,40,30,.45)', 1);
-}
 
 // ---------- fighters ----------
 // A wall stays where it was built. It looks weaker as its strength gets used up.
@@ -130,7 +124,7 @@ function drawWall(w) {
     const len = 2 * Z(w.hw) * 1.25, wide = len * Math.max(0.55, Math.abs(px));
     const up = (w.look === 'hill' ? 0.45 + 0.55 * k : 0.6 + 0.4 * k) * len / art.w * art.h;
     fxSprite(G, w.look === 'hill' ? 'hill' : 'arrowWall', x, y + 2, wide, { h: up, anchor: 'bottom' });
-  } else if (w.look === 'hill') { // Govardhana: a mound that grows
+  } else if (w.look === 'hill') { // rising earth: a mound that grows
     const h = 4 + k * 16;
     G.fillStyle = '#6d8f3d'; G.beginPath(); G.ellipse(x, y, Math.max(Math.abs(px) * hw, hw * 0.6), h, 0, Math.PI, 0); G.fill();
     line(x - px * hw, y - py * hw * SQ, x + px * hw, y + py * hw * SQ, '#4b6527', 2);
@@ -166,7 +160,7 @@ function drawFighter(m, p, now) {
     ell(x, y - 13, 5, 5, c);
     ring(x, y - 4, 8, 7, 'rgba(0,0,0,.5)');
     line(x + p.face.x * 4, y - 4 + p.face.y * 3, x + p.face.x * 11, y - 4 + p.face.y * 7, '#fff', 2); // facing
-    txt(p.ch.cls === 'god' ? 'K' : 'R', x, y - 8, '#fff', 'center', 8, null);
+    txt(p.ch.cls === 'mage' ? 'M' : 'W', x, y - 8, '#fff', 'center', 8, null);
   }
   G.globalAlpha = 1;
   if (m.phase === 'done') return; // no cast bars or status text once it's over
@@ -186,7 +180,14 @@ function drawFighter(m, p, now) {
     }
   }
   if (p.med) {
-    const k = p.med.meter / p.med.need, far = Math.hypot(p.x - o.x, p.y - o.y) > TUNE.meditate.dist;
+    const M = TUNE.meditate, k = p.med.meter / M.segTime, far = Math.hypot(p.x - o.x, p.y - o.y) > M.dist;
+    // the barrier: a golden dome that fades as it soaks up hits
+    const bs = p.med.barrier / M.barrier, rx = Z(13), ry = Z(17), cy = y - Z(14), fl = 0.75 + 0.25 * Math.sin(now * 7);
+    const g = G.createRadialGradient(x, cy, 2, x, cy, ry * 1.2);
+    g.addColorStop(0, 'rgba(255,220,120,0)'); g.addColorStop(0.75, `rgba(255,210,110,${0.10 * bs})`); g.addColorStop(1, `rgba(255,230,150,${0.35 * bs * fl})`);
+    G.fillStyle = g; G.beginPath(); G.ellipse(x, cy, rx, ry, 0, 0, Math.PI * 2); G.fill();
+    ring(x, cy, rx, ry, `rgba(255,236,170,${0.25 + 0.6 * bs * fl})`, 1);
+    ring(x, y + 1, Z(13), Z(13) * SQ, `rgba(255,220,120,${0.5 * bs})`, 1);
     ring(x, y - 6, 14, 12, 'rgba(0,0,0,.4)', 3);
     ring(x, y - 6, 14, 12, '#ffd34a', 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
     txt('MEDITATING', x, top, '#ffd34a', 'center'); top -= 10;
@@ -196,8 +197,8 @@ function drawFighter(m, p, now) {
 }
 
 // The match is over: the loser falls (knockout) or slumps (time up), the winner celebrates.
-// Krishna plays his flute; the King raises his drawn bow to the sky. Timed from when the match ended.
-const VICTORY = { krishna: 'shootWind', rajaraja: 'cast' };
+// The winner raises a glowing hand to the sky. Timed from when the match ended.
+const VICTORY = { siddhan: 'cast', veeran: 'cast' };
 function drawEnd(m, p, x, y, now) {
   const P = POSES[p.ch.id], a = anim[p.id];
   if (!P || !ART.sheets[p.ch.id]?.act) return false;
@@ -205,11 +206,7 @@ function drawEnd(m, p, x, y, now) {
   const t = now - a.doneAt, flip = p.face.x < 0, won = m.result?.winner === p.id;
   if (won) {
     const bob = Math.abs(Math.sin(t * 3)) * 1.5;
-    if (p.ch.id === 'krishna' && Math.floor(t * 1.5) % 2 === 0) { // little notes drifting up from the flute
-      const k = (t * 1.5) % 1;
-      fxSprite(G, 'notes', x + (flip ? -14 : 14), y - 40 - k * 16, 12, { alpha: 1 - k, flip });
-    }
-    if (p.ch.id !== 'krishna') { const g = 0.5 + 0.5 * Math.sin(t * 6); ell(x + (flip ? -12 : 12), y - 52, 4 + 2 * g, 4 + 2 * g, `rgba(255,220,120,${0.35 * g})`); }
+    const g = 0.5 + 0.5 * Math.sin(t * 6); ell(x + (flip ? -12 : 12), y - 52, 4 + 2 * g, 4 + 2 * g, `rgba(255,220,120,${0.35 * g})`);
     return drawSprite(G, p.ch.id, 'act', P[VICTORY[p.ch.id]], x, y - bob, flip);
   }
   if (p.hp > 0) { // time up: hurt and beaten, but standing
@@ -228,13 +225,21 @@ function drawEnd(m, p, x, y, now) {
 function drawProjectile(pr0, now) {
   const pr = { ...pr0, r: Z(pr0.r) };
   const x = sx(pr.x), y = sy(pr.y) - 6, a = Math.atan2(pr.vy * SQ, pr.vx), ca = Math.cos(a), sa = Math.sin(a);
-  const name = { note: 'notes', chakra: 'chakra', wave: 'wave', tiger: 'tiger', fire: 'fire', spear: 'spear' }[pr.shape] || 'arrow';
+  if (pr.shape === 'orb') { // the mage's mantra bolt: a glowing teal orb with a short tail
+    const hy = sy(pr.y) - 18, r = Z(pr0.r) * 1.3, g = G.createRadialGradient(x, hy, 0, x, hy, r * 2.2);
+    g.addColorStop(0, 'rgba(235,255,252,1)'); g.addColorStop(0.35, 'rgba(90,230,215,.9)'); g.addColorStop(1, 'rgba(40,160,170,0)');
+    ell(x, sy(pr.y), r * 0.8, r * 0.3, 'rgba(0,0,0,.2)');
+    for (let i = 1; i <= 3; i++) ell(x - ca * i * r * 0.9, hy - sa * i * r * 0.9, r * (1 - i * 0.22), r * (1 - i * 0.22), `rgba(90,230,215,${0.35 - i * 0.09})`);
+    G.fillStyle = g; G.beginPath(); G.arc(x, hy, r * 2.2, 0, Math.PI * 2); G.fill();
+    return;
+  }
+  const name = { note: 'notes', chakra: 'chakra', wave: 'wave', tiger: 'tiger', elephant: ART.fx.elephant ? 'elephant' : 'tiger', fire: 'fire', spear: 'spear' }[pr.shape] || 'arrow';
   if (fxArt(name)) {
-    const size = { notes: 11, chakra: pr0.r * 2.8, wave: pr0.r * 2.4, tiger: 30, fire: pr0.r * 4, spear: 18, arrow: 16 }[name] * SC * (name === 'tiger' ? 1.6 : 1);
+    const size = { notes: 11, chakra: pr0.r * 2.8, wave: pr0.r * 2.4, tiger: 30, elephant: 34, fire: pr0.r * 4, spear: 18, arrow: 16 }[name] * SC * (name === 'tiger' || name === 'elephant' ? 1.6 : 1);
     const hy = sy(pr.y) - 18; // shots fly at chest height, with a shadow on the sand
     ell(x, sy(pr.y), size * 0.3, size * 0.1, 'rgba(0,0,0,.25)');
     const flip = name === 'notes' && pr.vx < 0; // notes stay upright
-    if (name === 'tiger') for (let i = 3; i >= 1; i--) fxSprite(G, 'fire', x - ca * i * 16, hy - sa * i * 16, size * (0.9 - i * 0.15), { rot: Math.cos(a) < 0 ? a - Math.PI : a, flip: Math.cos(a) < 0, alpha: 0.6 - i * 0.12 }); // flame trail
+    if (name === 'tiger' || name === 'elephant') for (let i = 3; i >= 1; i--) fxSprite(G, 'fire', x - ca * i * 16, hy - sa * i * 16, size * (0.9 - i * 0.15), { rot: Math.cos(a) < 0 ? a - Math.PI : a, flip: Math.cos(a) < 0, alpha: 0.6 - i * 0.12 }); // flame trail
     if (pr0.name === 'Pashupatastra') { // crackling lightning behind Shiva's arrow
       G.strokeStyle = 'rgba(190,230,255,.85)'; G.lineWidth = 1; G.beginPath(); G.moveTo(x, hy);
       for (let i = 1; i <= 6; i++) G.lineTo(x - ca * i * 9 + (hash(i, Math.floor(now * 30)) - 0.5) * 8, hy - sa * i * 9 + (hash(i + 9, Math.floor(now * 30)) - 0.5) * 8);
@@ -251,7 +256,7 @@ function drawProjectile(pr0, now) {
       for (let i = 0; i < 4; i++) { const t = now * 20 + i * Math.PI / 2; line(x, y, x + Math.cos(t) * pr.r, y + Math.sin(t) * pr.r * 0.8, '#fff8d0'); }
       break;
     case 'wave': for (const k of [1, 0.6]) ring(x, y, pr.r * k, pr.r * k * 0.7, k === 1 ? '#c9b6ff' : '#e6dcff', 2, a - 1.1, a + 1.1); break;
-    case 'tiger': ell(x, y, pr.r + 2, pr.r, '#ff8a1e'); line(x - ca * 16, y - sa * 16, x, y, '#ffcf6a', 3); txt('T', x, y - 4, '#3a1a00', 'center', 8, null); break;
+    case 'tiger': case 'elephant': ell(x, y, pr.r + 2, pr.r, '#ff8a1e'); line(x - ca * 16, y - sa * 16, x, y, '#ffcf6a', 3); txt('E', x, y - 4, '#3a1a00', 'center', 8, null); break;
     case 'fire': ell(x, y, pr.r, pr.r, '#ff5a2a'); ell(x, y, pr.r * 0.5, pr.r * 0.5, '#ffe08a'); break;
     case 'spear': line(x - ca * 10, y - sa * 10, x + ca * 3, y + sa * 3, '#e8f0ff', 2); break;
     default: line(x - ca * 7, y - sa * 7, x + ca * 2, y + sa * 2, '#f5e6c0', 1); R(x + ca * 2 - 1, y + sa * 2 - 1, 2, 2, '#fff');
@@ -297,8 +302,6 @@ function poseOf(m, p) {
   const c = p.cast, k = c.move.cast > 0 ? c.t / c.move.cast : 1;
   if (c.slot === 'a1' || (c.slot === 's1' && c.move.kind === 'projectile' && p.ch.weapon === 'bow') || (c.slot === 's2' && p.ch.weapon === 'bow')) return P.shootWind;
   if (c.slot === 'a2') return k < 0.6 ? P.meleeWind : P.melee;
-  if (c.slot === 's2' && p.ch.id === 'krishna') return P.shootWind; // Venu Ganam: playing the flute
-  if (c.move.kind === 'brahmastra') return P.chant ?? P.cast;
   return P.cast;
 }
 
@@ -309,10 +312,11 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now) {
   for (const f of fx) if (f.kind === 'shake') sh += f.amp * Math.max(0, 1 - (fxNow - f.t0) / f.life);
   G.save();
   if (sh) G.translate(Math.sin(now * 83) * sh, Math.cos(now * 67) * sh * 0.7);
+  const cam = sceneCamera(m); // a power-up zooms in on the caster
+  if (cam) { G.translate(CX, H / 2); G.scale(cam.z, cam.z); G.translate(-cam.fx, -cam.fy); }
   drawBackdrop(now);
+  if (m.scene) sceneSky(m);
   drawArena();
-  for (const w of m.waters) if (fxArt('water')) fxSprite(G, 'water', sx(w.x), sy(w.y), Z(w.r) * 2.3, { h: Z(w.r) * 2.3 * SQ }); else { ell(sx(w.x), sy(w.y), Z(w.r), Z(w.r) * SQ, 'rgba(60,140,220,.55)'); ring(sx(w.x), sy(w.y), Z(w.r), Z(w.r) * SQ, '#a8d8ff'); }
-  for (const mk of m.marks) drawMark(mk);
   for (const a of m.areas) {
     const k = 1 - a.t / a.delay;
     if (fxArt('danger')) { // the warning circle fills in as the arrows get closer
@@ -330,9 +334,10 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now) {
   for (const o of order) if (o.ch) drawFighter(m, o, now); else drawWall(o);
   for (const pr of m.projectiles) drawProjectile(pr, now);
   for (const f of fx) if (!f.ground) drawFx(f, fxNow);
+  if (m.scene) sceneAura(m, now);
   G.restore();
-  drawHud(m, tags);
-  if (m.scene) drawScene(m);
+  if (!m.scene) drawHud(m, tags);
+  else sceneTitle(m);
 }
 
 function drawFx(f, now) {
@@ -412,7 +417,7 @@ function drawHud(m, tags) {
     // portrait
     const pcx = X(24), pcy = 24;
     ell(pcx, pcy, 17.5, 17.5, '#1a1020');
-    if (!drawPortrait(G, p.ch.id, pcx, pcy, 16)) txt(p.ch.cls === 'god' ? 'K' : 'R', pcx, pcy - 4, p.ch.color, 'center');
+    if (!drawPortrait(G, p.ch.id, pcx, pcy, 16)) txt(p.ch.cls === 'mage' ? 'M' : 'W', pcx, pcy - 4, p.ch.color, 'center');
     ring(pcx, pcy, 17, 17, p.ch.color, 1.5); ring(pcx, pcy, 18.6, 18.6, '#c9a24a', 0.75);
     // name + tag
     txt(p.ch.name.toUpperCase(), X(46), 6, p.ch.color, al);
@@ -439,10 +444,17 @@ function drawHud(m, tags) {
     for (let i = 1; i < 10; i++) R(bx + 11.4 * i, 29, 0.5, 3, 'rgba(0,0,0,.45)');
     txt(`${Math.floor(p.power)}`, X(164), 27, '#ffd34a', al, 6);
     // boon / meditation line
-    let info = '';
-    if (p.ch.gods) info = `MEDITATIONS ${p.meditations}   ${p.boons.length ? `BOON: ${short(p.boons[0].name)}` : 'NO BOON'}`;
-    else if (p.boons.length) info = p.boons.map((b) => short(b.name)).join(' ');
-    if (info) txt(info, X(46), 36, p.boons.length ? '#ffcf6a' : '#c8bce0', al, 6);
+    // devotion: 10 segments earned by meditating; a part-filled one only counts once it's full
+    const MD = TUNE.meditate, segW = 7.2, dx0 = X(46, MD.segments * segW), part = p.med ? Math.min(1, p.med.meter / MD.segTime) : 0;
+    for (let i = 0; i < MD.segments; i++) {
+      const sxp = dx0 + (right ? MD.segments - 1 - i : i) * segW, full = i < p.devotion, tierEdge = MD.tiers.includes(i + 1);
+      R(sxp, 36, segW - 1.2, 5, '#0d0812');
+      if (full) R(sxp, 36, segW - 1.2, 5, i + 1 > MD.tiers[1] ? '#fff2b0' : i + 1 > MD.tiers[0] ? '#ffcf6a' : '#e0a040');
+      else if (i === p.devotion && part > 0) R(sxp, 36 + 5 * (1 - part), segW - 1.2, 5 * part, 'rgba(255,207,106,.45)');
+      if (tierEdge) R(sxp + segW - 1.2, 35, 0.6, 7, '#c9a24a');
+    }
+    const tierName = p.devotion >= MD.tiers[2] ? 'DIVINE' : p.devotion >= MD.tiers[1] ? 'MEDIUM' : p.devotion >= MD.tiers[0] ? 'SMALL' : '';
+    txt(tierName ? `BOON: ${tierName}` : 'DEVOTION', X(46 + MD.segments * segW + 4), 35.5, tierName ? '#ffcf6a' : '#a898c0', al, 6);
   }
   // timer medallion
   const low = m.timeLeft <= 30, tg = G.createLinearGradient(0, 3, 0, 35);
@@ -453,18 +465,19 @@ function drawHud(m, tags) {
 }
 
 // ---------- dramatic scenes (ground rule 4: the game pauses while one plays) ----------
-// A 2.5 s cut-in: flash, the painting slides in on a slanted panel, letterbox bars close in, the camera
-// drifts and zooms, light rays / streaks / sparks in the scene's colours, the move name slams in, white flash out.
-// Paintings are art/scene_<key>.png; without one, a painted backdrop with the fighter drawn large stands in.
+// Owner, 2026-11-08: like a fighting game's super move, the game itself stays on screen. The camera zooms in on
+// the caster, the SKY turns into the power (the scene painting, art/scene_<key>.png, fills the sky above the far
+// bank, with the fighter's spirit form for a signature), the rest of the arena dims around a spotlight, an aura
+// rises from the caster, the move's name slams in, and the camera pulls back as the move goes off.
 const SCENE_LOOK = {
-  vishwaroopam: { eyes: [[-17, 8], [20, 5]], face: [0.375, 0.21], at: [0.6, 0.16], glow: '255,214,120', spark: '255,236,170', bg: ['#2a1a5a', '#05030f'], sub: 'THE COSMIC FORM' },
-  tiger_arrow: { eyes: [[-8, -5], [18, -6]], face: [0.235, 0.3], at: [0.6, 0.33], glow: '255,130,50', spark: '255,196,96', bg: ['#7a1a10', '#140404'], sub: 'THE CHOLA TIGER' },
-  brahmastra_krishna: { face: [0.27, 0.27], at: [0.42, 0.18], glow: '255,246,214', spark: '255,255,236', bg: ['#4a3a20', '#0a0806'], sub: 'THE FINAL WEAPON' },
-  brahmastra_king: { face: [0.28, 0.25], at: [0.74, 0.38], glow: '255,246,214', spark: '255,255,236', bg: ['#4a3a20', '#0a0806'], sub: 'BOON OF BRAHMA' },
-  pashupatastra: { eyes: [[-8, -5], [18, -6]], face: [0.305, 0.31], at: [0.82, 0.37], glow: '160,215,255', spark: '210,240,255', bg: ['#1a2a6a', '#03050f'], sub: 'BOON OF SHIVA' },
+  siddhan_sig: { face: [0.3, 0.3], at: [0.62, 0.35], glow: '120,240,230', spark: '200,255,250', bg: ['#123a4a', '#03080c'], sub: 'THE MAGE AWAKENS' },
+  veeran_elephant: { fallback: 'veeran_sig', face: [0.25, 0.3], at: [0.6, 0.33], glow: '255,130,50', spark: '255,196,96', bg: ['#7a1a10', '#140404'], sub: 'THE WAR ELEPHANT' },
+  shakti_vel: { face: [0.4, 0.3], at: [0.7, 0.4], glow: '255,200,90', spark: '255,240,190', bg: ['#5a3a10', '#0a0604'], sub: 'DIVINE BOON OF MURUGAN' },
+  brahmastra: { face: [0.4, 0.3], at: [0.7, 0.38], glow: '255,246,214', spark: '255,255,236', bg: ['#4a3a20', '#0a0806'], sub: 'DIVINE BOON OF BRAHMA' },
+  pashupatastra: { face: [0.4, 0.3], at: [0.82, 0.37], glow: '160,215,255', spark: '210,240,255', bg: ['#1a2a6a', '#03050f'], sub: 'DIVINE BOON OF SHIVA' },
 };
-export const sceneKey = (name, chId) => ({ Vishwaroopam: 'vishwaroopam', 'Tiger Arrow': 'tiger_arrow', Pashupatastra: 'pashupatastra',
-  Brahmastra: chId === 'krishna' ? 'brahmastra_krishna' : 'brahmastra_king' })[name] || null;
+export const sceneKey = (name) => ({ 'Thousand-Arm Form': 'siddhan_sig', 'Gaja Arrow': 'veeran_elephant', Pashupatastra: 'pashupatastra',
+  Brahmastra: 'brahmastra', 'Shakti Vel': 'shakti_vel' })[name] || null;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const easeOut = (v) => 1 - (1 - v) ** 3;
 
@@ -481,112 +494,78 @@ function star(x, y, r, a) { // a four-point glint
   G.lineTo(x, y + r); G.lineTo(x - r * 0.18, y + r * 0.18); G.lineTo(x - r, y); G.lineTo(x - r * 0.18, y - r * 0.18); G.closePath(); G.fill();
 }
 
-// Three shots in 2.5 s:  1) face close-up with focus lines and a glint in the eyes,  2) flash cut to the full
-// shot, backdrop and figure moving at different depths, energy gathering, the move's name slams in,
-// 3) the energy flares to a white-out and the move goes off in the arena.
-function drawScene(m) {
-  const s = m.scene, p = m.players[s.pid], t = s.t, D = s.dur;
-  const key = sceneKey(s.name, p.ch.id), look = SCENE_LOOK[key] || { glow: '255,220,140', spark: '255,240,200', bg: [p.ch.color, '#000'], sub: '' };
-  const img = useArt && key ? ART.scenes[key] : null, lay = img ? ART.sceneLayers[key] : null;
-  const T1 = 0.95, T2 = D - 0.35;                       // shot changes
-  const face = look.face || [0.3, 0.3], at = look.at || [0.64, 0.42];
-  const inK = easeOut(clamp01(t / 0.12));
+// the camera during a power-up: zoom toward the caster, ease in, hold, ease back out
+function sceneCamera(m) {
+  const s = m.scene; if (!s) return null;
+  const p = m.players[s.pid], t = s.t, D = s.dur;
+  const e = easeOut(clamp01(t / 0.35)) * (1 - easeOut(clamp01((t - (D - 0.3)) / 0.3)));
+  return { e, z: 1 + 0.22 * e, fx: CX + (sx(p.x) - CX) * 0.6 * e, fy: H / 2 + (sy(p.y) - 22 - H / 2) * 0.5 * e };
+}
+// the world around the island becomes the power: the painting replaces sky, river and far bank, and only the
+// sand floor stays (drawn right after the backdrop, inside the camera)
+function sceneSky(m) {
+  const s = m.scene, p = m.players[s.pid], key = sceneKey(s.name), look = SCENE_LOOK[key] || {};
+  const k2 = key && !ART.scenes[key] && look.fallback ? look.fallback : key; // e.g. a painting that isn't in yet
+  const img = useArt && k2 ? ART.scenes[k2] : null, lay = img ? ART.sceneLayers[k2] : null, t = s.t, u = t / s.dur;
+  const fade = clamp01(t / 0.35) * (1 - clamp01((t - s.dur + 0.25) / 0.25));
+  if (!fade || !arenaDraw) return;
   G.save();
-  const shake = (t > T1 + 0.2 && t < T1 + 0.6) ? (1 - (t - T1 - 0.2) / 0.4) * 2.5 : t > T2 ? (t - T2) / 0.35 * 3 : 0;
-  G.translate(Math.sin(t * 90) * shake, Math.cos(t * 71) * shake);
-  G.fillStyle = `rgba(0,0,0,${0.7 * inK})`; G.fillRect(-10, -10, W + 20, H + 20);
-
-  // the panel slides in from the right (first shot only); later shots fill the screen
-  const dx = t < T1 ? (1 - inK) * (W + 80) - 40 : -60;
-  G.save();
-  G.beginPath(); G.moveTo(dx + 40, -10); G.lineTo(W + 60, -10); G.lineTo(W + 60, H + 10); G.lineTo(dx - 40, H + 10); G.closePath(); G.clip();
-  let fx0, fy0;
-  if (t < T1) { // ---- shot 1: close on the face ----
-    const u = t / T1, cx = W * 0.4, cy = H * 0.47;
-    if (img) {
-      place(img, 2.5 + 0.35 * u, face[0], face[1], cx, cy); // the whole painting: clean edges this close up
-    } else {
-      const g = G.createLinearGradient(0, 0, W, H); g.addColorStop(0, look.bg[0]); g.addColorStop(1, look.bg[1]); G.fillStyle = g; G.fillRect(-10, -10, W + 20, H + 20);
-      if (useArt && ART.sheets[p.ch.id]) { G.save(); G.translate(cx, cy + 150); G.scale(7, 7); drawSprite(G, p.ch.id, 'walk', 0, 0, 0, false); G.restore(); }
-    }
-    // anime focus lines closing in on the face, flickering
-    const seed = Math.floor(t * 24);
-    G.strokeStyle = 'rgba(255,255,255,.55)';
-    for (let i = 0; i < 46; i++) {
-      const a = (i / 46) * Math.PI * 2 + hash(i, seed) * 0.12, r0 = 120 + hash(i, seed + 1) * 50, r1 = 300;
-      G.lineWidth = 0.4 + hash(i, seed + 2) * 1.4;
-      G.beginPath(); G.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0 * 0.75); G.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1 * 0.75); G.stroke();
-    }
-    // the eyes catch the light
-    const g = clamp01((u - 0.45) / 0.25) * (1 - clamp01((u - 0.8) / 0.2));
-    if (g > 0 && look.eyes) look.eyes.forEach(([ex, ey], i) => star(cx + ex, cy + ey, (i ? 4 : 6) + (i ? 7 : 10) * g, (i ? 0.8 : 0.95) * g)); // (closed eyes in the Brahmastra paintings: no glint)
-    fx0 = cx; fy0 = cy;
-    txt(p.ch.name.toUpperCase(), 20, H - 70, p.ch.color, 'left', 16);
-  } else { // ---- shots 2 and 3: the full picture, layers at different depths ----
-    const u = clamp01((t - T1) / (D - T1));
-    if (img) {
-      if (lay) { place(lay.bg, 1.04 + 0.05 * u, 0.5, 0.5, CX - 12 * u, H / 2); place(lay.fg, 1.0 + 0.12 * u, 0.3, 0.6, W * 0.3 + 10 * u, H * 0.6); }
-      else place(img, 1.0 + 0.08 * u, 0.5, 0.5, CX - 10 * u, H / 2);
-    } else {
-      const g = G.createLinearGradient(0, 0, W, H); g.addColorStop(0, look.bg[0]); g.addColorStop(1, look.bg[1]); G.fillStyle = g; G.fillRect(-10, -10, W + 20, H + 20);
-      if (useArt && ART.sheets[p.ch.id]) { G.save(); G.translate(150, 250); G.scale(3.6 + 0.4 * u, 3.6 + 0.4 * u); drawSprite(G, p.ch.id, ART.sheets[p.ch.id].act ? 'act' : 'walk', ART.sheets[p.ch.id].act ? POSES[p.ch.id].cast : 0, 0, 0, false); G.restore(); }
-    }
-    fx0 = W * at[0] - 10 * u; fy0 = H * at[1];
-    // gathering energy: rays, a pulsing core, streaks, sparks bursting out
-    const soft = img ? 0.6 : 1, flare = clamp01((t - T2) / 0.35);
-    G.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 16; i++) {
-      const a = i * (Math.PI * 2 / 16) + t * 0.5, w = 0.06 + 0.04 * Math.sin(i * 3.1 + t * 2) + flare * 0.1;
-      G.fillStyle = `rgba(${look.glow},${(0.08 + 0.05 * Math.sin(t * 3 + i)) * soft + flare * 0.25})`;
-      G.beginPath(); G.moveTo(fx0, fy0); G.arc(fx0, fy0, 460, a - w, a + w); G.closePath(); G.fill();
-    }
-    const pulse = 60 + 25 * Math.sin(t * 9) + flare * 380;
-    const core = G.createRadialGradient(fx0, fy0, 0, fx0, fy0, pulse);
-    core.addColorStop(0, `rgba(${look.glow},${0.6 * soft + flare * 0.4})`); core.addColorStop(1, `rgba(${look.glow},0)`);
-    G.fillStyle = core; G.fillRect(0, 0, W, H);
-    G.lineCap = 'round';
-    for (let i = 0; i < 24; i++) {
-      const y = 34 + hash(i, 20) * (H - 68), sp = 320 + hash(i, 21) * 420, len = 20 + hash(i, 22) * 70;
-      const x = ((t * sp + hash(i, 23) * (W + 200)) % (W + 200)) - 100;
-      G.strokeStyle = `rgba(255,255,255,${0.1 + 0.18 * hash(i, 24)})`; G.lineWidth = 0.5 + hash(i, 25);
-      G.beginPath(); G.moveTo(x - len, y); G.lineTo(x, y); G.stroke();
-    }
-    for (let i = 0; i < 60; i++) { // sparks thrown out of the core in waves
-      const a = hash(i, 30) * Math.PI * 2, sp = 50 + hash(i, 31) * 160, life = ((t - T1) * (0.7 + hash(i, 32)) + hash(i, 33)) % 1;
-      const x = fx0 + Math.cos(a) * sp * life * 1.8, y = fy0 + Math.sin(a) * sp * life * 1.1, r = (1 - life) * (0.8 + hash(i, 34) * 1.8);
-      G.fillStyle = `rgba(${look.spark},${(1 - life) * 0.9})`; G.beginPath(); G.arc(x, y, Math.max(0.2, r), 0, Math.PI * 2); G.fill();
-    }
-    G.globalCompositeOperation = 'source-over';
+  G.setTransform(RES, 0, 0, RES, 0, 0); // the far background doesn't zoom with the camera (parallax)
+  if (img) {
+    place(lay ? lay.bg : img, 1.03 + 0.05 * u, 0.5, 0.42, CX - 8 * u, H * 0.42, fade);
+    if (lay) { G.save(); G.globalCompositeOperation = 'screen'; place(lay.fg, 1.15, 0.3, 0.55, sx(p.x) < CX ? W * 0.28 : W * 0.72, H * 0.5, 0.65 * fade); G.restore(); } // the spirit form, towering behind
+  } else {
+    const g = G.createLinearGradient(0, 0, 0, H); g.addColorStop(0, look.bg ? look.bg[1] : '#000'); g.addColorStop(1, look.bg ? look.bg[0] : '#333');
+    G.globalAlpha = fade; G.fillStyle = g; G.fillRect(-200, -200, W + 400, H + 400);
   }
-  const vg = G.createRadialGradient(CX, H / 2, H * 0.35, CX, H / 2, W * 0.62);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
-  G.fillStyle = vg; G.fillRect(0, 0, W, H);
-  G.restore(); // panel clip
-  if (t < T1) { // the panel's bright leading edge
-    G.strokeStyle = `rgba(${look.glow},${0.9 * (1 - clamp01((t / D - 0.1) / 0.1))})`; G.lineWidth = 3;
-    G.beginPath(); G.moveTo(dx + 40, -10); G.lineTo(dx - 40, H + 10); G.stroke();
+  G.restore();
+  // the sand island stays: redraw it from the arena picture, with a glowing rim
+  const rx = ARENA.r * SC * 1.04, ry = rx * SQ;
+  G.save(); G.beginPath(); G.ellipse(CX, CY, rx, ry, 0, 0, Math.PI * 2); G.clip();
+  G.imageSmoothingEnabled = true; G.drawImage(ART.arena, arenaDraw.x, arenaDraw.y, arenaDraw.w, arenaDraw.h);
+  G.restore();
+  ring(CX, CY, rx, ry, `rgba(${look.glow || '255,220,140'},${0.8 * fade})`, 1.5);
+  ring(CX, CY, rx * 1.03, ry * 1.03 + 1, `rgba(${look.glow || '255,220,140'},${0.3 * fade})`, 3);
+}
+// dim everything but the caster, and raise an aura around them (inside the camera, over the fighters)
+function sceneAura(m, now) {
+  const s = m.scene, p = m.players[s.pid], look = SCENE_LOOK[sceneKey(s.name)] || { glow: '255,220,140', spark: '255,240,200' }, t = s.t;
+  const fade = clamp01(t / 0.3) * (1 - clamp01((t - s.dur + 0.25) / 0.25)), x = sx(p.x), y = sy(p.y);
+  const dim = G.createRadialGradient(x, y - 20, 18, x, y - 20, 140);
+  dim.addColorStop(0, 'rgba(0,0,0,0)'); dim.addColorStop(1, `rgba(5,3,12,${0.55 * fade})`);
+  G.fillStyle = dim; G.fillRect(-300, -300, W + 600, H + 600);
+  G.save(); G.globalCompositeOperation = 'lighter';
+  const pulse = 0.75 + 0.25 * Math.sin(t * 12);
+  const glow = G.createRadialGradient(x, y - 22, 2, x, y - 22, 34 * pulse);
+  glow.addColorStop(0, `rgba(${look.glow},${0.55 * fade})`); glow.addColorStop(1, `rgba(${look.glow},0)`);
+  G.fillStyle = glow; G.fillRect(x - 60, y - 90, 120, 120);
+  ring(x, y + 1, Z(12) * (1 + 0.15 * Math.sin(t * 9)), Z(12) * SQ * (1 + 0.15 * Math.sin(t * 9)), `rgba(${look.glow},${0.9 * fade})`, 1.2);
+  for (let i = 0; i < 26; i++) { // energy rising up the body
+    const life = (t * (0.9 + hash(i, 40)) + hash(i, 41)) % 1, a = hash(i, 42) * Math.PI * 2, r = 6 + hash(i, 43) * 10;
+    G.fillStyle = `rgba(${look.spark},${(1 - life) * fade})`;
+    G.beginPath(); G.arc(x + Math.cos(a) * r, y - life * 60, 0.5 + (1 - life) * 1.2, 0, Math.PI * 2); G.fill();
   }
-  // letterbox bars
-  const bar = 30 * inK;
+  G.fillStyle = `rgba(${look.glow},${0.12 * fade * pulse})`; G.fillRect(x - 6, -200, 12, y + 200); // a faint pillar into the sky
+  G.restore();
+}
+// the move's name, over everything
+function sceneTitle(m) {
+  const s = m.scene, p = m.players[s.pid], look = SCENE_LOOK[sceneKey(s.name)] || { glow: '255,220,140', spark: '255,240,200', sub: '' }, t = s.t;
+  const bar = 22 * clamp01(t / 0.25) * (1 - clamp01((t - s.dur + 0.2) / 0.2));
   R(-10, -10, W + 20, bar + 10, '#000'); R(-10, H - bar, W + 20, bar + 10, '#000');
-  // title slams in on the second shot
-  const hit = clamp01((t - T1 - 0.15) / 0.3);
+  const hit = clamp01((t - 0.35) / 0.3);
   if (hit > 0) {
-    const e = easeOut(hit), sz = 1 + 1.8 * (1 - e), y = H - 62;
-    G.globalAlpha = e;
+    const e = easeOut(hit), sz = 1 + 1.6 * (1 - e), y = H - 58;
+    G.globalAlpha = e * (1 - clamp01((t - s.dur + 0.3) / 0.3));
     txt(p.ch.name.toUpperCase(), CX, y - 14, p.ch.color, 'center');
-    G.save(); G.translate(CX, y + 12); G.scale(sz, sz);
-    txt(s.name.toUpperCase(), 0, -12, '#ffe7a0', 'center', 24, 'rgba(40,16,0,.9)');
-    G.restore();
-    const lw = 150 * easeOut(clamp01((t - T1 - 0.35) / 0.4));
+    G.save(); G.translate(CX, y + 12); G.scale(sz, sz); txt(s.name.toUpperCase(), 0, -12, '#ffe7a0', 'center', 24, 'rgba(40,16,0,.9)'); G.restore();
+    const lw = 140 * easeOut(clamp01((t - 0.6) / 0.4));
     R(CX - lw, y + 38, lw * 2, 1, `rgba(${look.glow},.9)`);
-    if (look.sub) txt(look.sub, CX, y + 44, `rgba(${look.spark},.9)`, 'center', 8, null);
+    if (look.sub) txt(look.sub, CX, y + 42, `rgba(${look.spark},.95)`, 'center', 8, 'rgba(0,0,0,.8)');
     G.globalAlpha = 1;
   }
-  G.restore(); // shake
-  // flashes: in, the cut between shots, and the white-out at the end
-  const flash = Math.max(0, 1 - t / 0.12) * 0.9 + Math.max(0, 1 - Math.abs(t - T1) / 0.07) * 0.95 + clamp01((t - T2) / 0.35) ** 2 * 0.95;
-  if (flash > 0.01) { G.fillStyle = `rgba(255,252,240,${Math.min(1, flash)})`; G.fillRect(0, 0, W, H); }
+  const flash = Math.max(0, 1 - t / 0.1) * 0.7 + clamp01((t - s.dur + 0.12) / 0.12) * 0.8;
+  if (flash > 0.01) { G.fillStyle = `rgba(255,252,240,${flash})`; G.fillRect(0, 0, W, H); }
 }
 
 // ---------- screens ----------
@@ -594,13 +573,14 @@ export function drawTitle(now, pads) {
   drawBackdrop(now); drawArena();
   R(0, 0, W, H, 'rgba(10,12,20,.72)');
   txt('MYTH FIGHTER', CX, 12, '#ffcf6a', 'center', 16);
-  txt('KRISHNA (GOD)  VS  RAJA RAJA CHOLA (KING)', CX, 34, '#fff', 'center');
+  txt('SIDDHAN (MAGE)  VS  VEERAN (WARRIOR)', CX, 34, '#fff', 'center');
+  txt('INSPIRED BY HINDU MYTHOLOGY', CX, 46, '#c9b07a', 'center');
   const k3 = (k, n) => k.slice(0, n).map(KEY_NAME).join('+');
   const sp = (K) => ['s1', 's2', 's3'].map((s) => K[s][0]);
   const combos = {
     sig: ['Signature: all 3 specials', k3(sp(KEYS[0]), 3), k3(sp(KEYS[1]), 3), 'B+Y+LB'],
-    boon: ['Use boon: 2 specials', k3(sp(KEYS[0]), 2), k3(sp(KEYS[1]), 2), 'B+Y'],
-    cls: ['Meditate/Brahmastra: down+sp1', `S+${KEY_NAME(KEYS[0].s1[0])}`, `DN+${KEY_NAME(KEYS[1].s1[0])}`, 'DOWN+B'],
+    boon: ['Spend devotion: 2 specials', k3(sp(KEYS[0]), 2), k3(sp(KEYS[1]), 2), 'B+Y'],
+    cls: ['Meditate: down+sp1', `S+${KEY_NAME(KEYS[0].s1[0])}`, `DN+${KEY_NAME(KEYS[1].s1[0])}`, 'DOWN+B'],
   };
   const rows = ['move', ...ACTIONS, 'sig', 'boon', 'cls'];
   let y = 62;
@@ -621,7 +601,7 @@ export function drawSetup(now, o) {
   drawBackdrop(now); drawArena();
   R(0, 0, W, H, 'rgba(10,12,20,.65)');
   txt('MATCH SETUP', CX, 40, '#ffcf6a', 'center', 16);
-  const names = ['KRISHNA', 'RAJA RAJA CHOLA'];
+  const names = ['SIDDHAN (MAGE)', 'VEERAN (WARRIOR)'];
   const show = {
     mode: ['PLAYERS', o.mode === '1p' ? '1 PLAYER VS CPU' : '2 PLAYERS'],
     side: ['YOU PLAY', names[o.side]],

@@ -8,13 +8,14 @@ import { findBoon } from '../src/chars/gods.js';
 import { rng } from '../src/util.js';
 import { match, run, tap, useBoon, events, K, R } from './helpers.js';
 
-const krishna = CHARS.krishna, raja = CHARS.rajaraja;
-const withBoon = (m, id) => { const b = findBoon(id); m.players[R].boons.push({ id, name: b.name, god: '?' }); };
+const mage = CHARS.siddhan, warrior = CHARS.veeran;
+// start casting a boon move directly (normally bought with devotion)
+const castBoon = (m, pid, id) => { m.players[pid].cast = { move: findBoon(id), slot: 'boon', t: 0, dir: null }; };
 
 test('flute note travels and hits for its damage', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 40, y: 0 } });
   tap(m, K, 'a1'); run(m, [{}, {}], 1);
-  assert.equal(m.players[R].hp, 100 - krishna.moves.a1.damage);
+  assert.equal(m.players[R].hp, 100 - mage.moves.a1.damage);
 });
 
 test('a charged shot does more damage than a tapped one', () => {
@@ -23,8 +24,8 @@ test('a charged shot does more damage than a tapped one', () => {
     run(m, [{}, { a1: true }], hold); run(m, [{}, {}], 1);
     return 100 - m.players[K].hp;
   };
-  assert.ok(Math.abs(dmg(0.05) - raja.moves.a1.damage) < 0.2, 'a tap is the small damage');
-  assert.equal(dmg(raja.moves.a1.charge.max + 0.5), raja.moves.a1.charge.damage);
+  assert.ok(Math.abs(dmg(0.05) - warrior.moves.a1.damage) < 0.2, 'a tap is the small damage');
+  assert.equal(dmg(warrior.moves.a1.charge.max + 0.5), warrior.moves.a1.charge.damage);
   assert.ok(dmg(0.6) > dmg(0.05) && dmg(0.6) < dmg(2));
 });
 
@@ -45,12 +46,12 @@ test('palm push knocks back hard', () => {
 
 test('Sudarshana Chakra re-aims and catches a fighter who sidesteps once', () => {
   const m = match({ k: { x: -80, y: 0, power: 100 }, r: { x: 60, y: 0 } });
-  tap(m, K, 's1'); run(m, [{}, {}], krishna.moves.s1.cast);
+  tap(m, K, 's1'); run(m, [{}, {}], mage.moves.s1.cast);
   run(m, [{}, { my: 1 }], 0.4); run(m, [{}, {}], 3);
-  assert.equal(m.players[R].hp, 100 - krishna.moves.s1.damage);
+  assert.equal(m.players[R].hp, 100 - mage.moves.s1.damage);
 });
 
-test('Venu Ganam holds the King still for 3 s (he can still act)', () => {
+test('the binding chant holds the Warrior still for 3 s (he can still act)', () => {
   const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 40, y: 0 } });
   tap(m, K, 's2'); run(m, [{}, {}], 2 + 1);
   assert.ok(m.players[R].effects.hold);
@@ -60,7 +61,7 @@ test('Venu Ganam holds the King still for 3 s (he can still act)', () => {
   assert.ok(m.players[R].x > x + 10, 'free again');
 });
 
-test('a block stops Venu Ganam\'s hold', () => {
+test('a block stops the binding chant\'s hold', () => {
   const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 40, y: 0 } });
   tap(m, K, 's2'); run(m, [{}, { block: true }], 3);
   assert.ok(!m.players[R].effects.hold);
@@ -72,16 +73,16 @@ test('blink with no direction goes away from the opponent and stays inside the a
   assert.ok(m.players[K].x < -90 && Math.hypot(m.players[K].x, m.players[K].y) <= 110);
 });
 
-test('Vishwaroopam hits across the whole arena after its scene', () => {
+test('Thousand-Arm Form hits across the whole arena after its scene', () => {
   const m = match({ k: { x: -100, y: 0, power: 100 }, r: { x: 100, y: 0 } });
-  tap(m, K, 'sig'); run(m, [{}, {}], krishna.moves.sig.cast + TUNE.scene + 0.1);
-  assert.equal(m.players[R].hp, 100 - krishna.moves.sig.damage);
-  assert.equal(m.players[K].hp, 100 - krishna.moves.sig.cost.health);
+  tap(m, K, 'sig'); run(m, [{}, {}], mage.moves.sig.cast + TUNE.scene + 0.1);
+  assert.equal(m.players[R].hp, 100 - mage.moves.sig.damage);
+  assert.equal(m.players[K].hp, 100 - mage.moves.sig.cost.health);
 });
 
 test('split shot fires 3 arrows in a fan', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
-  tap(m, R, 's1'); run(m, [{}, {}], raja.moves.s1.cast);
+  tap(m, R, 's1'); run(m, [{}, {}], warrior.moves.s1.cast);
   assert.equal(m.projectiles.length, 3);
   assert.equal(new Set(m.projectiles.map((p) => p.vy.toFixed(2))).size, 3);
 });
@@ -95,41 +96,42 @@ test('pinning arrow pins for ~1.5 s from any distance', () => {
 test('arrow rain lands on the opponent\'s spot after a warning, and can be walked out of', () => {
   const hitAfter = (walk) => {
     const m = match({ k: { x: -40, y: 0 }, r: { x: 60, y: 0, power: 50 } });
-    tap(m, R, 's3'); run(m, [{}, {}], raja.moves.s3.cast);
+    tap(m, R, 's3'); run(m, [{}, {}], warrior.moves.s3.cast);
     assert.equal(m.areas.length, 1);
     run(m, [walk ? { my: 1 } : {}, {}], 1);
     return 100 - m.players[K].hp;
   };
-  assert.equal(hitAfter(false), raja.moves.s3.damage);
+  assert.equal(hitAfter(false), warrior.moves.s3.damage);
   assert.equal(hitAfter(true), 0);
 });
 
 test('boons: Damaru stuns (no moves, no block), Peacock dash can\'t be hit, Shakti Vel pierces block', () => {
   const m = match({ k: { x: -40, y: 0 }, r: { x: 40, y: 0 } });
-  withBoon(m, 'damaru'); useBoon(m, R); run(m, [{}, {}], 0.8);
+  castBoon(m, R, 'damaru'); run(m, [{}, {}], 0.8);
   assert.ok(m.players[K].effects.stun);
   stepMatch(m, [{ a1: true, block: true }, {}]);
   assert.equal(m.players[K].cast, null); assert.equal(m.players[K].block, null);
 
   const d = match({ k: { x: -40, y: 0 }, r: { x: 40, y: 0 } });
-  withBoon(d, 'peacock'); useBoon(d, R);
+  castBoon(d, R, 'peacock'); stepMatch(d);
   d.hits.push({ target: d.players[R], dmg: 10, kb: 0, from: null }); stepMatch(d);
   assert.equal(d.players[R].hp, 100);
   run(d, [{}, {}], 0.2);
   assert.ok(d.players[R].x > 60, 'dashed away');
 
   const s = match({ k: { x: -40, y: 0 }, r: { x: 60, y: 0 } });
-  withBoon(s, 'shakti'); useBoon(s, R); run(s, [{ block: true }, {}], 2);
+  castBoon(s, R, 'shakti'); run(s, [{ block: true }, {}], findBoon('shakti').cast + TUNE.scene + 1); // a divine weapon: its scene plays first
   assert.equal(s.players[K].hp, 100 - findBoon('shakti').damage);
 });
 
 test('Lotus seat makes the next meditation twice as fast, then it is used up', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  withBoon(m, 'lotus'); useBoon(m, R); run(m, [{}, {}], 0.5);
+  castBoon(m, R, 'lotus'); run(m, [{}, {}], 0.5);
   assert.ok(m.players[R].lotus);
-  tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.times[0] / 2 + 0.1);
-  assert.equal(m.players[R].meditations, 1);
-  assert.equal(m.players[R].lotus, false);
+  tap(m, R, 'cls'); run(m, [{}, {}], (TUNE.meditate.segTime / 2) * 3 + 0.05);
+  assert.equal(m.players[R].devotion, 3, 'segments fill twice as fast');
+  tap(m, R, 'block'); run(m, [{}, {}], 0.1);
+  assert.equal(m.players[R].lotus, false, 'used up when that meditation ends');
 });
 
 test('pressing a move while meditating stops the meditation', () => {
@@ -138,19 +140,21 @@ test('pressing a move while meditating stops the meditation', () => {
   assert.equal(m.players[R].med, null);
 });
 
-test('meditation is refused while a boon is held', () => {
+test('meditation is refused when the devotion bar is already full', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  withBoon(m, 'vel');
+  m.players[R].devotion = TUNE.meditate.segments;
   tap(m, R, 'cls');
-  assert.equal(m.players[R].med, null); assert.equal(m.players[R].msg.text, 'USE YOUR BOON FIRST');
+  assert.equal(m.players[R].med, null); assert.equal(m.players[R].msg.text, 'DEVOTION FULL');
 });
 
 test('two specials pressed a few frames apart still count as the boon chord', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
-  withBoon(m, 'vel');
+  m.players[R].devotion = 3;
   run(m, [{}, { s2: true }], 0.05); run(m, [{}, { s2: true, s3: true }], 0.05); run(m, [{}, {}], 0.1);
-  assert.equal(m.players[R].boons.length, 0);
-  assert.equal(events(m, 'cast').filter((e) => e.pid === R).map((e) => e.name).join(), 'Vel throw', 'no special went off');
+  assert.equal(m.players[R].devotion, 0, 'devotion spent');
+  const boon = events(m, 'boon')[0];
+  assert.ok(boon, 'a boon was bought');
+  assert.ok(!events(m, 'cast').some((e) => e.pid === R && ['Split shot', 'Pinning arrow', 'Arrow rain'].includes(e.name)), 'no special went off');
 });
 
 test('a special goes off after the short combo wait', () => {
@@ -161,7 +165,7 @@ test('a special goes off after the short combo wait', () => {
   assert.equal(m.players[R].cast?.move.name, 'Split shot');
 });
 
-test('two specials without a boon just fire the first one', () => {
+test('two specials with less than 3 devotion just fire the first one', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
   tap(m, R, 's1', { s2: true });
   assert.equal(m.players[R].cast?.move.name, 'Split shot');
@@ -182,7 +186,7 @@ test('fighters never overlap', () => {
 // A random mash of buttons for a whole match: no crash, numbers stay sane, and the same seed replays exactly.
 function mash(seed, seconds) {
   const m = createMatch({ seed, time: 60 }), r = rng(seed * 7 + 1);
-  const keys = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3'];
+  const keys = ['a1', 'a2', 'block', 's1', 's2', 's3'];
   let inp = [{}, {}];
   for (let i = 0; i < seconds * 60 && m.phase === 'fight'; i++) {
     if (i % 12 === 0) inp = [0, 1].map(() => { const o = { mx: r() * 2 - 1, my: r() * 2 - 1 }; for (const k of keys) o[k] = r() < 0.12; return o; });
@@ -190,8 +194,7 @@ function mash(seed, seconds) {
     for (const p of m.players) {
       assert.ok(p.hp >= 0 && p.hp <= 100 && p.power >= 0 && p.power <= 100, 'bars stay in range');
       assert.ok(Math.hypot(p.x, p.y) <= 110 + 1e-6, 'inside the arena');
-      assert.ok(p.boons.length <= 1);
-      assert.ok(m.traps.filter((t) => t.owner === p.id).length <= 3);
+      assert.ok(p.devotion >= 0 && p.devotion <= TUNE.meditate.segments, 'devotion stays in range');
     }
   }
   return m;

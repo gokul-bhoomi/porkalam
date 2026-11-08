@@ -6,7 +6,7 @@ import { RES } from './config.js';
 
 export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, ready: false };
 // Dramatic scene paintings (art/scene_<key>.png), drawn by drawScene in render.js.
-const SCENES = ['vishwaroopam', 'tiger_arrow', 'brahmastra_krishna', 'brahmastra_king', 'pashupatastra'];
+const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel'];
 
 // Effect sprites (walls, shots, ground patches, bursts): two sheets of 8 square cells, same format as the fighters.
 const FX_SHEETS = ['art/fx_sheet.png', 'art/fx2_sheet.png'];
@@ -20,13 +20,13 @@ const FX_NAMES = [
 const DEFAULT_FIT = { cx: 0.5, cy: 0.58, rx: 0.23, ry: 0.115 };
 // Per fighter: walk = 1-4 idle, 5-8 walk; act = the 8 action poses (see POSES).
 const SHEETS = {
-  krishna: { walk: 'art/krishna_sheet.png', act: 'art/krishna_actions.png' },
-  rajaraja: { walk: 'art/rajaraja_sheet.png', act: 'art/rajaraja_actions.png' },
+  siddhan: { walk: 'art/siddhan_sheet.png', act: 'art/siddhan_actions.png' },
+  veeran: { walk: 'art/veeran_sheet.png', act: 'art/veeran_actions.png' },
 };
 // Frame numbers in each action sheet (0-based).
 export const POSES = {
-  krishna: { shootWind: 0, shoot: 1, meleeWind: 2, melee: 3, block: 4, cast: 5, hit: 6, chant: 7 },
-  rajaraja: { shootWind: 0, shoot: 1, meleeWind: 2, melee: 3, block: 4, cast: 5, hit: 6, meditate: 7 },
+  siddhan: { shootWind: 0, shoot: 1, meleeWind: 2, melee: 3, block: 4, cast: 5, hit: 6, meditate: 7 },
+  veeran: { shootWind: 0, shoot: 1, meleeWind: 2, melee: 3, block: 4, cast: 5, hit: 6, meditate: 7 },
 };
 export const SPRITE_H = 46; // on-screen height of a fighter, in layout units (x RES real pixels)
 
@@ -101,12 +101,14 @@ export async function loadArt(base = '') {
   const sceneImgs = await Promise.all(SCENES.map((k) => loadImg(`${base}art/scene_${k}.png`)));
   SCENES.forEach((k, i) => { if (sceneImgs[i]) ART.scenes[k] = sceneImgs[i]; });
   // optional layers for parallax: backdrop (plain) and the figure (on magenta, keyed out here)
-  await Promise.all(SCENES.map(async (k) => {
+  await Promise.all(['siddhan_sig', 'veeran_sig', 'veeran_elephant'].map(async (k) => { // only the fighters' scenes have layers
     const [bg, fg] = await Promise.all([loadImg(`${base}art/scene_${k}_bg.png`), loadImg(`${base}art/scene_${k}_fg.png`)]);
     if (bg && fg) ART.sceneLayers[k] = { bg, fg: keyOut(fg).c };
   }));
   const fxImgs = await Promise.all(FX_SHEETS.map((f) => loadImg(base + f)));
   fxImgs.forEach((img, si) => { if (img) Object.assign(ART.fx, cutFx(img, FX_NAMES[si])); });
+  const ele = await loadImg(base + 'art/fx_elephant.png'); // single sprite: the Gaja Arrow's war elephant
+  if (ele) Object.assign(ART.fx, cutFx(ele, ['elephant']));
   ART.ready = true;
   return ART;
 }

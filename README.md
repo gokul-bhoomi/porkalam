@@ -1,6 +1,6 @@
 # Myth Fighter
 
-Krishna (God) vs Raja Raja Chola (King), one player against the computer or two players on one screen. Every ground rule, class rule and move from the docs works, drawn with the Codex art (or the grey-box shapes with `?grey=1`).
+Siddhan (Mage) vs Veeran (Warrior), inspired by Hindu mythology: one player against the computer or two players on one screen. Every ground rule, class rule and move from the docs works, drawn with the Codex art (or the grey-box shapes with `?grey=1`).
 
 ## Run it
 
@@ -8,7 +8,7 @@ Krishna (God) vs Raja Raja Chola (King), one player against the computer or two 
 npm run serve
 ```
 
-Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: press any button to connect; pad 1 is P1 (Krishna), pad 2 is P2 (Raja Raja Chola). The title screen lists every control.
+Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: press any button to connect; pad 1 is P1 (Siddhan), pad 2 is P2 (Veeran). The title screen lists every control.
 
 On the setup screen pick **1 player vs CPU** (choose your fighter and the CPU level: easy, normal or hard) or **2 players**, and the match length. In 1-player mode either key set, or pad 1, controls your fighter. The fight pauses itself if the window loses focus or goes into the background.
 
@@ -18,17 +18,15 @@ On the setup screen pick **1 player vs CPU** (choose your fighter and the CPU le
 | Basic attack 1 (hold to charge the shot) | F | K | A |
 | Basic attack 2 (close) | G | L | X |
 | Block (hold, lasts up to 3 s) | H | ; | RB |
-| Hold + basic 2: planted trap | Q | U | RT |
-| Hold + basic 2: water trap | E | J | LT |
 | Special 1 / 2 / 3 | R / T / Y | I / O / P | B / Y / LB |
 | Signature (all three specials together) | R+T+Y | I+O+P | B+Y+LB |
-| Class: Meditate / Brahmastra (down + special 1) | S+R | ↓+I | Stick down + B |
-| Use boon (two specials together) | R+T (any two of R/T/Y) | I+O (any two of I/O/P) | B+Y (any two of B/Y/LB) |
+| Meditate (down + special 1): fills devotion behind a barrier | S+R | ↓+I | Stick down + B |
+| Spend devotion on a boon (two specials together: 3 = small, 6 = medium, 10 = divine) | R+T (any two of R/T/Y) | I+O (any two of I/O/P) | B+Y (any two of B/Y/LB) |
 | Pause | Esc | Esc | Start |
 
 ## Art
 
-`art/` holds the art made with Codex image generation: `arena.png` (a sandbank on the Kaveri river at dusk; earlier tries are kept as `arena_sky.png` and `arena_temple.png`) and two sprite sheets per fighter, each 8 frames in a row on flat magenta: `*_sheet.png` (1-4 idle, 5-8 walk) and `*_actions.png` (attack wind-up and release, block, cast, hit, chant or meditate; see `POSES` in `src/art.js`). `scene_<name>.png` are the dramatic scene paintings (Vishwaroopam, Tiger Arrow, both Brahmastras, Pashupatastra), with `_bg` (backdrop) and `_fg` (figure on magenta) layers for depth. `drawScene` in `src/render.js` plays them as three shots: a face close-up, the layered full shot, and a white-out, then the move lands in the arena with its own effect. `fx_sheet.png` and `fx2_sheet.png` hold the effects: the two walls, every kind of shot, water, floor scuffs, bursts, sparks, arrow rain and the danger circle. `src/art.js` removes the magenta, finds the frames and lines up their feet. `art/arena.json` says where the arena floor is in `arena.png` (centre and half-widths as fractions of the image), so the game lines up with the picture. If a file is missing, the game draws its grey-box shapes instead. Press `0` in game, or open `?grey=1`, to switch to the grey-box.
+`art/` holds the art made with Codex image generation: `arena.png` (a sandbank on the Kaveri river at dusk) and two sprite sheets per fighter (`siddhan_*`, `veeran_*`), each 8 frames in a row on flat magenta: `*_sheet.png` (1-4 idle, 5-8 walk) and `*_actions.png` (ranged wind-up and release, close wind-up and strike, block, cast, hit, meditate; see `POSES` in `src/art.js`). The `scene_<name>.png` paintings are the power-ups: the two signatures (with `_bg` backdrop and `_fg` figure layers) and the gods' divine weapons. During a power-up the game stays on screen, the camera closes in on the caster, and the painting replaces the world around the sand island (`sceneSky`, `sceneAura` and `sceneTitle` in `src/render.js`). `fx_sheet.png`, `fx2_sheet.png` and `fx_elephant.png` hold the effects: walls, every kind of shot, the Gaja Arrow's war elephant, bursts, sparks, arrow rain and the danger circle. `src/art.js` removes the magenta, finds the frames and lines up their feet. `art/arena.json` says where the arena floor is in `arena.png`, so the game lines up with the picture. If a file is missing, the game draws its grey-box shapes instead. Press `0` in game, or open `?grey=1`, to switch to the grey-box. The art for the earlier Krishna / Raja Raja Chola version is kept in `art/archive_v1/` and isn't used.
 
 ## Tests
 
@@ -41,7 +39,7 @@ npm run verify
 ## Layout
 
 - `src/sim.js`: fight rules. Pure and deterministic, fixed 1/60 s step. Input = button states, output = match state.
-- `src/chars/`: character sheets and moves (`krishna.js`, `rajaraja.js`) and the gods' boon lists (`gods.js`). All numbers live here and in `src/config.js`.
+- `src/chars/`: character sheets and moves (`siddhan.js`, `veeran.js`) and the gods' boon lists (`gods.js`). All numbers live here and in `src/config.js`.
 - `src/render.js`: drawing on a 480x270 layout (canvas 1920x1080), with the art from `src/art.js` or grey-box shapes. Only reads the state.
-- `src/ai.js`: the computer opponent. It only returns button states, so it plays by the same rules; it has its own random numbers so matches stay deterministic. Each level is a skill value (easy 0.15, normal 0.6, hard 0.9) blended between a novice and an expert, plus a per-fighter adjustment (`SKILL_ADJUST`) measured so the computer Krishna and the computer King are equally strong at each level.
+- `src/ai.js`: the computer opponent. It only returns button states, so it plays by the same rules; it has its own random numbers so matches stay deterministic. Each level is a skill value (easy 0.15, normal 0.6, hard 0.9) blended between a novice and an expert, plus a per-fighter adjustment (`SKILL_ADJUST`) measured so the computer Mage and the computer Warrior are equally strong at each level.
 - `src/input.js`: keyboard and gamepads. `src/main.js`: screens, loop and the `window.__game.debug` API.

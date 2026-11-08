@@ -1,4 +1,4 @@
-# Ground rules (locked 2026-11-07)
+# Ground rules (locked 2026-11-07, owner changes 2026-11-08)
 
 These rules apply to every fighter, whatever their class. They are fixed. When code exists, each rule gets an intent test (like Euro Rush's `tests/intent.test.js`). If a change breaks one of these rules, stop and ask the owner. Don't change the rule or its test without the owner's agreement.
 
@@ -42,7 +42,8 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 - Both fighters always pay their full cost.
 
 ## 7. Interruption
-- Casting and meditation must be continuous. Any hit breaks them, and the cost is still spent.
+- Casting must be continuous. Any hit breaks it, and the cost is still spent.
+- Meditation is protected by its barrier (rule 11): ordinary hits land on the barrier and don't break it. A divine weapon, or breaking the barrier, ends it. (Owner, 2026-11-08.)
 
 ## 8. Order within one instant
 1. Movement.
@@ -55,20 +56,16 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 - Slows, stuns and similar effects have a set duration and are visible on the fighter.
 - The same kind doesn't stack. The strongest one counts.
 
-## 10. Traps
-- Traps are a basic move. Each fighter can have up to 3 active at the same time, and one comes back when one goes off.
-- Planted trap: can only be set when close to the opponent. Explodes and deals damage.
-- Water trap: a patch of ground turns to water and slows anyone in it.
-- Each trap goes off after a random 5–30 seconds.
-- Traps hurt anyone on them, including the fighter who set them.
-- The cost is paid normally, when the trap is set.
-- Not obvious: a trap is set during a normal close-range attack with the same animation, and floor scuffs from fighting look identical to traps.
-- No controller vibration.
+## 10. Traps (removed)
+- There are no traps: no trap buttons, no hidden traps, floor scuffs or water patches. (Removed by the owner on 2026-11-08 to keep the game simple.)
 
-## 11. Boons
-- A fighter can hold 1 boon at a time. (Changed from 3 by the owner on 2026-11-07.)
-- A boon is used by pressing two special move buttons together. There is no separate boon button.
-- When a boon is granted, both players see which one it was.
+## 11. Meditation, devotion and boons (owner, 2026-11-08)
+- Every fighter, of any class, can meditate (down + special 1). They can't move while meditating.
+- Meditation fills a **devotion bar of 10 segments**, and only while the opponent keeps a set distance away. **Only full segments count**: stopping, or having the barrier broken, loses the part-filled segment. Full segments are kept.
+- While meditating, a **barrier** goes up around the fighter automatically. Ordinary hits drain the barrier instead of health and don't interrupt. If the barrier breaks, meditation ends, and what the barrier couldn't hold gets through.
+- **Divine weapons** (the top boons, such as Pashupatastra) go straight through a barrier and break the meditation.
+- Devotion is spent by pressing **two special move buttons together**. There is no separate boon button. It buys the biggest boon it pays for: **3 segments = a small boon, 6 = a medium boon, 10 = a divine weapon**, from a **random god**. The boon goes off straight away.
+- When a boon is invoked, both players see which one it was and which god gave it.
 
 ## 12. Extra units and arena changes
 - Summoned helpers and copies have their own health, can be hit, and disappear when their timer ends.
