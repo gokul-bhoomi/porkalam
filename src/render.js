@@ -358,6 +358,29 @@ function drawFx(f, now) {
   }
   switch (f.kind) {
     case 'shake': case 'god': break;
+    case 'shatter': { // the island breaks: glowing fissures race out across the sand, chunks fly and fall, dust
+      G.save(); G.beginPath(); G.ellipse(CX, CY, ARENA.r * SC, ARENA.r * SC * SQ, 0, 0, Math.PI * 2); G.clip();
+      const run = easeOut(clamp01(age / 0.35)), glow = 1 - clamp01((age - 0.2) / 1.6);
+      fissures(x, y, f.seed, run, glow);
+      G.restore();
+      for (let i = 0; i < 34; i++) { // chunks of sand and stone thrown up
+        const a = hash(i, f.seed) * Math.PI * 2, sp = 30 + hash(i, f.seed + 1) * 70, up = (70 + hash(i, f.seed + 2) * 90) * age - 160 * age * age;
+        if (up < -4) continue;
+        const px = x + Z(Math.cos(a) * sp * age), py = y + Z(Math.sin(a) * sp * age) * SQ - Z(up), s2 = 1 + hash(i, f.seed + 3) * 2.2;
+        G.fillStyle = i % 3 ? `rgba(196,140,80,${1 - k})` : `rgba(110,70,40,${1 - k})`;
+        G.save(); G.translate(px, py); G.rotate(age * (4 + i)); G.fillRect(-s2 / 2, -s2 / 2, s2, s2 * 0.8); G.restore();
+      }
+      const dust = G.createRadialGradient(x, y - 6, 2, x, y - 6, Z(45) * (0.4 + k));
+      dust.addColorStop(0, `rgba(230,200,150,${0.45 * (1 - k)})`); dust.addColorStop(1, 'rgba(230,200,150,0)');
+      G.fillStyle = dust; G.beginPath(); G.ellipse(x, y - 6, Z(45) * (0.4 + k), Z(45) * (0.4 + k) * 0.7, 0, 0, Math.PI * 2); G.fill();
+      break;
+    }
+    case 'scar': { // what the shattering leaves behind: dark fissures that slowly fade
+      G.save(); G.beginPath(); G.ellipse(CX, CY, ARENA.r * SC, ARENA.r * SC * SQ, 0, 0, Math.PI * 2); G.clip();
+      fissures(x, y, f.seed, 1, 0, Math.min(1, (f.life - age) / 10));
+      G.restore();
+      break;
+    }
     case 'invoke': { // the god's light comes down on the fighter who called them
       const col = GOD_GLOW[f.god] || '255,225,150', a = Math.sin(Math.PI * Math.min(1, k * 1.1)), w = Z(9) * (1 + 0.3 * Math.sin(age * 14));
       const beam = G.createLinearGradient(x - w, 0, x + w, 0);
@@ -392,7 +415,13 @@ function drawFx(f, now) {
     }
     case 'splash': { // river water thrown up: droplets arc outward and fall, with a ring on the water
       const out = Math.hypot(f.x, f.y) > 1 ? unitDir2(f.x, f.y) : { x: 0, y: -1 }, b = f.big || 1;
-      ring(x, y, Z(6 + 14 * k) * b, Z(6 + 14 * k) * b * SQ, `rgba(230,245,255,${0.7 * (1 - k)})`, 1);
+      ring(x, y, Z(4 + 8 * k) * Math.min(b, 1.3), Z(4 + 8 * k) * Math.min(b, 1.3) * SQ, `rgba(230,245,255,${0.6 * (1 - k)})`, 1);
+      if (b > 1.5) { // a column of water thrown up, falling back
+        const h = Z(60) * (b / 2.6) * Math.sin(Math.PI * Math.min(1, k * 1.2)), wcol = Z(5);
+        const gcol = G.createLinearGradient(0, y - h, 0, y);
+        gcol.addColorStop(0, 'rgba(235,248,255,0)'); gcol.addColorStop(0.3, `rgba(220,240,255,${0.75 * (1 - k)})`); gcol.addColorStop(1, `rgba(170,215,250,${0.55 * (1 - k)})`);
+        G.fillStyle = gcol; G.beginPath(); G.moveTo(x - wcol, y); G.quadraticCurveTo(x - wcol * 0.3, y - h * 0.6, x, y - h); G.quadraticCurveTo(x + wcol * 0.3, y - h * 0.6, x + wcol, y); G.closePath(); G.fill();
+      }
       for (let i = 0; i < 14; i++) {
         const spread = (hash(i, 50) - 0.5) * 1.6, sp = (20 + hash(i, 51) * 30) * b, ang = Math.atan2(out.y, out.x) + spread;
         const dx = Math.cos(ang) * sp * age, up = (40 + hash(i, 52) * 40) * b * age - 120 * age * age;
@@ -543,6 +572,36 @@ function star(x, y, r, a) { // a four-point glint
   G.lineTo(x, y + r); G.lineTo(x - r * 0.18, y + r * 0.18); G.lineTo(x - r, y); G.lineTo(x - r * 0.18, y - r * 0.18); G.closePath(); G.fill();
 }
 
+// Long branching fissures out from an impact, reaching toward the edge. run = how far they've spread (0-1),
+// glow = molten light inside them (0-1), alpha = overall fade.
+function fissures(x, y, seed, run, glow, alpha = 1) {
+  const n = 8;
+  G.lineCap = 'round'; G.lineJoin = 'round';
+  const crack = (pts, w0) => { // tapered: each segment a little thinner than the last
+    for (let j = 1; j < pts.length; j++) {
+      const w = w0 * (1 - (j - 1) / pts.length), [ax, ay] = pts[j - 1], [bx, by] = pts[j];
+      G.beginPath(); G.moveTo(ax, ay + 0.8); G.lineTo(bx, by + 0.8); G.strokeStyle = `rgba(255,224,170,${0.45 * alpha})`; G.lineWidth = w * 0.6; G.stroke(); // lit lower lip
+      G.beginPath(); G.moveTo(ax, ay); G.lineTo(bx, by); G.strokeStyle = `rgba(35,15,5,${0.95 * alpha})`; G.lineWidth = w; G.stroke();
+      if (glow > 0) { G.strokeStyle = `rgba(255,${150 + 60 * glow | 0},70,${glow})`; G.lineWidth = w * 0.45; G.stroke(); }
+    }
+  };
+  for (let i = 0; i < n; i++) {
+    let ang = (i / n) * Math.PI * 2 + hash(i, seed) * 0.6, px = x, py = y;
+    const len = Z(35 + hash(i, seed + 1) * 65) * run, segs = 14, pts = [[px, py]];
+    for (let j = 1; j <= segs; j++) { ang += (hash(i * 17 + j, seed) - 0.5) * 1.1; const l = (len / segs) * (0.6 + hash(i * 5 + j, seed + 2) * 0.8); px += Math.cos(ang) * l; py += Math.sin(ang) * l * SQ; pts.push([px, py]); }
+    crack(pts, 2.6);
+    for (const bj of [4, 8, 11]) if (hash(i * 3 + bj, seed) > 0.45) { // side cracks
+      let ba = ang + (hash(i, seed + bj) > 0.5 ? 1 : -1) * (0.6 + hash(i, bj) * 0.7), [qx, qy] = pts[bj];
+      const bp = [[qx, qy]], bl = len * 0.22;
+      for (let j = 1; j <= 5; j++) { ba += (hash(i * 7 + j + bj, seed + 5) - 0.5) * 1.2; qx += Math.cos(ba) * bl / 5; qy += Math.sin(ba) * bl / 5 * SQ; bp.push([qx, qy]); }
+      crack(bp, 1.3);
+    }
+  }
+  const pit = G.createRadialGradient(x, y, 0, x, y, Z(18));
+  pit.addColorStop(0, `rgba(25,10,3,${0.8 * alpha})`); pit.addColorStop(0.55, `rgba(70,35,12,${0.45 * alpha})`); pit.addColorStop(1, 'rgba(70,35,12,0)');
+  G.fillStyle = pit; G.beginPath(); G.ellipse(x, y, Z(18), Z(18) * SQ, 0, 0, Math.PI * 2); G.fill();
+  if (glow > 0) { G.fillStyle = `rgba(255,160,60,${0.6 * glow})`; G.beginPath(); G.ellipse(x, y, Z(7), Z(7) * SQ, 0, 0, Math.PI * 2); G.fill(); }
+}
 const GOD_GLOW = { shiva: '150,205,255', murugan: '255,200,90', brahma: '255,240,205', krishna: '130,175,255' };
 const unitDir2 = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
 // A god rises in the sky and over the river around the island, blessing, while the fight goes on (small and

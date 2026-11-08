@@ -1,15 +1,15 @@
-// Sound and music, all synthesized with the Web Audio API (no audio files).
-// Music: a tanpura-style drone (Sa-Pa-Sa-Sa plucks) with a soft mridangam-like rhythm in raga Mohanam, louder
-// in a fight. Effects: one short synth per game event. Divine moments (a boon granted, a divine weapon,
-// a power-up) get temple bells, a choir swell and a conch. Browsers only allow sound after a key press,
-// so everything starts on the first input. M mutes.
+// Sound and music, synthesized with the Web Audio API (no audio files; the owner chose not to download any).
+// The sound is a fighting game's: dark and heavy. Music is a low drone with war drums (taiko-like booms, toms
+// and rim hits) and a tense low string ostinato in a phrygian mode; menus get the drone and a slow drum.
+// Effects are punchy and low: distorted punches, whooshes, metal clangs. Divine moments get a great gong,
+// a deep choir and brass. Browsers only allow sound after a key press, so everything starts on the first input.
+// M mutes.
 
-const SA = 146.83; // D3
-const RAGA = [0, 2, 4, 7, 9]; // Mohanam: Sa Ri Ga Pa Dha (semitones)
-const hz = (semi, oct = 0) => SA * 2 ** (semi / 12 + oct);
+const ROOT = 73.42; // D2
+const hz = (semi, oct = 0) => ROOT * 2 ** (semi / 12 + oct);
 
-let ctx = null, master = null, musicBus = null, sfxBus = null, verb = null;
-let muted = false, musicOn = false, musicLevel = 0, nextBeat = 0, beat = 0, lastPlay = {};
+let ctx = null, master = null, musicBus = null, sfxBus = null, verb = null, shaper = null;
+let muted = false, musicOn = false, musicMode = null, musicLevel = 0, nextBeat = 0, beat = 0, lastPlay = {};
 export const log = []; // names of played sounds (read by the smoke test)
 
 function init() {
@@ -17,144 +17,168 @@ function init() {
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return false;
   ctx = new AC();
-  master = ctx.createGain(); master.gain.value = muted ? 0 : 0.8; master.connect(ctx.destination);
-  // a soft hall reverb, so bells and choir ring like in a temple
-  verb = ctx.createConvolver();
-  const len = ctx.sampleRate * 2.6, ir = ctx.createBuffer(2, len, ctx.sampleRate);
-  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2.6; }
+  const comp = ctx.createDynamicsCompressor(); // glue and punch
+  comp.threshold.value = -16; comp.ratio.value = 5; comp.attack.value = 0.003; comp.release.value = 0.2;
+  master = ctx.createGain(); master.gain.value = muted ? 0 : 0.9;
+  comp.connect(master); master.connect(ctx.destination);
+  verb = ctx.createConvolver(); // a large, dark hall
+  const len = ctx.sampleRate * 3, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); let lp = 0; for (let i = 0; i < len; i++) { lp = lp * 0.7 + (Math.random() * 2 - 1) * 0.3; d[i] = lp * (1 - i / len) ** 2.2; } }
   verb.buffer = ir;
-  const wet = ctx.createGain(); wet.gain.value = 0.32; verb.connect(wet); wet.connect(master);
-  musicBus = ctx.createGain(); musicBus.gain.value = 0; musicBus.connect(master); musicBus.connect(verb);
-  sfxBus = ctx.createGain(); sfxBus.gain.value = 0.9; sfxBus.connect(master);
+  const wet = ctx.createGain(); wet.gain.value = 0.35; verb.connect(wet); wet.connect(comp);
+  musicBus = ctx.createGain(); musicBus.gain.value = 0; musicBus.connect(comp);
+  const mWet = ctx.createGain(); mWet.gain.value = 0.25; musicBus.connect(mWet); mWet.connect(verb);
+  sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(comp);
+  shaper = ctx.createWaveShaper(); // soft saturation for punches and booms
+  const curve = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = (i / 1023) * 2 - 1; curve[i] = Math.tanh(x * 3.5); }
+  shaper.curve = curve; shaper.connect(sfxBus);
   return true;
 }
 
-// call on any user input: creates/resumes the audio (browsers need a gesture first)
-export function unlock() {
+export function unlock() { // call on any user input: browsers need a gesture before audio
   if (!init()) return;
   if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 }
 export function toggleMute() {
   muted = !muted;
-  if (master) master.gain.setTargetAtTime(muted ? 0 : 0.8, ctx.currentTime, 0.05);
+  if (master) master.gain.setTargetAtTime(muted ? 0 : 0.9, ctx.currentTime, 0.05);
   return muted;
 }
 export const isMuted = () => muted;
+export const state = () => (ctx ? ctx.state : 'none');
 
 // ---------- building blocks ----------
 function env(g, t, a, peak, d) { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); }
-function osc(type, f, t, a, peak, d, out, { detune = 0, glide = null, wet = 0 } = {}) {
+function osc(type, f, t, a, peak, d, out, { glide = null, detune = 0, wet = 0, lp = null } = {}) {
   const o = ctx.createOscillator(), g = ctx.createGain();
   o.type = type; o.frequency.setValueAtTime(f, t); o.detune.value = detune;
   if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + a + d);
-  env(g, t, a, peak, d); o.connect(g); g.connect(out);
+  let node = o;
+  if (lp) { const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(lp[0], t); if (lp[1]) fl.frequency.exponentialRampToValueAtTime(lp[1], t + a + d); fl.Q.value = lp[2] || 1; o.connect(fl); node = fl; }
+  env(g, t, a, peak, d); node.connect(g); g.connect(out);
   if (wet) { const w = ctx.createGain(); w.gain.value = wet; g.connect(w); w.connect(verb); }
   o.start(t); o.stop(t + a + d + 0.05);
 }
-function noise(t, d, peak, out, { type = 'bandpass', f = 1200, q = 1, f2 = null, a = 0.005 } = {}) {
-  const n = ctx.createBufferSource(), buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * (d + a + 0.05)), ctx.sampleRate);
-  const ch = buf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
-  n.buffer = buf;
+let noiseBuf = null;
+function noise(t, d, peak, out, { type = 'bandpass', f = 1200, q = 1, f2 = null, a = 0.003, wet = 0 } = {}) {
+  if (!noiseBuf) { noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate); const ch = noiseBuf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
+  const n = ctx.createBufferSource(); n.buffer = noiseBuf;
   const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(f, t); fl.Q.value = q;
   if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + a + d);
   const g = ctx.createGain(); env(g, t, a, peak, d);
-  n.connect(fl); fl.connect(g); g.connect(out); n.start(t); n.stop(t + a + d + 0.05);
+  n.connect(fl); fl.connect(g); g.connect(out);
+  if (wet) { const w = ctx.createGain(); w.gain.value = wet; g.connect(w); w.connect(verb); }
+  n.start(t, Math.random() * 2); n.stop(t + a + d + 0.05);
 }
-// a temple bell: inharmonic partials that ring and fade
-function bell(f, t, peak = 0.25, d = 2.2, out = sfxBus) {
-  for (const [r, a] of [[1, 1], [2.76, 0.5], [5.4, 0.25], [8.9, 0.12], [0.5, 0.3]]) osc('sine', f * r, t, 0.002, peak * a, d / (r > 1 ? r ** 0.4 : 1), out, { wet: 0.8 });
+// a war drum (taiko-like): a pitched boom through saturation, plus the skin's thud
+function boom(t, peak = 0.6, f = 58, out = musicBus) {
+  osc('sine', f * 1.6, t, 0.002, peak, 0.5, out === musicBus ? out : shaper, { glide: f * 0.7 });
+  noise(t, 0.12, peak * 0.4, out, { type: 'lowpass', f: 500 });
 }
-// a choir-like swell: detuned voices on Sa, Pa and the upper Sa
-function choir(t, d = 2.2, peak = 0.06, root = 0) {
-  for (const s of [0, 7, 12, 16]) for (const det of [-9, 0, 8]) osc('triangle', hz(root + s, 1), t, d * 0.4, peak, d * 0.8, sfxBus, { detune: det, wet: 1 });
+function tom(t, peak, f, out = musicBus) { osc('sine', f, t, 0.002, peak, 0.25, out, { glide: f * 0.6 }); noise(t, 0.05, peak * 0.3, out, { f: 1500, q: 1 }); }
+function rim(t, peak, out = musicBus) { noise(t, 0.03, peak, out, { f: 3500, q: 4 }); osc('triangle', 900, t, 0.001, peak * 0.4, 0.04, out); }
+// a great gong: low inharmonic partials with a long shimmering tail
+function gong(t, peak = 0.35, f = 55) {
+  for (const [r, a, d] of [[1, 1, 4], [1.48, 0.6, 3.5], [2.03, 0.45, 3], [2.74, 0.3, 2.5], [3.9, 0.2, 2]]) osc('sine', f * r, t, 0.01, peak * a, d, sfxBus, { wet: 0.9 });
+  noise(t, 1.5, peak * 0.2, sfxBus, { f: 900, q: 0.8, a: 0.05, wet: 1 });
 }
-// a conch (shankha): a breathy horn rising into its note
-function conch(t, d = 1.4, peak = 0.16) {
-  const o = ctx.createOscillator(), g = ctx.createGain(), fl = ctx.createBiquadFilter(), lfo = ctx.createOscillator(), lg = ctx.createGain();
-  o.type = 'sawtooth'; o.frequency.setValueAtTime(hz(7, 0) * 0.94, t); o.frequency.linearRampToValueAtTime(hz(7, 0), t + 0.25);
-  lfo.frequency.value = 5.5; lg.gain.value = 3; lfo.connect(lg); lg.connect(o.frequency);
-  fl.type = 'lowpass'; fl.frequency.setValueAtTime(500, t); fl.frequency.linearRampToValueAtTime(1600, t + 0.4); fl.Q.value = 4;
-  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + 0.25); g.gain.setValueAtTime(peak, t + d - 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-  o.connect(fl); fl.connect(g); g.connect(sfxBus); g.connect(verb);
-  o.start(t); lfo.start(t); o.stop(t + d + 0.05); lfo.stop(t + d + 0.05);
-  noise(t, d * 0.8, peak * 0.25, sfxBus, { f: 900, q: 2, a: 0.2 });
+// a deep choir / low brass swell on D and A
+function choir(t, d = 2.4, peak = 0.07) {
+  for (const s of [0, 7, 12, 15]) for (const det of [-8, 0, 7]) osc('sawtooth', hz(s, 1), t, d * 0.45, peak / 2, d * 0.7, sfxBus, { detune: det, wet: 0.8, lp: [500, 900, 1] });
 }
-// a plucked string (tanpura / veena): a bright saw through a closing filter
-function pluck(f, t, peak, d, out) {
-  const o = ctx.createOscillator(), g = ctx.createGain(), fl = ctx.createBiquadFilter();
-  o.type = 'sawtooth'; o.frequency.value = f;
-  fl.type = 'lowpass'; fl.frequency.setValueAtTime(f * 8, t); fl.frequency.exponentialRampToValueAtTime(f * 1.5, t + d); fl.Q.value = 6; // the buzzy jawari bridge
-  env(g, t, 0.01, peak, d); o.connect(fl); fl.connect(g); g.connect(out); o.start(t); o.stop(t + d + 0.05);
-}
-function drum(t, low, peak) { // mridangam-like: a pitched thump, or a sharp 'ta'
-  if (low) osc('sine', 110, t, 0.003, peak, 0.35, musicBus, { glide: 62 });
-  else { osc('triangle', 330, t, 0.002, peak * 0.6, 0.12, musicBus, { glide: 300 }); noise(t, 0.06, peak * 0.5, musicBus, { f: 2600, q: 3 }); }
+function brass(t, d = 1.2, peak = 0.12, s = 0) { // a low horn blast
+  for (const det of [-6, 6]) osc('sawtooth', hz(s, 1), t, 0.12, peak, d, sfxBus, { detune: det, wet: 0.6, lp: [300, 1400, 2] });
 }
 
 // ---------- music ----------
-// `mode` = 'menu' (quiet drone) or 'fight' (drone + rhythm + a few melody notes); null = silence.
-export function setMusic(mode) {
-  musicOn = !!mode;
-  musicLevel = mode === 'fight' ? 0.55 : mode === 'menu' ? 0.4 : 0;
-  if (ctx) musicBus.gain.setTargetAtTime(musicLevel, ctx.currentTime, 0.4);
-  musicMode = mode;
+export function setMusic(mode) { // 'menu', 'fight', or null
+  if (mode === musicMode) return;
+  musicMode = mode; musicOn = !!mode;
+  musicLevel = mode === 'fight' ? 0.5 : mode === 'menu' ? 0.35 : 0;
+  if (ctx) musicBus.gain.setTargetAtTime(musicLevel, ctx.currentTime, 0.5);
 }
-let musicMode = null;
-export function duck(amount = 0.25, time = 1.6) { // quieter music under a big moment
+export function duck(amount = 0.25, time = 1.6) {
   if (!ctx) return;
   const t = ctx.currentTime;
-  musicBus.gain.cancelScheduledValues(t); musicBus.gain.setTargetAtTime(musicLevel * amount, t, 0.08); musicBus.gain.setTargetAtTime(musicLevel, t + time, 0.5);
+  musicBus.gain.cancelScheduledValues(t); musicBus.gain.setTargetAtTime(musicLevel * amount, t, 0.06); musicBus.gain.setTargetAtTime(musicLevel, t + time, 0.6);
 }
-// called every frame: schedules the next music beats a little ahead
+let droneNodes = null;
+function drone(on) { // a low, slowly breathing drone on D and A
+  if (on && !droneNodes) {
+    const g = ctx.createGain(); g.gain.value = 0; g.gain.setTargetAtTime(0.09, ctx.currentTime, 1.5); g.connect(musicBus);
+    const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = 260; fl.Q.value = 2; fl.connect(g);
+    const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.08; lg.gain.value = 120; lfo.connect(lg); lg.connect(fl.frequency); lfo.start();
+    const os = [hz(0, -1), hz(0, 0), hz(7, -1)].map((f, i) => { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = i * 4 - 4; o.connect(fl); o.start(); return o; });
+    droneNodes = { g, os, lfo };
+  } else if (!on && droneNodes) {
+    const d = droneNodes; droneNodes = null; d.g.gain.setTargetAtTime(0, ctx.currentTime, 0.4);
+    setTimeout(() => { d.os.forEach((o) => o.stop()); d.lfo.stop(); }, 2000);
+  }
+}
+const OSTINATO = [0, 0, 1, 0, 3, 0, 1, -2]; // D D Eb D F D Eb C: phrygian tension
 export function tickMusic() {
-  if (!ctx || !musicOn || ctx.state !== 'running') return;
-  const BEAT = 0.42, now = ctx.currentTime;
+  if (!ctx || ctx.state !== 'running') return;
+  drone(musicOn);
+  if (!musicOn) return;
+  const STEP8 = 60 / 96 / 2, now = ctx.currentTime; // eighth notes at 96 bpm
   if (nextBeat < now) nextBeat = now + 0.05;
-  while (nextBeat < now + 0.3) {
+  while (nextBeat < now + 0.25) {
     const t = nextBeat, b = beat % 16;
-    if (b % 4 === 0) pluck([hz(7, -1), hz(0), hz(0), hz(0, -1)][(b / 4) % 4], t, 0.09, 2.2, musicBus); // tanpura: Pa Sa Sa Sa(low)
-    if (musicMode === 'fight') {
-      if ([0, 6, 8, 11, 14].includes(b)) drum(t, b === 0 || b === 8, b === 0 ? 0.3 : 0.18); // a gentle adi-talam-ish pattern
-      if ([3, 7, 10].includes(b)) drum(t, false, 0.08);
-      if (b % 8 === 2 && Math.random() < 0.6) { // a veena phrase of two or three raga notes
-        let s = RAGA[Math.floor(Math.random() * RAGA.length)];
-        for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) { pluck(hz(s, 1), t + i * BEAT * 0.5, 0.05, 1.2, musicBus); s = RAGA[(RAGA.indexOf(s) + (Math.random() < 0.5 ? 1 : RAGA.length - 1)) % RAGA.length]; }
-      }
+    if (musicMode === 'menu') { if (b === 0) boom(t, 0.35, 50); if (b === 8) tom(t, 0.15, 90); }
+    else {
+      if (b === 0 || b === 6 || b === 10) boom(t, b === 0 ? 0.55 : 0.4, 55);           // war drum
+      if (b === 4 || b === 12) tom(t, 0.3, 110);                                       // toms
+      if (b === 14) { tom(t, 0.22, 140); tom(t + STEP8 / 2, 0.2, 120); }
+      if (b % 2 === 1) rim(t, 0.05);                                                   // driving rim
+      osc('sawtooth', hz(OSTINATO[b % 8], 1), t, 0.005, 0.045, STEP8 * 0.8, musicBus, { lp: [700, 250, 3] }); // tense low strings
+      if (beat % 64 === 0) brass(t, 1.6, 0.05, 0);                                     // a horn every few bars
     }
-    nextBeat += BEAT; beat++;
+    nextBeat += STEP8; beat++;
   }
 }
 
 // ---------- effects ----------
 const SFX = {
-  bow: (t) => { osc('triangle', 220, t, 0.002, 0.18, 0.18, sfxBus, { glide: 120 }); noise(t, 0.12, 0.12, sfxBus, { f: 3000, f2: 900, q: 1 }); },
-  bolt: (t) => { osc('sine', hz(12, 1), t, 0.005, 0.1, 0.25, sfxBus, { glide: hz(19, 1), wet: 0.4 }); osc('sine', hz(19, 1), t + 0.04, 0.005, 0.06, 0.3, sfxBus, { wet: 0.5 }); },
-  whoosh: (t) => noise(t, 0.18, 0.16, sfxBus, { f: 600, f2: 2400, q: 0.8, a: 0.03 }),
-  hit: (t, big = 1) => { osc('sine', 140, t, 0.002, 0.35 * big, 0.2 + 0.15 * big, sfxBus, { glide: 50 }); noise(t, 0.08 + 0.05 * big, 0.25 * big, sfxBus, { type: 'lowpass', f: 1800 }); },
-  block: (t) => { osc('square', 180, t, 0.002, 0.08, 0.09, sfxBus, { glide: 140 }); noise(t, 0.05, 0.12, sfxBus, { f: 900, q: 3 }); },
-  wallUp: (t) => { noise(t, 0.45, 0.18, sfxBus, { type: 'lowpass', f: 300, f2: 120, a: 0.05 }); osc('sine', 70, t, 0.05, 0.15, 0.4, sfxBus); },
-  clash: (t) => { for (const f of [880, 1320, 1970]) osc('square', f, t, 0.001, 0.05, 0.3, sfxBus, { wet: 0.5 }); noise(t, 0.1, 0.15, sfxBus, { f: 4000, q: 2 }); },
-  edge: (t) => { noise(t, 0.6, 0.18, sfxBus, { f: 700, f2: 2500, q: 0.6, a: 0.04 }); osc('sine', 90, t, 0.01, 0.2, 0.3, sfxBus, { glide: 45 }); }, // a splash
-  rain: (t) => { for (let i = 0; i < 7; i++) noise(t + i * 0.04 + Math.random() * 0.03, 0.05, 0.1, sfxBus, { f: 2500 + Math.random() * 1500, q: 2 }); },
-  blink: (t) => { osc('sine', hz(12, 1), t, 0.005, 0.08, 0.2, sfxBus, { glide: hz(24, 1), wet: 0.6 }); },
-  meditate: (t) => { for (const det of [-6, 0, 6]) osc('triangle', hz(0, -1), t, 0.6, 0.06, 2.4, sfxBus, { detune: det, wet: 0.7 }); bell(hz(12, 1), t, 0.08, 2); }, // om
-  devotion: (t, n = 1) => bell(hz(RAGA[(n - 1) % 5], 1 + Math.floor((n - 1) / 5)), t, 0.1, 1.6), // one chime per segment, rising up the raga
-  medFull: (t) => { bell(hz(0, 1), t, 0.18); bell(hz(7, 1), t + 0.25, 0.15); bell(hz(0, 2), t + 0.5, 0.15); },
-  barrier: (t) => osc('sine', hz(16, 2), t, 0.001, 0.06, 0.3, sfxBus, { wet: 0.7 }),
-  shatter: (t) => { for (let i = 0; i < 6; i++) osc('square', 1800 + Math.random() * 2500, t + i * 0.025, 0.001, 0.04, 0.25, sfxBus, { wet: 0.4 }); noise(t, 0.3, 0.18, sfxBus, { f: 5000, q: 1 }); },
-  // a god answers: bells and a choir; a divine weapon adds the conch
-  boon: (t, divine = false) => { bell(hz(0, 1), t, 0.22, 2.8); bell(hz(7, 1), t + 0.18, 0.16, 2.6); choir(t + 0.05, divine ? 2.8 : 2.0, divine ? 0.06 : 0.045); if (divine) conch(t + 0.1, 1.8); },
-  // a power-up: conch, choir, a rising swell and a deep hit
-  powerUp: (t) => { conch(t, 1.6, 0.14); choir(t + 0.2, 2.2, 0.05, 7); noise(t, 2.0, 0.12, sfxBus, { f: 300, f2: 3000, q: 0.7, a: 1.6 }); },
-  powerLand: (t) => { osc('sine', 80, t, 0.002, 0.5, 1.0, sfxBus, { glide: 30 }); noise(t, 0.6, 0.35, sfxBus, { type: 'lowpass', f: 1200, f2: 200 }); bell(hz(0, 0), t, 0.12, 2.5); },
-  ko: (t) => { bell(hz(0, -1), t, 0.35, 4); osc('sine', 55, t, 0.01, 0.4, 1.5, sfxBus, { glide: 40 }); }, // a great temple gong
-  win: (t) => { [0, 2, 4, 7, 9, 12].forEach((s, i) => pluck(hz(s, 1), t + i * 0.12, 0.09, 1.4, sfxBus)); bell(hz(12, 1), t + 0.8, 0.15); },
-  tick: (t) => osc('sine', hz(12, 1), t, 0.001, 0.05, 0.06, sfxBus),
-  start: (t) => { bell(hz(0, 1), t, 0.2); drum(t, true, 0.4); },
+  bow: (t) => { noise(t, 0.04, 0.3, sfxBus, { f: 4000, q: 3 }); osc('triangle', 160, t, 0.001, 0.3, 0.12, shaper, { glide: 90 }); noise(t + 0.02, 0.2, 0.15, sfxBus, { f: 2500, f2: 700, q: 1.5 }); },
+  bolt: (t) => { noise(t, 0.3, 0.25, sfxBus, { f: 2200, f2: 300, q: 2, a: 0.02 }); osc('sine', 110, t, 0.01, 0.25, 0.3, shaper, { glide: 55 }); },
+  whoosh: (t) => noise(t, 0.2, 0.3, sfxBus, { f: 400, f2: 1800, q: 1.2, a: 0.04 }),
+  hit: (t, big = 1) => { // a punch: saturated low thump, a crack, a body thud
+    osc('sine', 150, t, 0.001, 0.5 * Math.min(1.4, big), 0.18 + 0.12 * big, shaper, { glide: 42 });
+    noise(t, 0.04, 0.4, sfxBus, { f: 2500, q: 1 });
+    noise(t, 0.1 + 0.08 * big, 0.3 * Math.min(1.4, big), sfxBus, { type: 'lowpass', f: 900, f2: 200 });
+  },
+  block: (t) => { osc('square', 120, t, 0.001, 0.15, 0.1, shaper, { glide: 70 }); noise(t, 0.08, 0.25, sfxBus, { f: 700, q: 2 }); },
+  wallUp: (t) => { noise(t, 0.6, 0.3, sfxBus, { type: 'lowpass', f: 250, f2: 80, a: 0.05 }); osc('sine', 50, t, 0.05, 0.3, 0.5, shaper); },
+  clash: (t) => { for (const f of [310, 470, 683]) osc('square', f, t, 0.001, 0.06, 0.35, sfxBus, { wet: 0.5, lp: [3000, 800, 1] }); noise(t, 0.08, 0.25, sfxBus, { f: 3000, q: 1.5 }); osc('sine', 90, t, 0.001, 0.25, 0.15, shaper, { glide: 50 }); },
+  edge: (t) => { noise(t, 0.7, 0.3, sfxBus, { f: 500, f2: 1600, q: 0.6, a: 0.03 }); osc('sine', 70, t, 0.01, 0.3, 0.3, shaper, { glide: 40 }); },
+  rain: (t) => { for (let i = 0; i < 8; i++) { const tt = t + i * 0.045 + Math.random() * 0.03; noise(tt, 0.04, 0.2, sfxBus, { f: 3000, q: 3 }); osc('sine', 120, tt, 0.001, 0.12, 0.08, shaper, { glide: 60 }); } },
+  blink: (t) => { noise(t, 0.25, 0.2, sfxBus, { f: 300, f2: 3000, q: 3 }); osc('sine', 80, t, 0.01, 0.15, 0.25, sfxBus, { glide: 200 }); },
+  meditate: (t) => { for (const det of [-5, 0, 5]) osc('sawtooth', hz(0, 0), t, 0.8, 0.05, 2.5, sfxBus, { detune: det, wet: 0.7, lp: [220, 160, 2] }); },
+  devotion: (t) => { osc('sine', hz(12, 1), t, 0.005, 0.08, 1.8, sfxBus, { wet: 0.8 }); osc('sine', hz(12, 1) * 2.7, t, 0.005, 0.03, 1.2, sfxBus, { wet: 0.8 }); }, // a low singing bowl
+  medFull: (t) => { gong(t, 0.25, 73); },
+  barrier: (t) => { osc('sine', 330, t, 0.001, 0.08, 0.2, sfxBus, { wet: 0.6 }); noise(t, 0.06, 0.12, sfxBus, { f: 1800, q: 4 }); },
+  shatter: (t) => { noise(t, 0.4, 0.4, sfxBus, { f: 3000, f2: 800, q: 0.7 }); osc('sine', 100, t, 0.001, 0.35, 0.3, shaper, { glide: 40 }); },
+  // a god answers: a great gong and a deep choir; a divine weapon adds a horn blast and a war drum
+  boon: (t, divine = false) => { gong(t, 0.35); choir(t + 0.1, divine ? 3 : 2.2, divine ? 0.09 : 0.06); if (divine) { brass(t + 0.15, 1.8, 0.16); boom(t, 0.7, 50, sfxBus); } },
+  // a power-up: horn, choir, a rising rumble and a drum roll
+  powerUp: (t) => {
+    brass(t, 2.0, 0.15, 0); brass(t + 0.6, 1.5, 0.12, 7); choir(t + 0.2, 2.2, 0.07);
+    noise(t, 2.1, 0.25, sfxBus, { type: 'lowpass', f: 120, f2: 1200, a: 1.8 });
+    for (let i = 0; i < 12; i++) tom(t + 1.2 + i * 0.09, 0.15 + i * 0.02, 100 + (i % 2) * 20, sfxBus);
+  },
+  powerLand: (t) => { boom(t, 0.9, 45, sfxBus); noise(t, 0.9, 0.4, sfxBus, { type: 'lowpass', f: 1500, f2: 120 }); },
+  shatter2: (t) => { // the island breaking: a huge saturated boom, a long rumble and debris rattling down
+    osc('sine', 70, t, 0.001, 0.9, 1.2, shaper, { glide: 28 });
+    noise(t, 1.6, 0.45, sfxBus, { type: 'lowpass', f: 900, f2: 60, wet: 0.6 });
+    for (let i = 0; i < 14; i++) noise(t + 0.15 + Math.random() * 1.1, 0.04, 0.12 + Math.random() * 0.1, sfxBus, { f: 1500 + Math.random() * 2500, q: 3 });
+  },
+  ko: (t) => { boom(t, 1, 40, sfxBus); gong(t + 0.05, 0.4, 49); },
+  win: (t) => { for (let i = 0; i < 6; i++) tom(t + i * 0.11, 0.25, 130 - i * 8, sfxBus); boom(t + 0.7, 0.7, 50, sfxBus); brass(t + 0.7, 1.8, 0.14, 0); brass(t + 0.7, 1.8, 0.1, 7); },
+  tick: (t) => { osc('sine', 180, t, 0.001, 0.12, 0.05, sfxBus, { glide: 120 }); },
+  start: (t) => { boom(t, 0.8, 50, sfxBus); brass(t, 1.2, 0.12); },
 };
 
-// play a named effect (rate-limited per name so a flurry of the same event doesn't stack into noise)
-export function play(name, ...args) {
+export function play(name, ...args) { // rate-limited per name so a flurry of one event doesn't stack into mush
   log.push(name); if (log.length > 200) log.splice(0, 100);
   if (!ctx || muted || ctx.state !== 'running' || !SFX[name]) return;
   const now = ctx.currentTime;
@@ -162,4 +186,3 @@ export function play(name, ...args) {
   lastPlay[name] = now;
   try { SFX[name](now, ...args); } catch { /* never let sound break the game */ }
 }
-export const state = () => (ctx ? ctx.state : 'none');

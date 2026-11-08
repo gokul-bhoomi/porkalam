@@ -22,7 +22,7 @@ export default {
       speed: 90, radius: 12, life: 2, effect: { kind: 'hold', time: 3 }, shape: 'wave' },
     s3: { name: 'Blink', kind: 'blink', special: true, range: 'anywhere', cost: { power: 8 }, req: {}, cast: 0, damage: 0, knockback: 0, distance: 45 },
     sig: { name: 'Thousand-Arm Form', kind: 'global', special: true, signature: true, scene: true, range: 'anywhere', cost: { power: 60, health: 10 }, req: {}, cast: 4,
-      damage: 30, knockback: 60 },
+      damage: 35, knockback: 60 },
     cls: { name: 'Meditation', kind: 'meditate', range: 'anywhere', cost: { power: 2 }, req: {}, cast: 0, damage: 0, knockback: 0 },
   },
 };
