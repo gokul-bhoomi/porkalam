@@ -366,40 +366,84 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   else sceneTitle(m);
 }
 
-// Three concentric, symmetrical arcs. Palm orientation stays upright while the curved arms fan out.
+// The blessing halo remains a single painted formation throughout its forward press and return.
 const SIGNATURE_HANDS = [
-  { radius: 84, count: 19, size: 18 },
-  { radius: 62, count: 15, size: 16 },
-  { radius: 41, count: 11, size: 14 },
+  { radius: 75, count: 12, size: 12 },
+  { radius: 49, count: 8, size: 10.5 },
 ].flatMap((row, rowIndex) => Array.from({ length: row.count }, (_, index) => ({
-  ...row, row: rowIndex, index, angle: -Math.PI - 0.16 + index / (row.count - 1) * (Math.PI + 0.32),
+  ...row, row: rowIndex, index, angle: -Math.PI + 0.2 + index / (row.count - 1) * (Math.PI - 0.4),
 })));
-const handDeparture = (h) => 0.08 + (2 - h.row) * 0.055 + Math.abs(h.index - (h.count - 1) / 2) * 0.002;
-function drawSignaturePalm(x, y, size, alpha, flip) {
-  if (useArt && ART.fx.haloPalm) fxSprite(G, 'haloPalm', x, y, size, { alpha, flip });
-  else { ell(x, y, size * 0.3, size * 0.4, `rgba(95,220,200,${alpha})`); }
+const smooth = (v) => { const t = clamp01(v); return t * t * (3 - 2 * t); };
+function drawSignaturePalm(x, y, size, alpha) {
+  ell(x, y, size * 0.3, size * 0.5, `rgba(250,236,180,${alpha})`);
 }
-function drawSignatureHalo(cx, cy, age, releasing = false, fade = 1, target = null) {
-  // Back rows are drawn first; mirrored curves and shaded anatomy give the arms depth.
-  for (const h of SIGNATURE_HANDS) {
-    const open = releasing ? 1 : easeOut(clamp01((age - (2 - h.row) * 0.12) / 0.65));
-    if (open <= 0) continue;
-    const departure = handDeparture(h), armFade = releasing ? 1 - clamp01((age - 0.4) / 0.2) : 1;
-    const alpha = fade * armFade * (0.8 + h.row * 0.1);
-    if (alpha <= 0) continue;
-    let ex = cx + Math.cos(h.angle) * h.radius * open, ey = cy + Math.sin(h.angle) * h.radius * open;
-    if (releasing && target && age >= departure) {
-      const fl = clamp01((age - departure) / (0.4 - departure)), travel = fl * fl * (3 - 2 * fl);
-      ex += (target.x + Math.cos(h.angle) * (5 + h.row * 3) - ex) * travel;
-      ey += (target.y + Math.sin(h.angle) * (5 + h.row * 3) - ey) * travel;
-    }
-    const rx = cx + Math.cos(h.angle) * 7, ry = cy + 15;
-    const wristY = ey + h.size * 0.53, dx = ex - rx, dy = wristY - ry, len = Math.hypot(dx, dy);
-    if (useArt && ART.fx.haloArm) {
-      fxSprite(G, 'haloArm', rx, ry, h.size * 0.72 * open, { h: len, rot: Math.atan2(dy, dx) + Math.PI / 2, anchor: 'bottom', flip: Math.cos(h.angle) < -1e-6, alpha });
-    } else { line(rx, ry, ex, wristY, `rgba(40,175,155,${alpha})`, 5 * open); }
-    if (!releasing || age < departure) drawSignaturePalm(ex, ey, h.size * open, fade * (0.85 + h.row * 0.075), Math.cos(h.angle) < -1e-6);
+// Simple curved limbs preserve the blessing pose in the grey-box fallback.
+function drawDivineArm(rx, ry, ex, ey, width, alpha, side) {
+  G.save(); G.globalAlpha *= alpha; G.lineCap = 'round'; G.lineJoin = 'round';
+  const path = () => {
+    G.beginPath(); G.moveTo(rx, ry);
+    G.bezierCurveTo(rx + (ex - rx) * 0.45, ry + 14, ex - side * 2, ey + 24, ex, ey);
+  };
+  const shade = G.createLinearGradient(rx, ry + 6, ex, ey - 5);
+  shade.addColorStop(0, '#83b3a0'); shade.addColorStop(0.35, '#a5c7ab'); shade.addColorStop(0.7, '#c4d4ad'); shade.addColorStop(1, '#e8dfb5');
+  path(); G.strokeStyle = 'rgba(211,173,78,0.9)'; G.lineWidth = width + 1; G.stroke();
+  path(); G.strokeStyle = shade; G.lineWidth = width; G.stroke();
+  G.translate(0, -width * 0.2); path(); G.strokeStyle = 'rgba(255,246,196,0.65)'; G.lineWidth = Math.max(0.5, width * 0.18); G.stroke();
+  G.restore();
+}
+function drawDivineMandala(cx, cy, open, fade) {
+  G.save(); G.globalAlpha *= fade * open;
+  const r = 86 * open;
+  const aura = G.createRadialGradient(cx, cy - 20, 12, cx, cy - 20, r + 15);
+  aura.addColorStop(0, 'rgba(255,223,133,0.13)'); aura.addColorStop(1, 'rgba(255,223,133,0)');
+  G.fillStyle = aura; G.fillRect(cx - r - 15, cy - r - 35, 2 * r + 30, 2 * r + 30);
+  G.strokeStyle = '#f4ce77'; G.lineWidth = 0.65;
+  for (const rr of [r, r - 3, r * 0.67]) { G.beginPath(); G.arc(cx, cy, Math.max(0, rr), -Math.PI - 0.12, 0.12); G.stroke(); }
+  for (let i = 0; i <= 40; i++) {
+    const a = -Math.PI + i / 40 * Math.PI;
+    ell(cx + Math.cos(a) * (r - 1.5), cy + Math.sin(a) * (r - 1.5), 0.35, 0.35, '#fff1bc');
   }
+  // A small lotus crowns the aureole; its fine outline leaves the hands readable.
+  const ly = cy - r - 1;
+  for (const side of [-1, 0, 1]) {
+    G.beginPath(); G.moveTo(cx, ly + 1);
+    G.bezierCurveTo(cx + side * 8 - 3, ly - 3, cx + side * 6, ly - 8, cx + side * 5, ly - 9 + Math.abs(side) * 3);
+    G.bezierCurveTo(cx + side * 9 + 3, ly - 4, cx + 4, ly, cx, ly + 1); G.stroke();
+  }
+  G.restore();
+}
+function drawSignatureHalo(cx, cy, age, releasing = false, fade = 1) {
+  const reveal = releasing ? 1 : easeOut(clamp01(age / 0.95));
+  if (useArt && ART.fx.divineHalo) {
+    // Preserve the approved painting's soft shading and outward-curving blessing arms.
+    fxSprite(G, 'divineHalo', cx, cy + 28, 174 * reveal, { anchor: 'bottom', alpha: fade * reveal });
+    return;
+  }
+  drawDivineMandala(cx, cy, reveal, fade);
+  for (const h of SIGNATURE_HANDS) {
+    const open = releasing ? 1 : easeOut(clamp01((age - (1 - h.row) * 0.16) / 0.8));
+    if (open <= 0) continue;
+    const side = Math.cos(h.angle) < 0 ? -1 : 1;
+    const ex = cx + Math.cos(h.angle) * h.radius * open, ey = cy + Math.sin(h.angle) * h.radius * open;
+    drawDivineArm(cx + side * 5, cy + 22, ex, ey + h.size * 0.75, (h.row ? 3.7 : 4.5) * open, fade * 0.92, side);
+    drawSignaturePalm(ex, ey, h.size * open, fade, side < 0);
+  }
+}
+function drawDivineImpact(tx, ty, age, fade) {
+  const t = age - 0.4;
+  if (t < 0 || t > 0.62) return;
+  G.save(); G.globalAlpha *= fade;
+  for (let i = 0; i < 3; i++) {
+    const k = clamp01((t - i * 0.045) / 0.42);
+    if (k <= 0 || k >= 1) continue;
+    ring(tx, ty, 5 + k * 13, 9 + k * 20, `rgba(255,231,154,${(1 - k) * 0.9})`, 0.8);
+  }
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2, r = 7 + t * 27;
+    G.save(); G.translate(tx + Math.cos(a) * r, ty + Math.sin(a) * r - t * 12); G.rotate(a);
+    G.fillStyle = `rgba(255,236,167,${(1 - t / 0.62) * 0.8})`; G.beginPath(); G.ellipse(0, 0, 2.3, 0.8, 0, 0, Math.PI * 2); G.fill(); G.restore();
+  }
+  G.restore();
 }
 
 function drawFx(f, now) {
@@ -416,24 +460,15 @@ function drawFx(f, now) {
   }
   switch (f.kind) {
     case 'shake': case 'god': break;
-    case 'arms': { // the halo is already unfolded during the power-up; its rows strike in coordinated waves
+    case 'arms': { // the painted blessing halo glides as one formation, makes contact, then returns
       const cx = x, cy = y - 18, tx = sx(f.tx), ty = sy(f.ty) - 18;
       const fade = 1 - clamp01((age - f.life + 0.4) / 0.4);
-      if (f.part === 'fan') drawSignatureHalo(cx, cy, age, true, fade, { x: tx, y: ty });
-      if (f.part === 'palms') for (const h of SIGNATURE_HANDS) {
-        const t0 = handDeparture(h), impactAt = 0.4;
-        if (age < t0) continue;
-        const fl = clamp01((age - t0) / (impactAt - t0)), travel = fl * fl * (3 - 2 * fl);
-        const ox = cx + Math.cos(h.angle) * h.radius, oy = cy + Math.sin(h.angle) * h.radius;
-        const ex = tx + Math.cos(h.angle) * (5 + h.row * 3), ey = ty + Math.sin(h.angle) * (5 + h.row * 3);
-        if (fl < 1) {
-          const px = ox + (ex - ox) * travel, py = oy + (ey - oy) * travel;
-          drawSignaturePalm(px, py, h.size, fade, ox < cx);
-        } else if (h.index % 3 === 0) {
-          const flash = clamp01((age - impactAt) / 0.2), rr = 3 + 7 * flash;
-          if (flash < 1) { const glow = G.createRadialGradient(ex, ey, 0, ex, ey, rr); glow.addColorStop(0, `rgba(230,255,252,${(1 - flash) * fade * 0.5})`); glow.addColorStop(1, 'rgba(80,230,210,0)'); G.fillStyle = glow; G.beginPath(); G.arc(ex, ey, rr, 0, Math.PI * 2); G.fill(); }
-        }
-      }
+      if (f.part === 'fan') {
+        const face = tx >= cx ? 1 : -1, gap = Math.min(64, Math.abs(tx - cx) * 0.35);
+        const travel = smooth(age / 0.4) * (1 - smooth((age - 0.5) / 0.6));
+        const mx = cx + (tx - face * gap - cx) * travel, my = cy + (ty - cy) * travel;
+        drawSignatureHalo(mx, my, age, true, fade);
+      } else drawDivineImpact(tx, ty, age, fade);
       break;
     }
     case 'crack': { // a fissure in the sand: a scorched dip, jagged branching cracks with a lit edge; fades late
@@ -599,7 +634,7 @@ function drawHud(m, tags, hints = [null, null]) {
 // bank, with the fighter's spirit form for a signature), the rest of the arena dims around a spotlight, an aura
 // rises from the caster, the move's name slams in, and the camera pulls back as the move goes off.
 const SCENE_LOOK = {
-  siddhan_sig: { face: [0.3, 0.3], at: [0.62, 0.35], glow: '120,240,230', spark: '200,255,250', bg: ['#123a4a', '#03080c'], sub: 'THE MAGE AWAKENS' },
+  siddhan_sig: { face: [0.3, 0.3], at: [0.62, 0.35], glow: '255,221,147', spark: '255,242,195', bg: ['#123a4a', '#03080c'], sub: 'THE MAGE AWAKENS' },
   veeran_elephant: { fallback: 'veeran_sig', face: [0.25, 0.3], at: [0.6, 0.33], glow: '255,130,50', spark: '255,196,96', bg: ['#7a1a10', '#140404'], sub: 'THE WAR ELEPHANT' },
   vishwaroopam: { face: [0.375, 0.21], at: [0.6, 0.16], glow: '255,214,120', spark: '255,236,170', bg: ['#2a1a5a', '#05030f'], sub: 'DIVINE BOON OF KRISHNA' },
   shakti_vel: { face: [0.4, 0.3], at: [0.7, 0.4], glow: '255,200,90', spark: '255,240,190', bg: ['#5a3a10', '#0a0604'], sub: 'DIVINE BOON OF MURUGAN' },
@@ -682,6 +717,7 @@ function sceneCamera(m) {
 // the world around the island becomes the power: the painting replaces sky, river and far bank, and only the
 // sand floor stays (drawn right after the backdrop, inside the camera)
 function sceneSky(m) {
+  if (m.scene.name === 'Thousand-Arm Form') return; // the serene aureole stays in the sunlit arena
   const s = m.scene, p = m.players[s.pid], key = sceneKey(s.name), look = SCENE_LOOK[key] || {};
   const k2 = key && !ART.scenes[key] && look.fallback ? look.fallback : key; // e.g. a painting that isn't in yet
   const img = useArt && k2 ? ART.scenes[k2] : null, lay = img ? ART.sceneLayers[k2] : null, t = s.t, u = t / s.dur;
@@ -709,16 +745,17 @@ function sceneSky(m) {
 function sceneAura(m, now) {
   const s = m.scene, p = m.players[s.pid], look = SCENE_LOOK[sceneKey(s.name)] || { glow: '255,220,140', spark: '255,240,200' }, t = s.t;
   const fade = clamp01(t / 0.3) * (1 - clamp01((t - s.dur + 0.25) / 0.25)), x = sx(p.x), y = sy(p.y);
+  const serene = s.name === 'Thousand-Arm Form';
   const dim = G.createRadialGradient(x, y - 20, 18, x, y - 20, 140);
-  dim.addColorStop(0, 'rgba(0,0,0,0)'); dim.addColorStop(1, `rgba(5,3,12,${0.55 * fade})`);
+  dim.addColorStop(0, 'rgba(0,0,0,0)'); dim.addColorStop(1, `rgba(5,3,12,${(serene ? 0.2 : 0.55) * fade})`);
   G.fillStyle = dim; G.fillRect(-300, -300, W + 600, H + 600);
   G.save(); G.globalCompositeOperation = 'lighter';
-  const pulse = 0.75 + 0.25 * Math.sin(t * 12);
+  const pulse = serene ? 0.94 + 0.06 * Math.sin(t * 3) : 0.75 + 0.25 * Math.sin(t * 12);
   const glow = G.createRadialGradient(x, y - 22, 2, x, y - 22, 34 * pulse);
   glow.addColorStop(0, `rgba(${look.glow},${0.55 * fade})`); glow.addColorStop(1, `rgba(${look.glow},0)`);
   G.fillStyle = glow; G.fillRect(x - 60, y - 90, 120, 120);
   ring(x, y + 1, Z(12) * (1 + 0.15 * Math.sin(t * 9)), Z(12) * SQ * (1 + 0.15 * Math.sin(t * 9)), `rgba(${look.glow},${0.9 * fade})`, 1.2);
-  for (let i = 0; i < 26; i++) { // energy rising up the body
+  for (let i = 0; i < (serene ? 9 : 26); i++) { // energy rising up the body
     const life = (t * (0.9 + hash(i, 40)) + hash(i, 41)) % 1, a = hash(i, 42) * Math.PI * 2, r = 6 + hash(i, 43) * 10;
     G.fillStyle = `rgba(${look.spark},${(1 - life) * fade})`;
     G.beginPath(); G.arc(x + Math.cos(a) * r, y - life * 60, 0.5 + (1 - life) * 1.2, 0, Math.PI * 2); G.fill();
