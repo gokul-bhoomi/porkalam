@@ -1,4 +1,4 @@
-# Myth Fighter (working title)
+# Porkalam (போர்க்களம், "the battlefield"; formerly the working title Myth Fighter)
 
 1v1 mythology fighting game: Krishna (God) vs Raja Raja Chola (King). Start with [PLAN.md](PLAN.md), then read [GROUND-RULES.md](GROUND-RULES.md), [CLASS-RULES.md](CLASS-RULES.md) and [CHARACTERS.md](CHARACTERS.md).
 

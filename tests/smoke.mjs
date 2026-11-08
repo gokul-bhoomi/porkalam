@@ -49,7 +49,7 @@ async function open(query = '') {
 }
 const game = (fn, arg) => page.evaluate(fn, arg);
 
-console.log('Myth Fighter smoke test');
+console.log('Porkalam smoke test');
 
 await check('title screen loads and shows the controls', async () => {
   await open();

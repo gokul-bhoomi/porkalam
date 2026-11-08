@@ -1,9 +1,9 @@
-# Myth Fighter: build plan
+# Porkalam (போர்க்களம்): build plan
 
 > **Owner update, 2026-11-08:** the classes are now **Mages and Warriors** (no Monsters), and the fighters are original characters, **Siddhan (Mage) vs Veeran (Warrior)**. The game is *inspired by Hindu mythology*: the real gods only grant boons. Traps are gone. Both classes meditate behind a barrier to fill a 10-segment devotion bar, and spend it on boons (3 / 6 / 10 = small / medium / divine weapon). Power moves play in the arena itself. See GROUND-RULES.md, CLASS-RULES.md and CHARACTERS.md; the text below is the original plan.
 
 
-"Myth Fighter" is a working title, and the final name comes later. This file is the handover for a new session. Read it first, then the three rule files.
+The game is called **Porkalam** (போர்க்களம், "the battlefield"; owner, 2026-11-08). It was "Myth Fighter" while in development. This file is the handover for a new session. Read it first, then the three rule files.
 
 ## The game in one paragraph
 A 1v1 fighting game inspired by Tamil and Indian mythology. Fighters belong to classes: **Gods** (strong magic, slow body), **Kings** (fast warriors with one weapon who meditate for boons from gods), and later **Monsters** (both magic and body; not in this version). The view is a top-down / 3/4 pixel-art round floating arena on **one shared screen**. The visual reference is an isometric arena brawler screenshot: a round stone arena floating in the clouds, with a waterfall and chains. It's played as couch 2-player on a TV with controllers, and online play may come later. Matches are tactical, 5 minutes by default (adjustable up to 10).
