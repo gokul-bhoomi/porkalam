@@ -309,7 +309,7 @@ function poseOf(m, p) {
 }
 
 // fxNow: the clock the effects were stamped with (the fight clock, which stops during pauses and scenes)
-export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now) {
+export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = [null, null]) {
   trackMotion(m);
   let sh = 0; // screen shake from power moves landing
   for (const f of fx) if (f.kind === 'shake') sh += f.amp * Math.max(0, 1 - (fxNow - f.t0) / f.life);
@@ -340,7 +340,7 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now) {
   for (const f of fx) if (!f.ground) drawFx(f, fxNow);
   if (m.scene) sceneAura(m, now);
   G.restore();
-  if (!m.scene) drawHud(m, tags);
+  if (!m.scene) drawHud(m, tags, hints);
   else sceneTitle(m);
 }
 
@@ -482,7 +482,7 @@ function box(x, y, w, h, r, fill, stroke) {
   if (stroke) { G.strokeStyle = stroke; G.lineWidth = 0.75; G.stroke(); }
 }
 const hpShown = [100, 100]; let hudLast = 0; // the health bar's red "just lost" part drains after a hit
-function drawHud(m, tags) {
+function drawHud(m, tags, hints = [null, null]) {
   const dt = Math.min(0.1, Math.max(0, m.t - hudLast)); hudLast = m.t;
   for (const p of m.players) {
     const right = p.id === 1, X = (v, w = 0) => (right ? W - v - w : v), al = right ? 'right' : 'left';
@@ -533,7 +533,7 @@ function drawHud(m, tags) {
     const tierName = p.devotion >= MD.tiers[2] ? 'DIVINE' : p.devotion >= MD.tiers[1] ? 'MEDIUM' : p.devotion >= MD.tiers[0] ? 'SMALL' : '';
     txt(tierName ? `ASK: ${tierName}` : 'DEVOTION', X(46 + MD.segments * segW + 4), 35.5, tierName ? '#ffcf6a' : '#a898c0', al, 6);
     if (p.boon) { // the held boon, in a gold tag under the panel
-      const label = `${p.boon.tier === 'divine' ? '✦ ' : ''}${p.boon.name.toUpperCase()}`;
+      const label = `${p.boon.tier === 'divine' ? '✦ ' : ''}${p.boon.name.toUpperCase()}${hints[p.id] ? `   ${hints[p.id].keys}` : ''}`;
       G.font = `6px ${FONT}`; const tw = G.measureText(label).width + 12, tx = X(30, tw), glow = 0.6 + 0.4 * Math.sin(m.t * 5);
       box(tx, 47, tw, 11, 4, `rgba(60,36,10,.9)`, `rgba(255,207,106,${glow})`);
       txt(label, tx + tw / 2, 49.5, '#ffe7a0', 'center', 6);
@@ -698,6 +698,25 @@ function sceneTitle(m) {
   }
   const flash = Math.max(0, 1 - t / 0.1) * 0.7 + clamp01((t - s.dur + 0.12) / 0.12) * 0.8;
   if (flash > 0.01) { G.fillStyle = `rgba(255,252,240,${flash})`; G.fillRect(0, 0, W, H); }
+}
+
+// The boon card: when a god grants a wish, say what it is, what it does and how to use it.
+const TIER_LABEL = { small: 'A SMALL BOON', medium: 'A MEDIUM BOON', divine: 'A DIVINE WEAPON' };
+export function drawOffer(o, p, hint, t) {
+  const e = easeOut(clamp01(t / 0.3)), out = clamp01((t - 4) / 0.5), a = e * (1 - out);
+  const w = 300, h = 74, x = CX - w / 2, y = H - 84 + (1 - e) * 20;
+  G.save(); G.globalAlpha = a;
+  const g = G.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(46,26,8,.95)'); g.addColorStop(1, 'rgba(22,12,4,.95)');
+  box(x, y, w, h, 7, g, '#e8c060'); box(x + 3, y + 3, w - 6, h - 6, 5, null, 'rgba(232,192,96,.4)');
+  txt(`${o.god.toUpperCase()} GRANTS ${p.ch.name.toUpperCase()} ${TIER_LABEL[o.tier] || 'A BOON'}`, CX, y + 7, '#c9b07a', 'center', 6);
+  txt(o.name.toUpperCase(), CX, y + 17, o.tier === 'divine' ? '#fff2b0' : '#ffe7a0', 'center', 16, 'rgba(60,20,0,.9)');
+  txt(o.desc || '', CX, y + 40, '#f0e6d0', 'center', 6);
+  const pulse = 0.65 + 0.35 * Math.sin(t * 6);
+  if (hint) {
+    G.globalAlpha = a * pulse;
+    txt(`USE IT ANY TIME: ${hint.keys}  OR PAD ${hint.pad}`, CX, y + 55, '#9fe07a', 'center', 6);
+  } else txt('THE COMPUTER HOLDS IT', CX, y + 54, '#c8bce0', 'center', 6);
+  G.restore();
 }
 
 // ---------- screens ----------

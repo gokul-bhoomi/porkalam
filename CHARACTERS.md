@@ -41,9 +41,11 @@ Two specials spend devotion to ask a random god for a boon: 3 segments = small, 
 
 | God | Small (3) | Medium (6) | Divine weapon (10) |
 |---|---|---|---|
-| Shiva | Third-eye spark (fire shot) | Damaru: stuns the opponent | Pashupatastra: 45% damage from anywhere |
-| Murugan | Vel throw | Peacock dash: a quick escape that can't be hit | Shakti Vel: 35% damage, pierces any block |
+| Shiva | Third-eye spark: a fireball, 8% damage | Damaru: stuns the opponent for 1.5 s | Pashupatastra: 45% damage from anywhere |
+| Murugan | Vel throw: a spear, 9% damage | (none) | Shakti Vel: 35% damage, pierces any block |
 | Brahma | Kamandalu: restores 10% health | Lotus seat: next meditation is twice as fast | Brahmastra: both fighters reach 0 health, so it's a draw |
-| Krishna (joined 2026-11-08) | Flute charm: holds the opponent still for 1.5 s | Sudarshana Chakra: homing disc | Vishwaroopam: the cosmic form, 40% damage across the whole arena |
+| Krishna | (none) | Sudarshana Chakra: homing disc, 14% damage | Vishwaroopam: 40% damage across the whole arena |
+
+Owner, 2026-11-08: Flute charm and Peacock dash were removed. When a god grants a boon, a card shows its name, what it does and the keys to use it.
 
 When a boon is invoked, the fight slows down for about 1.5 s, the god's light comes down on the caster and, for small and medium boons, the god appears as a vast vision over the arena, blessing. Boon attacks fly larger, with a glowing trail. The god rises in the sky behind the island, never over the sand, so attacks stay visible. Bells and a choir sound when a god answers; a divine weapon adds a conch. Damage raised by the owner on 2026-11-08: divine weapons 45 / 35 / 40, signatures 35. Where they land, the arena shatters. Divine weapons go through a meditation barrier and play a power-up with the god's painting. Strong hits crack the sand, and power moves throw the river up round the island. Brahmastra is rare unless the caster's health is low (about 5% above 35% health, 20% at 15-35%, 50% at 15% or less).

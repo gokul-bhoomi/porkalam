@@ -231,7 +231,7 @@ function tryAct(m, p, slot, inp) {
     if (!offer) return;
     p.devotion -= offer.devotionCost;
     p.boon = { move: offer.boon, name: offer.name, god: offer.god, godId: offer.godId, tier: offer.tier };
-    ev(m, 'boon', { pid: p.id, name: offer.name, god: offer.god, godId: offer.godId, tier: offer.tier }); // both players see which boon it was
+    ev(m, 'boon', { pid: p.id, name: offer.name, desc: offer.boon.desc, god: offer.god, godId: offer.godId, tier: offer.tier }); // both players see which boon it was
     return;
   }
   if (slot === 'boon') move = p.boon.move;

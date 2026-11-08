@@ -1,8 +1,8 @@
 import { W, H, RES, STEP, TUNE, ARENA } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
-import { setCtx, R, txt, drawFight, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
+import { setCtx, R, txt, drawFight, drawOffer, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
-import { createInput } from './input.js';
+import { createInput, KEYS, KEY_NAME } from './input.js';
 import * as sound from './audio.js';
 import { createCpu, cpuInput, LEVELS, LEVEL_IDS } from './ai.js';
 
@@ -30,6 +30,7 @@ function changeRow(dir) {
 }
 
 function startMatch() {
+  S.offer = null;
   const seed = S.seed++;
   S.match = createMatch({ seed, time: S.minutes * 60 });
   S.cpu = S.mode === '1p' ? createCpu(1 - S.side, S.level, seed) : null; // the computer plays the other fighter
@@ -109,7 +110,7 @@ function onEvent(e, m) {
   if (e.type === 'boon') { // a god answers and reveals the boon: the fight slows, the god appears, blessing
     S.slowmo = { t0: S.now };
     add({ kind: 'god', god: e.godId, x: 0, y: 0, life: 2.4 });
-    S.banner = { text: `${e.god.toUpperCase()} OFFERS ${e.name.toUpperCase()}`, sub: `${m.players[e.pid].ch.name.toUpperCase()}: TWO SPECIALS TO USE IT, NOW OR LATER`, t0: S.now };
+    S.offer = { pid: e.pid, name: e.name, desc: e.desc, god: e.god, tier: e.tier, t0: S.now }; S.banner = null; // the boon card
   }
   if (e.type === 'boonUsed') { // the held boon is used: the god's light comes down on the caster
     const p = m.players[e.pid];
@@ -117,6 +118,13 @@ function onEvent(e, m) {
     S.banner = { text: `${p.ch.name.toUpperCase()} USES ${e.name.toUpperCase()}`, sub: `${e.tier.toUpperCase()} BOON OF ${e.god.toUpperCase()}`, t0: S.now };
   }
   if (e.type === 'medFull') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()}: DEVOTION FULL`, sub: 'A DIVINE WEAPON IS READY', t0: S.now };
+}
+
+// how this player uses a held boon (their two special keys, and the pad), or null for the computer
+function useHint(pid) {
+  if (S.cpu && S.cpu.pid === pid) return null;
+  const K = KEYS[S.cpu ? 0 : pid], k = (a) => KEY_NAME(K[a][0]);
+  return { keys: `${k('s1')} + ${k('s2')}`, pad: 'B + Y' };
 }
 
 function update(dt) {
@@ -174,7 +182,9 @@ function render() {
   if (S.screen === 'title') drawTitle(S.now, S.pads);
   else if (S.screen === 'setup') drawSetup(S.now, { ...S, rows: ROWS(), levelName: LEVELS[S.level].name });
   else if (S.screen === 'fight') {
-    drawFight(S.match, S.now, S.fx, S.cpu ? (S.cpu.pid === 0 ? ['CPU', 'YOU'] : ['YOU', 'CPU']) : ['P1', 'P2'], S.clock);
+    const hints = [0, 1].map(useHint);
+    drawFight(S.match, S.now, S.fx, S.cpu ? (S.cpu.pid === 0 ? ['CPU', 'YOU'] : ['YOU', 'CPU']) : ['P1', 'P2'], S.clock, hints);
+    if (S.offer && S.now - S.offer.t0 < 4.5) drawOffer(S.offer, S.match.players[S.offer.pid], hints[S.offer.pid], S.now - S.offer.t0);
     if (S.banner && S.now - S.banner.t0 < 3) {
       R(0, H - 34, W, 30, 'rgba(10,12,20,.8)');
       txt(S.banner.text, CX, H - 30, '#ffcf6a', 'center');

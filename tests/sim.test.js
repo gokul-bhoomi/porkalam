@@ -110,19 +110,12 @@ test('arrow rain lands on the opponent\'s spot after a warning, and can be walke
   assert.equal(hitAfter(true), 0);
 });
 
-test('boons: Damaru stuns (no moves, no block), Peacock dash can\'t be hit, Shakti Vel pierces block', () => {
+test('boons: Damaru stuns (no moves, no block), Shakti Vel pierces block', () => {
   const m = match({ k: { x: -40, y: 0 }, r: { x: 40, y: 0 } });
   castBoon(m, R, 'damaru'); run(m, [{}, {}], 0.8);
   assert.ok(m.players[K].effects.stun);
   stepMatch(m, [{ a1: true, block: true }, {}]);
   assert.equal(m.players[K].cast, null); assert.equal(m.players[K].block, null);
-
-  const d = match({ k: { x: -40, y: 0 }, r: { x: 40, y: 0 } });
-  castBoon(d, R, 'peacock'); stepMatch(d);
-  d.hits.push({ target: d.players[R], dmg: 10, kb: 0, from: null }); stepMatch(d);
-  assert.equal(d.players[R].hp, 100);
-  run(d, [{}, {}], 0.2);
-  assert.ok(d.players[R].x > 60, 'dashed away');
 
   const s = match({ k: { x: -40, y: 0 }, r: { x: 60, y: 0 } });
   castBoon(s, R, 'shakti'); run(s, [{ block: true }, {}], findBoon('shakti').cast + TUNE.scene + 1); // a divine weapon: its scene plays first
