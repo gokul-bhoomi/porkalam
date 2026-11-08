@@ -49,26 +49,26 @@ function drawMark(mk) { // scuffs and traps share this exact drawing
 }
 
 // ---------- fighters ----------
-function drawBlock(p) {
-  const b = p.block, def = p.ch.defence, x = sx(p.x), y = sy(p.y), k = b.cap / def.max;
-  const fx = p.face.x, fy = p.face.y, px = -fy, py = fx; // perpendicular
-  const dx = x + fx * 14, dy = y + fy * 14 * SQ;
-  if (b.broken) { txt('X', dx, dy - 10, '#ff5544', 'center'); return; }
-  if (def.look === 'hill') { // Govardhana: a mound that grows
-    const w = 6 + k * 12, h = 4 + k * 16;
-    G.fillStyle = '#6d8f3d'; G.beginPath(); G.ellipse(dx, dy, w, h, 0, Math.PI, 0); G.fill();
-    R(dx - w, dy, w * 2, 2, '#4b6527');
-  } else { // arrow wall: more arrows the longer it's held
+// A wall stays where it was built. It looks weaker as its strength gets used up.
+function drawWall(w) {
+  const B = TUNE.block, k = w.cap / w.max, x = sx(w.x), y = sy(w.y), px = -w.ny, py = w.nx;
+  const fade = w.standing && w.t < 0.6 && Math.floor(w.t * 10) % 2 ? 0.4 : 1; // blinks just before it disappears
+  G.globalAlpha = fade;
+  if (w.look === 'hill') { // Govardhana: a mound that grows
+    const h = 4 + k * 16;
+    G.fillStyle = '#6d8f3d'; G.beginPath(); G.ellipse(x, y, Math.max(Math.abs(px) * w.hw, w.hw * 0.6), h, 0, Math.PI, 0); G.fill();
+    line(x - px * w.hw, y - py * w.hw * SQ, x + px * w.hw, y + py * w.hw * SQ, '#4b6527', 2);
+  } else { // arrow wall: more arrows the stronger it is
     const n = 2 + Math.round(k * 9);
     for (let i = 0; i < n; i++) {
-      const t = (i / (n - 1) - 0.5) * 2, ax = dx + px * t * 14, ay = dy + py * t * 14 * SQ;
-      line(ax, ay, ax + fx * 2, ay - 9, '#d9c08a', 1); R(ax + fx * 2 - 1, ay - 10, 2, 2, '#fff');
+      const t = (i / (n - 1) - 0.5) * 2, ax = x + px * t * w.hw, ay = y + py * t * w.hw * SQ;
+      line(ax, ay, ax + w.nx * 2, ay - 9, '#d9c08a', 1); R(ax + w.nx * 2 - 1, ay - 10, 2, 2, '#fff');
     }
   }
-  const bw = 20;
-  R(x - bw / 2, y + 6, bw, 2, 'rgba(0,0,0,.5)'); R(x - bw / 2, y + 6, bw * k, 2, '#9fe07a');
-  const left = 1 - b.held / TUNE.block.maxTime; // time left before the defence disappears
-  R(x - bw / 2, y + 9, bw * left, 1, '#ffffff');
+  G.globalAlpha = 1;
+  const bw = 20, left = w.standing ? w.t / B.standTime : 1 - w.held / B.buildTime;
+  R(x - bw / 2, y + 4, bw, 2, 'rgba(0,0,0,.5)'); R(x - bw / 2, y + 4, bw * k, 2, '#9fe07a'); // strength
+  R(x - bw / 2, y + 7, bw * left, 1, w.standing ? '#ffffff' : '#ffd34a');                    // time left
 }
 
 function drawFighter(m, p, now) {
@@ -81,7 +81,6 @@ function drawFighter(m, p, now) {
   G.globalAlpha = 1;
   line(x + p.face.x * 4, y - 4 + p.face.y * 3, x + p.face.x * 11, y - 4 + p.face.y * 7, '#fff', 2); // facing
   txt(p.ch.cls === 'god' ? 'K' : 'R', x, y - 8, '#fff', 'center', 8, null);
-  if (p.block) drawBlock(p);
   let top = y - 30;
   const fx = Object.entries(p.effects).filter(([k]) => k !== 'invuln' || true);
   if (fx.length) {
@@ -137,8 +136,8 @@ export function drawFight(m, now, fx) {
   }
   for (const u of m.units) { ell(sx(u.x), sy(u.y) - 4, u.r, u.r, '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
   for (const f of fx) if (f.ground) drawFx(f, now);
-  const order = [...m.players].sort((a, b) => a.y - b.y);
-  for (const p of order) drawFighter(m, p, now);
+  const order = [...m.players, ...m.walls].sort((a, b) => a.y - b.y); // back to front
+  for (const o of order) if (o.ch) drawFighter(m, o, now); else drawWall(o);
   for (const pr of m.projectiles) drawProjectile(pr, now);
   for (const f of fx) if (!f.ground) drawFx(f, now);
   drawHud(m);

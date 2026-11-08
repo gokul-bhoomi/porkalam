@@ -203,20 +203,47 @@ test('rule 5: each character has a defence strength and type; barriers absorb a 
   m.hits.push({ target: m.players[K], dmg: 50, kb: 0, from: { x: 20, y: 0 } });
   stepMatch(m, [{ block: true }, {}]);
   assert.ok(Math.abs(m.players[K].hp - (100 - (50 - cap))) < 0.2, 'absorbs its amount, the rest goes through');
-  assert.ok(m.players[K].block.broken);
+  assert.equal(m.walls.length, 0, 'used up, so it is gone');
 });
 
-test('rule 5: a defence lasts at most 3 s, then disappears until block is pressed again (owner change 2026-11-07)', () => {
-  assert.equal(TUNE.block.maxTime, 3);
+test('rule 5: block builds a wall; let go and it stays in place at that size for 3 s, then disappears (owner change 2026-11-07)', () => {
+  assert.equal(TUNE.block.standTime, 3);
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
-  run(m, [{ block: true }, {}], 2.9);
-  assert.ok(m.players[K].block, 'still up at 2.9 s');
-  run(m, [{ block: true }, {}], 0.2);
-  assert.equal(m.players[K].block, null, 'gone after 3 s');
-  run(m, [{ block: true }, {}], 2);
-  assert.equal(m.players[K].block, null, 'holding the button longer does not bring it back');
+  run(m, [{ block: true }, {}], 1);
+  const w = m.walls[0], cap = w.cap, at = [w.x, w.y];
+  stepMatch(m, [{}, {}]); // let go
+  assert.equal(m.players[K].block, null);
+  run(m, [{ my: 1 }, {}], 1.5); // walk away
+  assert.ok(m.players[K].y > 30, 'the fighter is free to move');
+  assert.equal(m.walls.length, 1, 'the wall stays');
+  assert.deepEqual([w.x, w.y, w.cap], [...at, cap], 'in place, at the size it was left');
+  run(m, [{}, {}], 1.4);
+  assert.equal(m.walls.length, 1, 'still there just before 3 s');
+  run(m, [{}, {}], 0.2);
+  assert.equal(m.walls.length, 0, 'gone after 3 s');
+});
+
+test('rule 5: a wall only protects what is behind it', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+  run(m, [{ block: true }, {}], 0.5); stepMatch(m, [{}, {}]);
+  m.hits.push({ target: m.players[K], dmg: 3, kb: 0, from: { x: 60, y: 0 } }); stepMatch(m);
+  assert.equal(m.players[K].hp, 100, 'behind the wall: absorbed');
+  run(m, [{ my: 1 }, {}], 1);
+  m.hits.push({ target: m.players[K], dmg: 3, kb: 0, from: { x: 60, y: m.players[K].y } }); stepMatch(m);
+  assert.equal(m.players[K].hp, 97, 'walked out from behind it: not protected');
+});
+
+test('rule 5: building stops after 3 s and the wall stands; let go before building another', () => {
+  assert.equal(TUNE.block.buildTime, 3);
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+  run(m, [{ block: true }, {}], 3.1);
+  assert.equal(m.players[K].block, null);
+  assert.ok(m.walls[0]?.standing, 'erected by itself');
+  run(m, [{ block: true }, {}], 1);
+  assert.equal(m.players[K].block, null, 'holding on does not start a new one');
   stepMatch(m, [{}, {}]); stepMatch(m, [{ block: true }, {}]);
-  assert.ok(m.players[K].block, 'a new press raises a new one');
+  assert.ok(m.players[K].block, 'a new press builds a new one');
+  assert.equal(m.walls.length, 1, 'one wall per fighter: the new one replaces the old');
 });
 
 // ---------- 6. Clashes ----------

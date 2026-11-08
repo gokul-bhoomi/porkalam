@@ -32,7 +32,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 ## 5. Defence
 - Block: hold it to reduce damage.
 - Holding block longer while the opponent prepares an attack makes the block stronger.
-- A defence lasts at most 3 seconds, then it disappears. Release block and press it again to raise a new one. (Added by the owner on 2026-11-07.)
+- Block builds a wall in front of the fighter, who stands still while building (at most 3 seconds). When block is let go, the wall stays where it is, at the size it reached, for 3 seconds, then disappears. The fighter can move away. The wall only protects what's behind it. One wall per fighter. (Owner, 2026-11-07.)
 - Each character has a defence strength and a defence type. Barriers, such as a wall of arrows that absorbs a set amount of damage, are a defence type.
 
 ## 6. Clashes
