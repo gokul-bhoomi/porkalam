@@ -855,7 +855,7 @@ export function drawTitle(now, pads) {
   G.lineWidth = 3; G.strokeStyle = 'rgba(60,20,0,.95)'; G.strokeText('போர்க்களம்', CX, 44);
   G.fillStyle = tg; G.fillText('போர்க்களம்', CX, 44);
   G.restore();
-  txt('INSPIRED BY HINDU MYTHOLOGY', CX, 76, '#f0dca8', 'center', 7);
+  txt('INSPIRED BY INDIAN MYTHOLOGY', CX, 76, '#f0dca8', 'center', 7);
   const bot = G.createLinearGradient(0, H - 50, 0, H); bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(1, 'rgba(0,0,0,.7)');
   G.fillStyle = bot; G.fillRect(0, H - 50, W, 50);
   if (Math.floor(now * 2) % 2) txt('PRESS START / ENTER', CX, H - 26, '#fff2c0', 'center', 8);

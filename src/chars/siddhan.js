@@ -1,4 +1,4 @@
-// Siddhan (Mage): a wandering mystic-sorcerer. An original character; the game is inspired by Hindu mythology.
+// Siddhan (Mage): a wandering mystic-sorcerer. An original character; the game is inspired by Indian mythology.
 // Numbers are first guesses, to be tuned in play with the owner.
 // Slots: a1/a2 basic, s1-s3 specials, sig = all 3 specials together, cls = down + special 1 (meditate).
 // Move fields (ground rule 4): cost {power, health}, req, range, cast (s), damage (%), knockback (world units/s).

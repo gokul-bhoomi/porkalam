@@ -521,10 +521,10 @@ test('classes (owner, 2026-11-08): two classes, Mages and Warriors, and no Monst
   assert.ok(!Object.values(CHARS).some((c) => /monster|god|king/.test(c.cls)));
 });
 
-test('theme (owner, 2026-11-08): inspired by Hindu mythology; the fighters are original, the real gods only grant boons', () => {
+test('theme (owner, 2026-11-08): inspired by Indian mythology; the fighters are original, the real gods only grant boons', () => {
   for (const c of Object.values(CHARS)) assert.ok(!/krishna|raja|chola|shiva|murugan|brahma|vishnu/i.test(`${c.id} ${c.name}`), c.name);
   assert.deepEqual(Object.keys(GODS).sort(), ['brahma', 'krishna', 'murugan', 'shiva']); // Krishna joined as a boon god (owner, 2026-11-08)
-  assert.ok(src('render.js').includes('INSPIRED BY HINDU MYTHOLOGY'));
+  assert.ok(src('render.js').includes('INSPIRED BY INDIAN MYTHOLOGY'));
 });
 
 test('class: Mages are slow and can\'t run, but can blink for power; Warriors are fast', () => {

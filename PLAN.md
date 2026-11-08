@@ -1,6 +1,6 @@
 # Porkalam (போர்க்களம்): build plan
 
-> **Owner update, 2026-11-08:** the classes are now **Mages and Warriors** (no Monsters), and the fighters are original characters, **Siddhan (Mage) vs Veeran (Warrior)**. The game is *inspired by Hindu mythology*: the real gods only grant boons. Traps are gone. Both classes meditate behind a barrier to fill a 10-segment devotion bar, and spend it on boons (3 / 6 / 10 = small / medium / divine weapon). Power moves play in the arena itself. See GROUND-RULES.md, CLASS-RULES.md and CHARACTERS.md; the text below is the original plan.
+> **Owner update, 2026-11-08:** the classes are now **Mages and Warriors** (no Monsters), and the fighters are original characters, **Siddhan (Mage) vs Veeran (Warrior)**. The game is *inspired by Indian mythology*: the real gods only grant boons. Traps are gone. Both classes meditate behind a barrier to fill a 10-segment devotion bar, and spend it on boons (3 / 6 / 10 = small / medium / divine weapon). Power moves play in the arena itself. See GROUND-RULES.md, CLASS-RULES.md and CHARACTERS.md; the text below is the original plan.
 
 
 The game is called **Porkalam** (போர்க்களம், "the battlefield"; owner, 2026-11-08). It was "Myth Fighter" while in development. This file is the handover for a new session. Read it first, then the three rule files.

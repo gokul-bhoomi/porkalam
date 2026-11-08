@@ -2,7 +2,7 @@
 
 These follow [GROUND-RULES.md](GROUND-RULES.md) and [CLASS-RULES.md](CLASS-RULES.md). Strength is shown as small, medium or large, and exact numbers get tuned in play. Both fighters have the same power bar size and refill speed.
 
-Both fighters are **original characters**. The game is inspired by Hindu mythology: it shows in their dress and the arena, and the real gods appear only as givers of boons. (They replaced Krishna and Raja Raja Chola on 2026-11-08.)
+Both fighters are **original characters**. The game is inspired by Indian mythology: it shows in their dress and the arena, and the real gods appear only as givers of boons. (They replaced Krishna and Raja Raja Chola on 2026-11-08.)
 
 **Signature moves have a long cast (~4 s).** The fighter stands still and can't move or block. Any hit breaks it, and the cost is still spent. When the cast completes, a power-up plays in the arena itself: the camera closes in, the world around the sand island becomes the power, and the move goes off.
 
