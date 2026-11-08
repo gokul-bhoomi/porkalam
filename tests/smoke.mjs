@@ -191,6 +191,20 @@ await check('pause menu (Escape) stops the clock', async () => {
   await page.keyboard.press('Escape');
 });
 
+await check('the fight pauses itself when the window loses focus (so it never crawls in the background)', async () => {
+  await open('?seed=3');
+  const s = await game(async () => {
+    const d = window.__game.debug; d.start({ minutes: 2 });
+    await new Promise((r) => setTimeout(r, 300));
+    const before = d.snapshot().paused;
+    window.dispatchEvent(new Event('blur'));
+    await new Promise((r) => setTimeout(r, 100));
+    return { before, after: d.snapshot().paused };
+  });
+  expect(s.before === false, 'paused before losing focus');
+  expect(s.after === true, 'did not pause when the window lost focus');
+});
+
 await check('the Codex art loads: arena plus 8 frames for each fighter, and ?grey=1 still runs', async () => {
   await open('?seed=6&pause=1');
   await page.waitForFunction(() => window.__game.art.ready, null, { timeout: 10000 });

@@ -130,6 +130,13 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Backquote') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); }
 });
 addEventListener('error', (e) => S.errors.push(String(e.error?.stack || e.message)));
+// When the game can't be seen or played (window in the background, tab hidden, focus elsewhere), the browser
+// slows its frames to about one a second and the fight would crawl and look frozen. Pause it instead.
+function autoPause() {
+  if (S.screen === 'fight' && S.match && S.match.phase === 'fight' && !S.paused && !DBG.paused) { S.paused = true; S.sel = 0; }
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) autoPause(); });
+addEventListener('blur', autoPause);
 
 // ---------- debug API (used by the smoke test) ----------
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -168,7 +175,8 @@ if (qs.get('screen') === 'fight') startMatch();
 
 let last = performance.now(), acc = 0;
 function frame(ts) {
-  const dt = Math.min(0.1, Math.max(0, (ts - last) / 1000)); last = ts; S.now += dt;
+  const gap = (ts - last) / 1000, dt = Math.min(0.1, Math.max(0, gap)); last = ts; S.now += dt;
+  if (gap > 0.5) autoPause(); // frames came very late (throttled in the background): pause rather than crawl
   try {
     if (!DBG.paused) { acc += dt; while (acc >= STEP) { update(STEP); acc -= STEP; } }
     render();
@@ -179,4 +187,4 @@ if (qs.get('grey') === '1') setUseArt(false);
 Promise.all([
   Promise.race([document.fonts.load('8px "Press Start 2P"'), new Promise((r) => setTimeout(r, 1500))]),
   loadArt().then(fitView).catch((e) => S.errors.push(String(e))),
-]).finally(() => requestAnimationFrame(frame));
+]).finally(() => requestAnimationFrame((ts) => { last = ts; frame(ts); })); // start the clock on the first frame

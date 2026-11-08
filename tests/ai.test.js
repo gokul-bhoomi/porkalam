@@ -69,3 +69,19 @@ test('a human-controlled side gets no computer input', () => {
   const { m } = cpuMatch([null, 'normal'], 3, 60);
   assert.equal(m.players[0].stats.dealt, 0, 'P1 had no input but dealt damage');
 });
+
+// Whichever fighter you pick, a level should mean the same difficulty: the computer Krishna and the computer
+// King are tuned (SKILL_ADJUST in src/ai.js) to be about equally strong at each level. If move numbers change,
+// this may drift: re-measure and adjust SKILL_ADJUST rather than loosening the test.
+test('at each level the computer Krishna and the computer King are about equally strong', () => {
+  for (const lv of LEVEL_IDS) {
+    let k = 0;
+    const n = 40;
+    for (let seed = 101; seed < 101 + n; seed++) {
+      const m = createMatch({ seed, time: 120 }), c = [createCpu(0, lv, seed * 3), createCpu(1, lv, seed * 5)];
+      for (let i = 0; i < 130 / STEP && m.phase === 'fight'; i++) stepMatch(m, c.map((x) => cpuInput(m, x, STEP)));
+      const w = m.result?.winner; k += w === 0 ? 1 : w == null ? 0.5 : 0;
+    }
+    assert.ok(k / n >= 0.3 && k / n <= 0.7, `${lv}: Krishna won ${Math.round((100 * k) / n)}% of CPU-vs-CPU matches`);
+  }
+});
