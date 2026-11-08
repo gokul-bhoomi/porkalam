@@ -41,9 +41,9 @@ Same base as Euro Rush (`../euro-rush`), so reuse its patterns:
   - stick to move
   - basic attack 1, basic attack 2, block
   - hold a trigger during the close basic attack to set a trap
-  - special move buttons
-  - signature move
-  - class button (meditate for a King, Brahmastra for a God)
+  - 3 special move buttons
+  - signature move: all three special buttons together
+  - class move (meditate for a King, Brahmastra for a God): down + special 1
   - use boon: press two special move buttons together
 
 ## Build order

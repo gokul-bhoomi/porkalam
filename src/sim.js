@@ -7,9 +7,12 @@ import { CHARS } from './chars/index.js';
 import { GODS, findBoon } from './chars/gods.js';
 
 // Same button layout for every fighter (ground rule 14).
-// The boon has no button of its own: two special buttons pressed together use it.
-export const BUTTONS = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3', 'sig', 'cls'];
-const ACTS = ['sig', 'cls', 's1', 's2', 's3', 'a2', 'a1']; // if several are pressed in one step, the first wins
+// Combos instead of extra buttons (owner, 2026-11-07):
+//   all three special buttons together = signature move
+//   two special buttons together       = use the boon
+//   down + special 1                   = class move (meditate / Brahmastra)
+export const BUTTONS = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3'];
+const ACTS = ['s1', 's2', 's3', 'a2', 'a1']; // if several are pressed in one step, the first wins
 const SPECIALS = ['s1', 's2', 's3'];
 
 export function createMatch({ seed = 1, time = TUNE.match.default, chars = ['krishna', 'rajaraja'] } = {}) {
@@ -210,20 +213,25 @@ function newMoves(m, inputs, dt) {
   }
 }
 
-// Two special buttons together = use the boon. While a boon is held, a special press waits a moment
-// (TUNE.chord) for the second button before it goes off on its own.
+// A special press waits a moment (TUNE.chord) to see which other special buttons join it:
+// 3 = signature, 2 = boon (if one is held), 1 = that special, or the class move if the stick is held down.
+const isDown = (inp) => (+inp.my || 0) > 0.6 && Math.abs(+inp.mx || 0) < 0.6;
 function chord(p, inp, act, dt) {
-  const held = SPECIALS.filter((b) => inp[b]).length;
+  const held = SPECIALS.filter((b) => inp[b]);
   if (p.chord) {
     p.chord.t += dt;
-    if (held >= 2 && p.boons.length) { p.chord = null; return 'boon'; }
-    if (p.chord.t >= TUNE.chord - 1e-9 || !p.boons.length) { const slot = p.chord.slot; p.chord = null; return slot; }
-    return null;
+    for (const b of held) if (!p.chord.seen.includes(b)) p.chord.seen.push(b);
+  } else {
+    if (!SPECIALS.includes(act)) return act;
+    p.chord = { slot: act, t: 0, seen: held, down: isDown(inp) };
   }
-  if (!SPECIALS.includes(act) || !p.boons.length) return act;
-  if (held >= 2) return 'boon';
-  p.chord = { slot: act, t: 0 };
-  return null;
+  const c = p.chord;
+  if (c.seen.length >= 3) { p.chord = null; return 'sig'; }
+  if (c.t < TUNE.chord - 1e-9) return null;
+  p.chord = null;
+  if (c.seen.length === 2 && p.boons.length) return 'boon';
+  if (c.slot === 's1' && c.down) return 'cls';
+  return c.slot;
 }
 
 function tryAct(m, p, slot, inp) {
