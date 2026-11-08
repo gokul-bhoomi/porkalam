@@ -7,7 +7,7 @@ export const GODS = {
     name: 'Shiva',
     tiers: [
       [{ id: 'spark', name: 'Third-eye spark', desc: 'A FIREBALL: 8% DAMAGE', kind: 'projectile', range: 'midlong', cost: { power: 0 }, req: {}, cast: 0.3, damage: 8, knockback: 60, speed: 210, radius: 4, life: 1.5, shape: 'fire' }],
-      [{ id: 'damaru', name: 'Damaru', desc: 'STUNS THE OPPONENT FOR 1.5 S', kind: 'projectile', range: 'mid', cost: { power: 0 }, req: {}, cast: 0.4, damage: 2, knockback: 0, speed: 160, radius: 10, life: 1.5, effect: { kind: 'stun', time: 1.5 }, shape: 'wave' }],
+      [{ id: 'damaru', name: 'Damaru', desc: 'STUNS THE OPPONENT: NO MOVES OR BLOCK FOR 1.5 SECONDS', kind: 'projectile', range: 'mid', cost: { power: 0 }, req: {}, cast: 0.4, damage: 2, knockback: 0, speed: 160, radius: 10, life: 1.5, effect: { kind: 'stun', time: 1.5 }, shape: 'wave' }],
       [{ id: 'pashupatastra', name: 'Pashupatastra', desc: '45% DAMAGE FROM ANYWHERE, THROUGH ANY BARRIER', kind: 'projectile', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 45, knockback: 160, speed: 300, radius: 7, life: 2, shape: 'fire' }],
     ],
   },
