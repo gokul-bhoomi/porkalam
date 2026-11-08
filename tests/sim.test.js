@@ -81,7 +81,9 @@ test('blink with no direction goes away from the opponent and stays inside the a
 test('Thousand-Arm Form hits across the whole arena after its scene', () => {
   const m = match({ k: { x: -100, y: 0, power: 100 }, r: { x: 100, y: 0 } });
   tap(m, K, 'sig'); run(m, [{}, {}], mage.moves.sig.cast + TUNE.scene + 0.1);
-  assert.equal(m.players[R].hp, 100 - mage.moves.sig.damage);
+  assert.equal(m.players[R].hp, 100, 'not yet: the arms are still reaching');
+  run(m, [{}, {}], mage.moves.sig.strikeDelay);
+  assert.equal(m.players[R].hp, 100 - mage.moves.sig.damage, 'the arms land');
   assert.equal(m.players[K].hp, 100 - mage.moves.sig.cost.health);
 });
 

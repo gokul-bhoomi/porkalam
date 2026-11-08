@@ -33,7 +33,7 @@ export const GODS = {
     tiers: [
       [], // Flute charm removed (owner, 2026-11-08)
       [{ id: 'sudarshana', name: 'Sudarshana Chakra', desc: 'A HOMING DISC: 14% DAMAGE', kind: 'projectile', range: 'anywhere', cost: { power: 0 }, req: {}, cast: 0.5, damage: 14, knockback: 90, speed: 130, radius: 6, life: 3, legs: 3, legTime: 0.9, shape: 'chakra' }],
-      [{ id: 'vishwaroopam', name: 'Vishwaroopam', desc: '40% DAMAGE ACROSS THE WHOLE ARENA', kind: 'global', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 40, knockback: 60 }],
+      [{ id: 'vishwaroopam', name: 'Vishwaroopam', desc: '40% DAMAGE ACROSS THE WHOLE ARENA', kind: 'global', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 40, knockback: 60, strikeDelay: 0.4 }],
     ],
   },
 };

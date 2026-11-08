@@ -21,7 +21,7 @@ export function createMatch({ seed = 1, time = TUNE.match.default, chars = ['sid
   return {
     seed, rand: rng(seed), t: 0, duration, timeLeft: duration, phase: 'fight', result: null, scene: null,
     players: chars.map((id, i) => makeFighter(CHARS[id], i)),
-    projectiles: [], strikes: [], areas: [], units: [], walls: [], arenaChange: null,
+    projectiles: [], strikes: [], areas: [], strikesDue: [], units: [], walls: [], arenaChange: null,
     hits: [], events: [], prev: [{}, {}], nid: 1,
   };
 }
@@ -328,8 +328,8 @@ function release(m, p, c) {
     case 'area':
       m.areas.push({ id: m.nid++, owner: p.id, x: o.x, y: o.y, r: mv.radius, t: mv.delay, delay: mv.delay, dmg: mv.damage, kb: mv.knockback });
       break;
-    case 'global': // across the whole arena
-      for (const t of [o, ...m.units.filter((u) => u.owner !== p.id)]) m.hits.push({ target: t, dmg: mv.damage, kb: mv.knockback, from: { x: p.x, y: p.y }, src: mv.name, divine: !!mv.divine, by: p.id });
+    case 'global': // across the whole arena, landing when the strike reaches (strikeDelay s), so it matches what's drawn
+      m.strikesDue.push({ owner: p.id, t: mv.strikeDelay || 0, from: { x: p.x, y: p.y }, dmg: mv.damage, kb: mv.knockback, src: mv.name, divine: !!mv.divine });
       break;
     case 'brahmastra': // both fighters reach 0 health at once: a draw
       for (const t of m.players) m.hits.push({ target: t, dmg: Infinity, kb: 0, absolute: true, from: null, src: 'Brahmastra' });
@@ -485,6 +485,13 @@ function collectHits(m) {
     for (const u of m.units) if (u.owner !== a.owner && Math.hypot(u.x - a.x, u.y - a.y) <= a.r + u.r) m.hits.push({ target: u, dmg: a.dmg, kb: 0, from: a, src: 'Arrow rain' });
   }
   m.areas = m.areas.filter((a) => !a.dead);
+  for (const s of m.strikesDue) { // whole-arena strikes, once they arrive
+    if ((s.t -= STEP) > 1e-9) continue;
+    s.dead = true;
+    const p = m.players[s.owner], o = opponent(m, p);
+    for (const t of [o, ...m.units.filter((u) => u.owner !== s.owner)]) m.hits.push({ target: t, dmg: s.dmg, kb: s.kb, from: s.from, src: s.src, divine: s.divine, by: s.owner });
+  }
+  m.strikesDue = m.strikesDue.filter((s) => !s.dead);
 }
 
 // ---------- 4. damage and healing, all together ----------
