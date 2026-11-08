@@ -4,6 +4,7 @@ import { W, H, RES, ARENA, TUNE } from './config.js';
 import { ACTIONS, LABELS, KEYS, KEY_NAME, PAD, PAD_NAMES } from './input.js';
 import { opponent, chargeOf } from './sim.js';
 import { ART, drawSprite, drawFx as fxSprite, drawPortrait, POSES } from './art.js';
+import { GODS as GODS_LIST } from './chars/gods.js';
 const fxArt = (name) => useArt && ART.fx[name];
 
 export const FONT = '"Press Start 2P", monospace';
@@ -719,6 +720,100 @@ export function drawOffer(o, p, hint, t) {
   G.restore();
 }
 
+// ---------- character select and the move / boon pages ----------
+function wrap(text, max) { // split into lines of at most `max` characters, on spaces
+  const out = []; let line = '';
+  for (const w of String(text).split(' ')) { if ((line + ' ' + w).trim().length > max) { out.push(line); line = w; } else line = (line + ' ' + w).trim(); }
+  if (line) out.push(line);
+  return out;
+}
+function drawCard(ch, x, y, w, h, now) { // the Codex card art, or the fighter drawn large on a backdrop
+  const img = ART.cards[ch.id];
+  G.save(); G.beginPath(); G.roundRect(x, y, w, h, 5); G.clip();
+  if (img) { G.imageSmoothingEnabled = true; G.drawImage(img, x, y, w, h); }
+  else {
+    const g = G.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, ch.cls === 'mage' ? '#123a4a' : '#5a1a10'); g.addColorStop(1, '#0a0608');
+    G.fillStyle = g; G.fillRect(x, y, w, h);
+    if (ART.sheets[ch.id]) { G.save(); G.translate(x + w / 2, y + h * 0.82); G.scale(2.2, 2.2); drawSprite(G, ch.id, 'walk', Math.floor(now * 5) % 4, 0, 0, false); G.restore(); }
+  }
+  const sh = G.createLinearGradient(0, y + h * 0.7, 0, y + h); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.85)');
+  G.fillStyle = sh; G.fillRect(x, y, w, h);
+  G.restore();
+  txt(ch.name.toUpperCase(), x + w / 2, y + h - 22, ch.color, 'center', 8);
+  txt(ch.cls === 'mage' ? 'MAGE' : 'WARRIOR', x + w / 2, y + h - 11, '#c9b07a', 'center', 6);
+}
+const MOVE_ROWS = [['a1', 'BASIC 1'], ['a2', 'BASIC 2'], ['block', 'BLOCK'], ['s1', 'SPECIAL 1'], ['s2', 'SPECIAL 2'], ['s3', 'SPECIAL 3'], ['sig', 'ALL 3 SPECIALS'], ['cls', 'DOWN + SPECIAL 1']];
+function costText(mv) {
+  const c = mv.cost || {}, p = c.power === 'all' ? 'ALL' : c.power || 0;
+  return `${p} POWER${c.health ? ` + ${c.health}% HEALTH` : ''}`;
+}
+// a fighter's page: bio, then each move with its button, cost and what it does
+function drawMoveList(ch, x, y, w) {
+  const cpl = Math.floor(w / 5.1); // characters per line at 5px
+  txt(`${ch.name.toUpperCase()}  -  ${ch.cls === 'mage' ? 'MAGE' : 'WARRIOR'}`, x, y, ch.color, 'left', 8);
+  let yy = y + 12;
+  for (const l of wrap(ch.bio || '', cpl).slice(0, 2)) { txt(l, x, yy, '#d8cfe8', 'left', 5); yy += 6; }
+  txt(`SPEED: ${ch.speed > 60 ? 'FAST' : 'SLOW'}    BLOCK: ${ch.defence.name.toUpperCase()}`, x, yy + 1, '#9aa', 'left', 5); yy += 11;
+  for (const [slot, btn] of MOVE_ROWS) {
+    const mv = slot === 'block' ? { name: ch.defence.name, desc: ch.defence.desc, cost: { power: ch.defence.cost } } : ch.moves[slot];
+    R(x, yy - 1, w, 0.5, 'rgba(201,162,74,.35)');
+    txt(mv.name.toUpperCase(), x, yy + 1, slot === 'sig' ? '#ffcf6a' : '#fff', 'left', 5);
+    txt(btn, x + w, yy + 1, '#9fe07a', 'right', 5);
+    yy += 7;
+    const lines = wrap(`${costText(mv)}. ${mv.desc || ''}`, cpl - 1).slice(0, 3);
+    lines.forEach((l, i) => { txt(l, x + 4, yy, i === 0 ? '#e8dcc0' : '#c8bcd8', 'left', 5); yy += 5.6; });
+    yy += 2;
+  }
+}
+// how boons work, and every boon by tier
+function drawBoonsPage(now) {
+  R(0, 0, W, H, 'rgba(8,6,14,.94)');
+  txt('BOONS OF THE GODS', CX, 8, '#ffcf6a', 'center', 16);
+  const how = ['MEDITATE (DOWN + SPECIAL 1) BEHIND A BARRIER TO FILL 10 DEVOTION SEGMENTS.',
+    'TWO SPECIALS ASK A RANDOM GOD FOR A BOON: 3 = SMALL, 6 = MEDIUM, 10 = DIVINE WEAPON.',
+    'THE GOD REVEALS IT AND YOU HOLD IT. TWO SPECIALS AGAIN USE IT, NOW OR LATER.',
+    'A BOON ATTACK ALWAYS FINDS THE OPPONENT. ONLY ANOTHER ATTACK MEETING IT CAN WEAKEN IT.'];
+  how.forEach((l, i) => txt(l, CX, 30 + i * 8, '#d8cfe8', 'center', 5));
+  const tiers = [['SMALL  (3)', 0], ['MEDIUM  (6)', 1], ['DIVINE WEAPON  (10)', 2]], colW = 150;
+  tiers.forEach(([label, ti], c) => {
+    const x = 15 + c * colW + c * 3; let y = 72;
+    box(x - 4, y - 4, colW, 172, 5, 'rgba(40,24,10,.6)', ti === 2 ? '#e8c060' : 'rgba(201,162,74,.6)');
+    txt(label, x + colW / 2 - 4, y, ti === 2 ? '#fff2b0' : '#ffcf6a', 'center', 6); y += 12;
+    for (const [gid, god] of Object.entries(GODS_LIST)) for (const b of god.tiers[ti]) {
+      txt(b.name.toUpperCase(), x, y, '#fff', 'left', 5); txt(god.name.toUpperCase(), x + colW - 8, y, '#c9b07a', 'right', 5); y += 7;
+      for (const l of wrap(b.desc || '', 28).slice(0, 3)) { txt(l, x + 3, y, '#c8bcd8', 'left', 5); y += 6; }
+      y += 4;
+    }
+  });
+  txt('BRAHMASTRA IS RARE UNLESS YOUR HEALTH IS LOW. DIVINE WEAPONS GO THROUGH A MEDITATION BARRIER.', CX, 250, '#9aa', 'center', 5);
+}
+export function drawSelect(now, o) {
+  drawBackdrop(now);
+  R(0, 0, W, H, 'rgba(8,6,14,.82)');
+  if (o.boonsPage) { drawBoonsPage(now); txt('ANY KEY: BACK', CX, 260, '#ddd', 'center', 6); return; }
+  txt('CHOOSE YOUR FIGHTER', CX, 6, '#ffcf6a', 'center', 16);
+  const cw = 100, chh = 133, gap = 12, x0 = 14, y0 = 32;
+  o.ids.forEach((id, i) => drawCard(o.chars[id], x0 + i * (cw + gap), y0, cw, chh, now));
+  const humans = o.mode === '1p' ? [0] : [0, 1];
+  for (const pid of humans) { // the players' cursors
+    const i = o.cursor[pid], x = x0 + i * (cw + gap), col = pid === 0 ? '90,160,255' : '255,90,70', pulse = o.locked[pid] ? 1 : 0.6 + 0.4 * Math.sin(now * 6);
+    G.save(); G.strokeStyle = `rgba(${col},${pulse})`; G.lineWidth = 2; G.beginPath(); G.roundRect(x - 2 - pid * 2, y0 - 2 - pid * 2, cw + 4 + pid * 4, chh + 4 + pid * 4, 6); G.stroke(); G.restore();
+    const tag = o.mode === '1p' ? 'YOU' : `P${pid + 1}`;
+    txt(o.locked[pid] ? `${tag} READY` : tag, x + (pid ? cw - 2 : 2), y0 + chh + 6, `rgb(${col})`, pid ? 'right' : 'left', 6);
+  }
+  if (o.mode === '1p') txt('THE CPU TAKES THE OTHER FIGHTER', x0 + cw + gap / 2, y0 + chh + 18, '#9aa', 'center', 5);
+  box(232, 28, 242, 222, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)');
+  drawMoveList(o.chars[o.ids[o.cursor[o.focus || 0]]], 240, 34, 226);
+  txt(o.mode === '1p' ? 'LEFT/RIGHT CHOOSE   ENTER LOCK IN   DOWN: BOONS   ESC BACK' : 'EACH PLAYER: LEFT/RIGHT CHOOSE, ATTACK 1 / ENTER LOCK IN   DOWN: BOONS', CX, 258, '#ddd', 'center', 5);
+}
+// pause menu pages: page 0 and 1 = the two fighters in this match, 2 = boons
+export function drawInfo(page, chs) {
+  R(0, 0, W, H, 'rgba(8,6,14,.94)');
+  if (page === 2) drawBoonsPage(0);
+  else { box(14, 10, 452, 240, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)'); drawMoveList(chs[page], 24, 18, 432); }
+  txt(`< ${['P1 FIGHTER', 'P2 FIGHTER', 'BOONS'][page]} >    LEFT/RIGHT: NEXT PAGE    ESC: BACK`, CX, 260, '#ddd', 'center', 6);
+}
+
 // ---------- screens ----------
 export function drawTitle(now, pads) {
   drawBackdrop(now); drawArena();
@@ -756,7 +851,6 @@ export function drawSetup(now, o) {
   const names = ['SIDDHAN (MAGE)', 'VEERAN (WARRIOR)'];
   const show = {
     mode: ['PLAYERS', o.mode === '1p' ? '1 PLAYER VS CPU' : '2 PLAYERS'],
-    side: ['YOU PLAY', names[o.side]],
     level: ['CPU LEVEL', o.levelName],
     length: ['LENGTH', `${o.minutes} MIN`],
   };
@@ -766,7 +860,7 @@ export function drawSetup(now, o) {
     txt(label, CX - 160, y, on ? '#ffcf6a' : '#ddd');
     txt(on ? `<  ${val}  >` : val, CX + 160, y, on ? '#ffcf6a' : '#fff', 'right');
   });
-  const tip = o.mode === '1p' ? `CPU PLAYS ${names[1 - o.side]}. USE EITHER KEY SET OR PAD 1.` : 'P1: WASD + F G H Q E R T Y    P2: ARROWS + K L ; U J I O P';
+  const tip = o.mode === '1p' ? 'YOU PICK YOUR FIGHTER NEXT; THE CPU TAKES THE OTHER ONE.' : 'BOTH PLAYERS PICK THEIR FIGHTER NEXT.';
   txt(tip, CX, 200, '#9aa', 'center');
   txt('UP/DOWN PICK  LEFT/RIGHT CHANGE  ENTER FIGHT  ESC BACK', CX, 220, '#ddd', 'center');
 }
@@ -774,7 +868,7 @@ export function drawSetup(now, o) {
 export function drawPause(sel) {
   R(0, 0, W, H, 'rgba(0,0,0,.6)');
   txt('PAUSED', CX, 90, '#fff', 'center', 16);
-  ['RESUME', 'QUIT TO TITLE'].forEach((s, i) => txt((i === sel ? '> ' : '  ') + s, CX, 130 + i * 16, i === sel ? '#ffcf6a' : '#ddd', 'center'));
+  ['RESUME', 'MOVES & BOONS', 'QUIT TO TITLE'].forEach((s, i) => txt((i === sel ? '> ' : '  ') + s, CX, 126 + i * 16, i === sel ? '#ffcf6a' : '#ddd', 'center'));
 }
 
 // t = seconds since the match ended: first the call (K.O. / TIME!) over the knockout, then the result fades in.

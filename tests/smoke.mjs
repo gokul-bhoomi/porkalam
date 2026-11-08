@@ -58,22 +58,26 @@ await check('title screen loads and shows the controls', async () => {
   await page.screenshot({ path: join(SHOTS, 'title.png') });
 });
 
-await check('menus: pick a 7 minute match and start it', async () => {
+await check('menus: pick a 7 minute match, choose a fighter on the select screen and start it', async () => {
   const s = await game(() => {
     const d = window.__game.debug;
     d.pause(); d.press('confirm'); d.step(1);
     const setup = d.snapshot().screen;
-    // rows (1 player): players, you play, cpu level, length
-    d.press('down'); d.step(1); d.press('right'); d.step(1);          // play as Veeran
+    // rows (1 player): players, cpu level, length
     d.press('down'); d.step(1); d.press('right'); d.step(1);          // CPU level normal -> hard
-    d.press('up', 1); d.step(1); d.press('up'); d.step(1); d.press('up'); d.step(1); // wraps round to length
-    d.press('right'); d.step(1); d.press('right', 1); d.step(1);
+    d.press('down'); d.step(1); d.press('right'); d.step(1); d.press('right', 1); d.step(1); // 5 -> 7 minutes
     d.press('confirm'); d.step(1);
-    return { setup, snap: d.snapshot() };
+    const select = d.snapshot().screen;
+    d.press('down'); d.step(1); const boons = window.__game.boonsPage; d.press('up'); d.step(1); // the boons page opens and closes
+    d.press('right'); d.step(1);                                       // choose Veeran
+    d.press('confirm'); d.step(1);
+    return { setup, select, boons, snap: d.snapshot() };
   });
-  expect(s.setup === 'setup', `expected setup, got ${s.setup}`);
+  expect(s.setup === 'setup' && s.select === 'select', `expected setup then select, got ${s.setup} ${s.select}`);
+  expect(s.boons === true, 'the boons page did not open');
   expect(s.snap.screen === 'fight' && s.snap.match.duration === 420, `expected a 7 minute fight, got ${s.snap.screen} ${s.snap.match?.duration}`);
-  expect(s.snap.mode === '1p' && s.snap.side === 1 && s.snap.level === 'hard' && s.snap.cpu === 0, `expected 1 player as the King vs a hard CPU: ${JSON.stringify(s.snap)}`);
+  expect(s.snap.mode === '1p' && s.snap.level === 'hard' && s.snap.cpu === 1, `expected 1 player vs a hard CPU: ${JSON.stringify(s.snap)}`);
+  expect(s.snap.match.players[0].name === 'Veeran' && s.snap.match.players[1].name === 'Siddhan', `expected you as Veeran vs a CPU Siddhan: ${s.snap.match.players.map((p) => p.name)}`);
 });
 
 await check('1 player: the computer fights back and either key set moves you', async () => {

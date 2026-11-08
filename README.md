@@ -10,7 +10,7 @@ npm run serve
 
 Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: press any button to connect; pad 1 is P1 (Siddhan), pad 2 is P2 (Veeran). The title screen lists every control.
 
-On the setup screen pick **1 player vs CPU** (choose your fighter and the CPU level: easy, normal or hard) or **2 players**, and the match length. In 1-player mode either key set, or pad 1, controls your fighter. The fight pauses itself if the window loses focus or goes into the background.
+On the setup screen pick **1 player vs CPU** (and the CPU level) or **2 players**, and the match length. Then the **character select** screen shows each fighter's card (painted by Codex, `art/card_<id>.png`) with every move, its buttons, cost and what it does; each player picks a fighter (in 1-player mode the CPU takes the other one, in 2-player mode both may pick the same). Press **down** there for the **Boons of the Gods** page. During a fight, the pause menu has **Moves & Boons**. In 1-player mode either key set, or pad 1, controls your fighter. The fight pauses itself if the window loses focus or goes into the background.
 
 | Action | P1 keys | P2 keys | Pad |
 |---|---|---|---|

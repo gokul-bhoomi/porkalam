@@ -1,6 +1,7 @@
 import { W, H, RES, STEP, TUNE, ARENA } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
-import { setCtx, R, txt, drawFight, drawOffer, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
+import { CHARS } from './chars/index.js';
+import { setCtx, R, txt, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
 import { createInput, KEYS, KEY_NAME } from './input.js';
 import * as sound from './audio.js';
@@ -20,7 +21,8 @@ const S = {
 const DBG = { paused: qs.get('pause') === '1', override: [null, null], menu: [] };
 
 // Setup screen rows. 1 player: you pick your fighter and the computer's level.
-const ROWS = () => (S.mode === '1p' ? ['mode', 'side', 'level', 'length'] : ['mode', 'length']);
+const CHAR_IDS = Object.keys(CHARS);
+const ROWS = () => (S.mode === '1p' ? ['mode', 'level', 'length'] : ['mode', 'length']); // the fighters are picked on the select screen
 function changeRow(dir) {
   const row = ROWS()[S.row];
   if (row === 'mode') { S.mode = S.mode === '1p' ? '2p' : '1p'; S.row = 0; }
@@ -32,7 +34,7 @@ function changeRow(dir) {
 function startMatch() {
   S.offer = null;
   const seed = S.seed++;
-  S.match = createMatch({ seed, time: S.minutes * 60 });
+  S.match = createMatch({ seed, time: S.minutes * 60, chars: S.chars || ['siddhan', 'veeran'] });
   S.cpu = S.mode === '1p' ? createCpu(1 - S.side, S.level, seed) : null; // the computer plays the other fighter
   Object.assign(S, { screen: 'fight', paused: false, fx: [], banner: null, sel: 0, screenAt: S.now });
 }
@@ -144,13 +146,39 @@ function update(dt) {
     if (any('down')) S.row = (S.row + 1) % n;
     if (any('left')) changeRow(-1);
     if (any('right')) changeRow(1);
-    if (any('confirm')) startMatch();
+    if (any('confirm')) { go('select'); S.sel = 0; S.cursor = [0, CHAR_IDS.length > 1 ? 1 : 0]; S.locked = [false, false]; S.focus = 0; S.boonsPage = false; }
     else if (any('back')) go('title');
+  } else if (S.screen === 'select') { // character select: each player picks a card; in 1 player mode the computer takes the other one
+    if (S.boonsPage) { if (any('up') || any('back') || any('confirm') || any('down')) S.boonsPage = false; return; }
+    if (any('down')) { S.boonsPage = true; return; }
+    const humans = S.mode === '1p' ? [0] : [0, 1], menu = (pid) => (S.mode === '1p' ? { ...m[1], ...Object.fromEntries(Object.entries(m[0]).filter(([, v]) => v)) } : m[pid]);
+    for (const pid of humans) {
+      const mm = menu(pid), n = CHAR_IDS.length;
+      if (!S.locked[pid]) {
+        if (mm.left) { S.cursor[pid] = (S.cursor[pid] + n - 1) % n; S.focus = pid; sound.play('tick'); }
+        if (mm.right) { S.cursor[pid] = (S.cursor[pid] + 1) % n; S.focus = pid; sound.play('tick'); }
+        if (mm.confirm) { S.locked[pid] = true; sound.play('start'); }
+      } else if (mm.back) S.locked[pid] = false;
+      else if (mm.confirm && humans.every((h) => S.locked[h])) break;
+    }
+    if (humans.every((h) => !S.locked[h]) && any('back')) { go('setup'); return; }
+    if (humans.every((h) => S.locked[h])) {
+      if (S.mode === '1p') S.cursor[1] = (S.cursor[0] + 1) % CHAR_IDS.length; // the computer takes the other fighter
+      S.chars = [CHAR_IDS[S.cursor[0]], CHAR_IDS[S.cursor[1]]]; S.side = 0;
+      startMatch();
+    }
   } else if (S.screen === 'fight') {
     const match = S.match;
     if (S.paused) {
-      if (any('up') || any('down')) S.sel = 1 - S.sel;
-      else if (any('confirm')) { if (S.sel === 0) S.paused = false; else go('title'); }
+      if (S.info != null) { // moves & boons pages: left/right flip, back closes
+        if (any('left')) S.info = (S.info + 2) % 3;
+        if (any('right')) S.info = (S.info + 1) % 3;
+        if (any('back') || any('confirm') || any('pause')) S.info = null;
+        return;
+      }
+      if (any('up')) S.sel = (S.sel + 2) % 3;
+      else if (any('down')) S.sel = (S.sel + 1) % 3;
+      else if (any('confirm')) { if (S.sel === 0) S.paused = false; else if (S.sel === 1) S.info = 0; else go('title'); }
       else if (any('pause')) S.paused = false;
       return;
     }
@@ -161,7 +189,7 @@ function update(dt) {
       if (any('confirm')) { if (S.sel === 0) startMatch(); else go(S.sel === 1 ? 'setup' : 'title'); }
       return;
     }
-    if (any('pause')) { S.paused = true; S.sel = 0; return; }
+    if (any('pause')) { S.paused = true; S.sel = 0; S.info = null; return; }
     if (!match.scene) S.clock += dt;
     let fight = inp.fight;
     if (S.cpu) {
@@ -180,6 +208,7 @@ function render() {
   ctx.setTransform(RES, 0, 0, RES, 0, 0); // draw in 480x270 layout units on the full-HD canvas
   R(0, 0, W, H, '#000');
   if (S.screen === 'title') drawTitle(S.now, S.pads);
+  else if (S.screen === 'select') drawSelect(S.now, { ...S, ids: CHAR_IDS, chars: CHARS });
   else if (S.screen === 'setup') drawSetup(S.now, { ...S, rows: ROWS(), levelName: LEVELS[S.level].name });
   else if (S.screen === 'fight') {
     const hints = [0, 1].map(useHint);
@@ -191,7 +220,7 @@ function render() {
       txt(S.banner.sub, CX, H - 18, '#ddd', 'center');
     }
     if (S.match.phase === 'done') drawResult(S.match, S.sel, S.now - S.screenAt);
-    if (S.paused) drawPause(S.sel);
+    if (S.paused) { drawPause(S.sel); if (S.info != null) drawInfo(S.info, S.match.players.map((p) => p.ch)); }
   }
 }
 
@@ -216,6 +245,7 @@ addEventListener('blur', autoPause);
 const r1 = (v) => Math.round(v * 10) / 10;
 window.__game = {
   get screen() { return S.screen; },
+  get boonsPage() { return !!S.boonsPage; },
   get sounds() { return [...sound.log]; },
   get audio() { return { state: sound.state(), muted: sound.isMuted() }; },
   get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, scenes: Object.keys(ART.scenes).length, sceneLayers: Object.keys(ART.sceneLayers).length, gods: Object.keys(ART.gods).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
