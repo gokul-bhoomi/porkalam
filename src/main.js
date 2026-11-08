@@ -1,7 +1,7 @@
 import { W, H, RES, STEP, TUNE, ARENA } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { CHARS } from './chars/index.js';
-import { setCtx, R, txt, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
+import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
 import { createInput, KEYS, KEY_NAME } from './input.js';
 import * as sound from './audio.js';
@@ -246,6 +246,7 @@ addEventListener('blur', autoPause);
 const r1 = (v) => Math.round(v * 10) / 10;
 window.__game = {
   get screen() { return S.screen; },
+  hurt(pid) { return S.match ? isHurtPose(S.match, pid) : false; },
   get boonsPage() { return !!S.boonsPage; },
   get sounds() { return [...sound.log]; },
   get audio() { return { state: sound.state(), muted: sound.isMuted() }; },

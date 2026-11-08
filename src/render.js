@@ -39,10 +39,24 @@ export function R(x, y, w, h, c) { G.fillStyle = c; G.fillRect(Math.round(x), Ma
 export function ell(x, y, rx, ry, c) { G.fillStyle = c; G.beginPath(); G.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2); G.fill(); }
 function ring(x, y, rx, ry, c, w = 1, a0 = 0, a1 = Math.PI * 2) { G.strokeStyle = c; G.lineWidth = w; G.beginPath(); G.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), 0, a0, a1); G.stroke(); }
 function line(x0, y0, x1, y1, c, w = 1) { G.strokeStyle = c; G.lineWidth = w; G.beginPath(); G.moveTo(x0, y0); G.lineTo(x1, y1); G.stroke(); }
+// Every text drawn this frame, with its box in layout units, when the overlap test asks for it
+// (window.__textLog = []). The test fails if two boxes overlap or one leaves the screen.
 export function txt(s, x, y, c = '#fff', al = 'left', sz = 8, ol = 'rgba(0,0,0,.75)') {
   G.font = `${sz}px ${FONT}`; G.textAlign = al; G.textBaseline = 'top';
+  if (typeof window !== 'undefined' && window.__textLog && s) {
+    const w = G.measureText(s).width, t = G.getTransform(), k = t.a / RES, x0 = al === 'center' ? x - w / 2 : al === 'right' ? x - w : x;
+    window.__textLog.push({ s: String(s), x0: x0 * k + t.e / RES, y0: y * k + t.f / RES, x1: (x0 + w) * k + t.e / RES, y1: (y + sz) * k + t.f / RES, a: G.globalAlpha });
+  }
   if (ol) { G.fillStyle = ol; for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) G.fillText(s, Math.round(x) + dx, Math.round(y) + dy); }
   G.fillStyle = c; G.fillText(s, Math.round(x), Math.round(y));
+}
+// a full-screen opaque page was drawn: the text under it is hidden, so the overlap test forgets it
+function covered() { if (typeof window !== 'undefined' && window.__textLog) window.__textLog.length = 0; }
+// text that must fit a width: the font shrinks (down to 4) until it does
+function txtFit(s, x, y, c, al, sz, maxW) {
+  let z = sz;
+  for (; z > 4; z -= 0.5) { G.font = `${z}px ${FONT}`; if (G.measureText(s).width <= maxW) break; }
+  txt(s, x, y, c, al, z);
 }
 const short = (s) => s.toUpperCase().replace('SUDARSHANA ', '').replace('PINNING ARROW', 'PIN ARROW').replace('THIRD-EYE ', '');
 export const clock = (s) => { const t = Math.ceil(s); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
@@ -277,7 +291,7 @@ function trackMotion(m) {
   const now = m.t; // match clock: poses freeze with the game
   if (animMatch !== m) { // a new match (rematch): forget the last one's poses, they were timed on its clock
     animMatch = m;
-    for (const p of m.players) Object.assign(anim[p.id], { x: p.x, y: p.y, moving: false, still: 0, hp: p.hp, cast: null, pose: null, until: 0, doneAt: null });
+    for (const p of m.players) Object.assign(anim[p.id], { x: p.x, y: p.y, moving: false, still: 0, hp: p.hp, taken: p.stats.taken, cast: null, pose: null, until: 0, doneAt: null });
     hpShown[0] = hpShown[1] = 100;
   }
   for (const p of m.players) {
@@ -286,14 +300,17 @@ function trackMotion(m) {
     const d = Math.hypot(p.x - a.x, p.y - a.y), P = POSES[p.ch.id];
     if (d > 0.2) { a.moving = true; a.still = 0; } else if (++a.still > 4) a.moving = false;
     a.x = p.x; a.y = p.y;
-    if (P && p.hp < a.hp - 0.01) { a.pose = P.hit; a.until = now + 0.3; }
+    // flinch only when hit (damage taken), not when paying a move's health cost, e.g. a signature
+    if (P && p.stats.taken > a.taken + 0.01) { a.pose = P.hit; a.until = now + 0.3; }
     else if (P && a.cast && !p.cast) { // a cast just ended: hold the follow-through
       const after = { a1: P.shoot, s1: P.shoot, s2: p.ch.weapon === 'bow' ? P.shoot : null, a2: P.melee }[a.cast];
       if (after != null) { a.pose = after; a.until = now + 0.22; }
     }
-    a.hp = p.hp; a.cast = p.cast ? p.cast.slot : null;
+    a.hp = p.hp; a.taken = p.stats.taken; a.cast = p.cast ? p.cast.slot : null;
   }
 }
+// for tests: is the fighter showing the hurt pose right now?
+export const isHurtPose = (m, pid) => { const p = m.players[pid], P = POSES[p.ch.id]; return !!P && poseOf(m, p) === P.hit; };
 // which action frame a fighter shows right now (null = idle / walk)
 function poseOf(m, p) {
   const P = POSES[p.ch.id], a = anim[p.id], now = m.t;
@@ -754,18 +771,17 @@ function drawMoveList(ch, x, y, w) {
     const sig = slot === 'sig';
     box(x, yy, 50, 18, 3, sig ? 'rgba(120,80,20,.6)' : 'rgba(60,90,50,.45)', sig ? '#e8c060' : 'rgba(159,224,122,.6)');
     txt(btn, x + 25, yy + 6, sig ? '#ffe7a0' : '#bff0a8', 'center', 5);
-    txt(mv.name.toUpperCase(), x + 58, yy + 2, sig ? '#ffcf6a' : '#fff', 'left', 8);
-    txt(mv.short || '', x + 58, yy + 11, '#c8bcd8', 'left', 6);
-    const c = mv.cost || {};
+    const c = mv.cost || {}, textW = w - 58 - 34; // the name and line never reach the cost column
+    txtFit(mv.name.toUpperCase(), x + 58, yy + 2, sig ? '#ffcf6a' : '#fff', 'left', 8, textW);
+    txtFit(`${mv.short || ''}${c.health ? `, costs ${c.health}% HP` : ''}`, x + 58, yy + 11, c.health ? '#ffb4a8' : '#c8bcd8', 'left', 6, textW);
     txt(`${c.power || 0}`, x + w, yy + 1, '#ffd34a', 'right', 8); // power cost, labelled so it reads as a cost
-    if (c.health) { G.font = `8px ${FONT}`; txt(`+${c.health}% HP`, x + w - G.measureText(`${c.power}`).width - 4, yy + 2, '#ff9a8a', 'right', 6); }
     txt('POWER', x + w, yy + 11, '#c9a24a', 'right', 5);
     yy += 22;
   }
 }
 // how boons work, and every boon by tier
 function drawBoonsPage(now) {
-  R(0, 0, W, H, 'rgba(8,6,14,.94)');
+  R(0, 0, W, H, 'rgba(8,6,14,.94)'); covered();
   txt('BOONS OF THE GODS', CX, 8, '#ffcf6a', 'center', 16);
   const how = ['MEDITATE (DOWN + SPECIAL 1) BEHIND A BARRIER TO FILL 10 DEVOTION SEGMENTS.',
     'TWO SPECIALS ASK A RANDOM GOD FOR A BOON: 3 = SMALL, 6 = MEDIUM, 10 = DIVINE WEAPON.',
@@ -807,7 +823,7 @@ export function drawSelect(now, o) {
 }
 // pause menu pages: page 0 and 1 = the two fighters in this match, 2 = boons
 export function drawInfo(page, chs) {
-  R(0, 0, W, H, 'rgba(8,6,14,.94)');
+  R(0, 0, W, H, 'rgba(8,6,14,.94)'); covered();
   if (page === 2) drawBoonsPage(0);
   else if (page === 3) drawControls();
   else { box(110, 12, 260, 236, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)'); drawMoveList(chs[page], 120, 20, 240); }
@@ -817,7 +833,7 @@ export function drawInfo(page, chs) {
 // ---------- screens ----------
 // The controls, for both key sets and the pad (moved off the title screen, owner 2026-11-08).
 function drawControls(pads = 0) {
-  R(0, 0, W, H, 'rgba(8,6,14,.94)');
+  R(0, 0, W, H, 'rgba(8,6,14,.94)'); covered();
   txt('CONTROLS', CX, 8, '#ffcf6a', 'center', 16);
   const k3 = (k, n) => k.slice(0, n).map(KEY_NAME).join('+');
   const sp = (K) => ['s1', 's2', 's3'].map((s) => K[s][0]);
