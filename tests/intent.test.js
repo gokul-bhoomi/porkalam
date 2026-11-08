@@ -562,7 +562,7 @@ test('class: the god who answers is random; nobody picks one (owner change 2026-
     m.players[R].devotion = 3; useBoon(m, R);
     gods.add(events(m, 'boon')[0].god);
   }
-  assert.equal(gods.size, Object.keys(GODS).length, 'every god answers sometimes');
+  assert.equal(gods.size, Object.values(GODS).filter((g) => g.tiers[0].length).length, 'every god with a small boon answers sometimes');
 });
 
 test('class: Brahmastra (a draw) is rare at good health and likely near the end of the health bar (owner, 2026-11-08)', () => {

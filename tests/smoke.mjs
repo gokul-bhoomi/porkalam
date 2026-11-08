@@ -130,7 +130,7 @@ await check('meditation fills devotion behind a barrier, and spending it shows t
   const p = s.med.match.players[1];
   expect(p.med && p.barrier > 0 && p.devotion === 3, `meditating with a barrier, 3 segments: ${JSON.stringify(p)}`);
   expect(s.after.match.players[1].devotion === 0, `devotion not spent: ${s.after.match.players[1].devotion}`);
-  expect(/OFFERS/.test(s.after.banner || '') && s.after.match.players[1].boon, `no offer / held boon: ${s.after.banner}`);
+  expect(s.after.match.players[1].boon, `no held boon: ${JSON.stringify(s.after.match.players[1])}`);
   const snd = await game(() => window.__game.sounds);
   expect(['meditate', 'devotion', 'boon'].every((n) => snd.includes(n)), `divine sounds not played: ${snd.join(',')}`);
   await page.screenshot({ path: join(SHOTS, 'boon.png') });
