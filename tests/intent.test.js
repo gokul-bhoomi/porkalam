@@ -422,7 +422,7 @@ test('rule 13: nobody leaves the round arena, it never grows, and being knocked 
   run(m, [{ mx: -1, my: 1 }, { mx: 1, my: -1 }], 6);
   for (const p of m.players) assert.ok(Math.hypot(p.x, p.y) <= ARENA.r + 1e-6);
   assert.equal(m.players[K].hp, 100, 'walking into the edge is free');
-  const n = match({ k: { x: 60, y: 0 }, r: { x: 80, y: 0 } });
+  const n = match({ k: { x: ARENA.r - 50, y: 0 }, r: { x: ARENA.r - 30, y: 0 } }); // close to the edge
   tap(n, K, 'a2'); run(n, [{}, {}], 1);
   assert.ok(events(n, 'wall').length === 1);
   assert.ok(n.players[R].hp <= 100 - mage.moves.a2.damage - TUNE.wallDmg + 1e-6);

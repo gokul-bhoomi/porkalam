@@ -74,7 +74,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 ## 13. Arena
 - One round arena that fits on one screen and is always fully visible to both players.
 - Nobody can fall off. The edge is an invisible wall, and getting knocked into it costs health.
-- The arena never grows.
+- The arena never grows. (Its size was set 10% larger by the owner on 2026-11-08, for more room to move and plan.)
 
 ## 14. Screen and controls
 - One shared screen, and nothing is hidden by the screen. Both power bars are visible.

@@ -77,7 +77,12 @@ function onEvent(e, m) {
     if (e.name === 'Brahmastra') { for (const q of m.players) add({ kind: 'pillar', x: q.x, y: q.y, life: 1.2 }); add({ kind: 'global', x: 0, y: 0, life: 0.9, color: '255,255,255' }); shake(5, 1.0); }
   }
   if (e.type === 'wall') { add({ kind: 'pop', x: e.x, y: e.y - 8, text: 'WALL', color: '#ffb46a' }); add({ kind: 'splash', x: e.x, y: e.y, life: 0.9, big: 1 }); }
-  if (e.type === 'boon' && e.tier !== 'divine') add({ kind: 'god', god: e.godId, x: 0, y: 0, life: 1.8 }); // the god appears in the sky, blessing
+  if (e.type === 'boon') { // make the boon a moment: the fight slows, the god's light comes down on the caster
+    const p = m.players[e.pid];
+    S.slowmo = { t0: S.now };
+    add({ kind: 'invoke', god: e.godId, x: p.x, y: p.y, pid: e.pid, life: 1.4 });
+    if (e.tier !== 'divine') add({ kind: 'god', god: e.godId, x: 0, y: 0, life: 2.2 }); // the god appears over the arena, blessing
+  }
   if (e.type === 'boon') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()} INVOKES ${e.name.toUpperCase()}`, sub: `${e.tier.toUpperCase()} BOON FROM ${e.god.toUpperCase()}`, t0: S.now };
   if (e.type === 'medFull') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()}: DEVOTION FULL`, sub: 'A DIVINE WEAPON IS READY', t0: S.now };
 }
@@ -196,11 +201,19 @@ window.__game = {
 if (qs.get('screen') === 'fight') startMatch();
 
 let last = performance.now(), acc = 0;
+// Slow motion for a moment after a boon is invoked, so everyone sees what it is (render-side only: the sim
+// still runs in fixed steps, just fewer of them per second).
+function timeScale() {
+  if (!S.slowmo || S.screen !== 'fight' || S.paused) return 1;
+  const t = S.now - S.slowmo.t0;
+  if (t > 1.5) { S.slowmo = null; return 1; }
+  return t < 1.0 ? 0.3 : 0.3 + 0.7 * ((t - 1.0) / 0.5);
+}
 function frame(ts) {
   const gap = (ts - last) / 1000, dt = Math.min(0.1, Math.max(0, gap)); last = ts; S.now += dt;
   if (gap > 0.5) autoPause(); // frames came very late (throttled in the background): pause rather than crawl
   try {
-    if (!DBG.paused) { acc += dt; while (acc >= STEP) { update(STEP); acc -= STEP; } }
+    if (!DBG.paused) { acc += dt * timeScale(); while (acc >= STEP) { update(STEP); acc -= STEP; } }
     render();
   } catch (e) { S.errors.push(String(e?.stack || e)); console.error(e); }
   requestAnimationFrame(frame);

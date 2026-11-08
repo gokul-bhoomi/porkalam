@@ -27,7 +27,7 @@ export const LEVELS = {
 // about equally strong (CPU vs CPU near 50/50). Without it the Warrior's computer is much stronger at low skill
 // and the Mage's at high skill. Re-measure with tests/ai.test.js if moves change.
 export const SKILL_ADJUST = {
-  siddhan: { easy: 0.19, normal: 0.0, hard: -0.22 }, // skill 0.34 / 0.6 / 0.68
+  siddhan: { easy: 0.19, normal: 0.0, hard: -0.235 }, // skill 0.34 / 0.6 / 0.665
   veeran: { easy: -0.15, normal: 0, hard: 0.1 },      // skill 0.00 / 0.60 / 1.00
 };
 export const LEVEL_IDS = Object.keys(LEVELS);
