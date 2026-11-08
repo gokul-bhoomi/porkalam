@@ -104,7 +104,8 @@ function onEvent(e, m) {
     const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
     if (e.name === 'Thousand-Arm Form') { // a spirit of a thousand teal arms rises behind Siddhan and reaches out to strike
       const o = m.players[1 - e.pid];
-      add({ kind: 'arms', x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 });
+      add({ kind: 'arms', part: 'fan', ground: true, x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 }); // drawn behind the fighters
+      add({ kind: 'arms', part: 'palms', x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 });          // drawn in front
       add({ kind: 'shock', x: p.x, y: p.y, life: 1.0, color: '90,240,220', r: 160 }); shake(4, 0.7);
     }
     if (e.name === 'Gaja Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }

@@ -116,6 +116,8 @@ export async function loadArt(base = '') {
   if (ART.sceneLayers.siddhan_sig) ART.arms = cutArms(ART.sceneLayers.siddhan_sig.bg); // the Thousand-Arm Form's spirit, for the arena
   const fxImgs = await Promise.all(FX_SHEETS.map((f) => loadImg(base + f)));
   fxImgs.forEach((img, si) => { if (img) Object.assign(ART.fx, cutFx(img, FX_NAMES[si])); });
+  const hands = await loadImg(base + 'art/fx_hands.png'); // the Thousand-Arm Form: 4 arms, 4 striking palms
+  if (hands) Object.assign(ART.fx, cutFx(hands, ['arm1', 'arm2', 'arm3', 'arm4', 'palm1', 'palm2', 'palm3', 'palm4']));
   const ele = await loadImg(base + 'art/fx_elephant.png'); // single sprite: the Gaja Arrow's war elephant
   if (ele) Object.assign(ART.fx, cutFx(ele, ['elephant']));
   ART.ready = true;

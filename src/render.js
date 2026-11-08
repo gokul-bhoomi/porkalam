@@ -376,66 +376,37 @@ function drawFx(f, now) {
   }
   switch (f.kind) {
     case 'shake': case 'god': break;
-    case 'arms': { // Thousand-Arm Form: the spirit rises behind the caster, then glowing arms reach the target
-      const tx = sx(f.tx), ty = sy(f.ty), fade = 1 - clamp01((age - f.life + 0.4) / 0.4), rise = easeOut(clamp01(age / 0.35));
-      const face = tx >= x ? 1 : -1;
-      if (ART.arms) { // the spirit of arms, towering over the caster
-        const w = 230 * (0.85 + 0.15 * rise), h = w * ART.arms.height / ART.arms.width;
-        G.save(); G.globalCompositeOperation = 'lighter'; G.globalAlpha = 0.95 * fade * rise;
-        G.translate(x, y - 20 - 30 * rise); G.scale(face, 1); G.imageSmoothingEnabled = true;
-        G.drawImage(ART.arms, -w * 0.32, -h * 0.62, w, h);
-        G.restore();
+    case 'arms': { // Thousand-Arm Form: a fan of spectral arms opens behind the caster, then a barrage of palms
+      const tx = sx(f.tx), ty = sy(f.ty) - 18, face = tx >= x ? 1 : -1, cx = x - face * 4, cy = y - 30; // from his back
+      const fade = 1 - clamp01((age - f.life + 0.4) / 0.4), open = easeOut(clamp01(age / 0.3));
+      const haveArt = !!ART.fx.arm1;
+      G.save(); // drawn normally: Codex's hands already glow, and additive blending washed them out to white on the sand
+      if (f.part === 'fan' && ART.arms) { G.globalAlpha = 0.25 * fade * open; const w = 200, h = w * ART.arms.height / ART.arms.width; G.save(); G.translate(cx, cy - 20); G.scale(face, 1); G.drawImage(ART.arms, -w * 0.32, -h * 0.62, w, h); G.restore(); G.globalAlpha = 1; }
+      // 1) the fan: 18 arms radiating behind and around him, like the many-armed form, waving gently
+      const N = 18;
+      if (f.part === 'fan') for (let i = 0; i < N; i++) {
+        const t = i / (N - 1), ang = -Math.PI + t * Math.PI * 1.15 - 0.075 * Math.PI + Math.sin(age * 4 + i) * 0.05; // a wide arc above him
+        const len = (58 + 14 * Math.sin(i * 1.7)) * open, a = Math.cos(ang) * face, bsin = Math.sin(ang);
+        const ex = cx + a * len, ey = cy + bsin * len * 0.8, rot = Math.atan2(bsin * 0.8, a);
+        if (haveArt) fxSprite(G, `arm${1 + (i % 4)}`, (cx + ex) / 2, (cy + ey) / 2, len, { rot: a < 0 ? rot - Math.PI : rot, flip: a < 0, alpha: (0.75 + 0.25 * Math.sin(age * 6 + i)) * fade });
+        else { G.strokeStyle = `rgba(90,240,220,${0.6 * fade})`; G.lineWidth = 2; G.beginPath(); G.moveTo(cx, cy); G.lineTo(ex, ey); G.stroke(); ell(ex, ey, 2.5, 2.5, `rgba(200,255,250,${0.8 * fade})`); }
       }
-      const reach = easeOut(clamp01(age / 0.4)); // the arms stretch across and arrive as the hit lands (strikeDelay 0.4 s)
-      G.save(); G.globalCompositeOperation = 'lighter'; G.lineCap = 'round';
-      for (let i = 0; i < 7; i++) {
-        const off = (i - 3) * 9, sy0 = y - 30 + off * 0.6, cx1 = (x + tx) / 2 + face * 10, cy1 = Math.min(sy0, ty - 20) - 45 + Math.abs(off) * 1.5;
-        const ex = x + (tx - x) * reach, ey0 = sy0 + (ty - 22 + off * 0.25 - sy0) * reach, ccx = x + (cx1 - x) * reach, ccy = sy0 + (cy1 - sy0) * reach;
-        const a = fade * (0.55 + 0.45 * Math.sin(age * 14 + i));
-        for (const [lw, col] of [[6, `rgba(40,200,190,${0.25 * a})`], [3, `rgba(90,240,220,${0.7 * a})`], [1, `rgba(230,255,252,${a})`]]) {
-          G.strokeStyle = col; G.lineWidth = lw; G.beginPath(); G.moveTo(x, sy0); G.quadraticCurveTo(ccx, ccy, ex, ey0); G.stroke();
+      // 2) the barrage: 22 palms leap from the fan and strike the target one after another, landing by 0.4 s
+      if (f.part === 'palms') for (let i = 0; i < 22; i++) {
+        const t0 = i * 0.009, fl = clamp01((age - t0) / 0.2);
+        if (fl <= 0) continue;
+        const t = (i % N) / (N - 1), ang = -Math.PI + t * Math.PI * 1.15 - 0.075 * Math.PI, ox = cx + Math.cos(ang) * face * 62, oy = cy + Math.sin(ang) * 48;
+        const ex = tx + (hash(i, 70) - 0.5) * 18, ey = ty + (hash(i, 71) - 0.5) * 16, arc = -30 * (1 - Math.abs(t - 0.5) * 2);
+        const px = ox + (ex - ox) * fl, py = oy + (ey - oy) * fl + arc * Math.sin(Math.PI * fl), dir = Math.atan2(ey - oy, ex - ox);
+        if (fl < 1) {
+          if (haveArt) fxSprite(G, `palm${1 + (i % 4)}`, px, py, 30, { rot: face < 0 ? dir - Math.PI : dir, flip: face < 0, alpha: fade });
+          else ell(px, py, 3, 3, `rgba(200,255,250,${fade})`);
+        } else { // landed: a small flash where each palm strikes
+          const k3 = clamp01((age - t0 - 0.2) / 0.25);
+          if (k3 < 1) { const r3 = 4 + 10 * k3; const g3 = G.createRadialGradient(ex, ey, 0, ex, ey, r3); g3.addColorStop(0, `rgba(230,255,252,${(1 - k3) * fade})`); g3.addColorStop(1, 'rgba(80,230,210,0)'); G.fillStyle = g3; G.beginPath(); G.arc(ex, ey, r3, 0, Math.PI * 2); G.fill(); }
         }
-        G.fillStyle = `rgba(160,255,240,${0.8 * a})`; G.beginPath(); G.arc(ex, ey0, 3 + 1.5 * Math.sin(age * 20 + i), 0, Math.PI * 2); G.fill(); // a glowing hand
-      }
-      if (reach > 0.95) { // the strike: a teal burst on the target
-        const k2 = clamp01((age - 0.4) / 0.5), r2 = 10 + 30 * k2;
-        const gb = G.createRadialGradient(tx, ty - 18, 0, tx, ty - 18, r2);
-        gb.addColorStop(0, `rgba(220,255,250,${(1 - k2) * fade})`); gb.addColorStop(1, 'rgba(60,220,200,0)');
-        G.fillStyle = gb; G.beginPath(); G.arc(tx, ty - 18, r2, 0, Math.PI * 2); G.fill();
       }
       G.restore();
-      break;
-    }
-    case 'shatter': { // the island breaks: glowing fissures race out across the sand, chunks fly and fall, dust
-      G.save(); G.beginPath(); G.ellipse(CX, CY, ARENA.r * SC, ARENA.r * SC * SQ, 0, 0, Math.PI * 2); G.clip();
-      const run = easeOut(clamp01(age / 0.35)), glow = 1 - clamp01((age - 0.2) / 1.6);
-      fissures(x, y, f.seed, run, glow);
-      G.restore();
-      for (let i = 0; i < 34; i++) { // chunks of sand and stone thrown up
-        const a = hash(i, f.seed) * Math.PI * 2, sp = 30 + hash(i, f.seed + 1) * 70, up = (70 + hash(i, f.seed + 2) * 90) * age - 160 * age * age;
-        if (up < -4) continue;
-        const px = x + Z(Math.cos(a) * sp * age), py = y + Z(Math.sin(a) * sp * age) * SQ - Z(up), s2 = 1 + hash(i, f.seed + 3) * 2.2;
-        G.fillStyle = i % 3 ? `rgba(196,140,80,${1 - k})` : `rgba(110,70,40,${1 - k})`;
-        G.save(); G.translate(px, py); G.rotate(age * (4 + i)); G.fillRect(-s2 / 2, -s2 / 2, s2, s2 * 0.8); G.restore();
-      }
-      const dust = G.createRadialGradient(x, y - 6, 2, x, y - 6, Z(45) * (0.4 + k));
-      dust.addColorStop(0, `rgba(230,200,150,${0.45 * (1 - k)})`); dust.addColorStop(1, 'rgba(230,200,150,0)');
-      G.fillStyle = dust; G.beginPath(); G.ellipse(x, y - 6, Z(45) * (0.4 + k), Z(45) * (0.4 + k) * 0.7, 0, 0, Math.PI * 2); G.fill();
-      break;
-    }
-    case 'scar': { // what the shattering leaves behind: dark fissures that slowly fade
-      G.save(); G.beginPath(); G.ellipse(CX, CY, ARENA.r * SC, ARENA.r * SC * SQ, 0, 0, Math.PI * 2); G.clip();
-      fissures(x, y, f.seed, 1, 0, Math.min(1, (f.life - age) / 10));
-      G.restore();
-      break;
-    }
-    case 'invoke': { // the god's light comes down on the fighter who called them
-      const col = GOD_GLOW[f.god] || '255,225,150', a = Math.sin(Math.PI * Math.min(1, k * 1.1)), w = Z(9) * (1 + 0.3 * Math.sin(age * 14));
-      const beam = G.createLinearGradient(x - w, 0, x + w, 0);
-      beam.addColorStop(0, `rgba(${col},0)`); beam.addColorStop(0.5, `rgba(${col},${0.7 * a})`); beam.addColorStop(1, `rgba(${col},0)`);
-      G.fillStyle = beam; G.fillRect(x - w, -10, w * 2, y + 10);
-      for (let i = 0; i < 3; i++) { const t = (age * 1.4 + i / 3) % 1; ring(x, y, Z(6 + 22 * t), Z(6 + 22 * t) * SQ, `rgba(${col},${(1 - t) * a})`, 1.2); }
-      for (let i = 0; i < 18; i++) { const t = (age * 0.9 + hash(i, 60)) % 1; G.fillStyle = `rgba(255,255,240,${(1 - t) * a})`; G.beginPath(); G.arc(x + (hash(i, 61) - 0.5) * Z(20), y - t * 70, 0.6 + hash(i, 62), 0, Math.PI * 2); G.fill(); }
       break;
     }
     case 'crack': { // a fissure in the sand: a scorched dip, jagged branching cracks with a lit edge; fades late
