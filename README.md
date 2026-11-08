@@ -1,5 +1,7 @@
 # Porkalam (போர்க்களம்)
 
+**Play it:** https://gokul-bhoomi.github.io/porkalam/ (GitHub Pages, served from `main`).
+
 Siddhan (Mage) vs Veeran (Warrior), inspired by Indian mythology: one player against the computer or two players on one screen. Every ground rule, class rule and move from the docs works, drawn with the Codex art (or the grey-box shapes with `?grey=1`).
 
 ## Run it
