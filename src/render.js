@@ -3,7 +3,8 @@
 import { W, H, ARENA, TUNE } from './config.js';
 import { ACTIONS, LABELS, KEYS, KEY_NAME, PAD, PAD_NAMES } from './input.js';
 import { opponent, chargeOf } from './sim.js';
-import { ART, drawSprite, POSES } from './art.js';
+import { ART, drawSprite, drawFx as fxSprite, drawPortrait, POSES } from './art.js';
+const fxArt = (name) => useArt && ART.fx[name];
 
 export const FONT = '"Press Start 2P", monospace';
 export const CX = 240;                // screen centre
@@ -15,14 +16,18 @@ export const setUseArt = (v) => { useArt = v; fitView(); };
 
 // Line the world up with the arena floor in arena.png, then draw the picture at the matching scale.
 let arenaDraw = null;
+const VIEW = { floor: 0.84, cy: 165 }; // floor width as a share of the screen; where its centre sits (below the HUD)
 export function fitView() {
   const img = ART.arena, f = ART.fit;
   if (!useArt || !img) { CY = 160; SQ = 0.62; SC = 1; arenaDraw = null; return; }
-  const s = Math.max(W / img.width, H / img.height); // the picture covers the whole screen
-  const w = img.width * s, h = img.height * s, x = (W - w) / 2, y = (H - h) / 2;
+  // zoom in so the floor fills VIEW.floor of the screen width, but never so little that the picture leaves a gap
+  const s = Math.max(W / img.width, H / img.height, (VIEW.floor * W) / (2 * f.rx * img.width));
+  const w = img.width * s, h = img.height * s;
   SC = (f.rx * img.width * s) / ARENA.r;             // the floor's half-width = the arena radius
   SQ = (f.ry * img.height) / (f.rx * img.width);
-  CY = y + f.cy * img.height * s;
+  // floor centred on CX and VIEW.cy; y is nudged if that would leave a gap above or below the picture
+  const x = CX - f.cx * w, y = Math.min(0, Math.max(H - h, VIEW.cy - f.cy * h));
+  CY = y + f.cy * h;
   arenaDraw = { s, x, y, w, h };
 }
 
@@ -42,12 +47,50 @@ const short = (s) => s.toUpperCase().replace('SUDARSHANA ', '').replace('PINNING
 export const clock = (s) => { const t = Math.ceil(s); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 
 // ---------- arena ----------
+// Life on the river: glints on the water, waves lapping round the sand, birds, drifting embers.
+// Purely visual, from the render clock; nothing here touches the match.
+const hash = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
+function drawAmbient(now) {
+  const rx = ARENA.r * SC, ry = rx * SQ, top = arenaDraw.y + arenaDraw.h * 0.27; // the far bank / horizon
+  const inFloor = (x, y, k) => ((x - CX) / (rx * k)) ** 2 + ((y - CY) / (ry * k)) ** 2 < 1;
+  G.save();
+  G.lineCap = 'round';
+  for (let i = 0; i < 110; i++) { // sunset glints
+    const y = top + 3 + hash(i, 2) * (H - top), x = hash(i, 1) * W + Math.sin(now * 0.3 + i) * 2;
+    if (inFloor(x, y, 1.1)) continue;
+    const a = Math.max(0, Math.sin(now * (1.2 + hash(i, 3) * 2.2) + hash(i, 4) * 6.28)) ** 3;
+    if (a < 0.02) continue;
+    const len = (1.5 + hash(i, 5) * 4) * (0.5 + (y - top) / (H - top));
+    G.strokeStyle = `rgba(255,226,176,${0.85 * a})`; G.lineWidth = 0.6;
+    G.beginPath(); G.moveTo(x - len, y); G.lineTo(x + len, y); G.stroke();
+  }
+  for (let i = 0; i < 3; i++) { // foam rings pushing out from the sand and fading
+    const t = (now / 2.6 + i / 3) % 1, k = 1.01 + t * 0.07;
+    G.strokeStyle = `rgba(255,245,230,${0.45 * Math.sin(Math.PI * t)})`; G.lineWidth = 0.7;
+    G.beginPath(); G.ellipse(CX, CY, rx * k, ry * k + t * 2, 0, 0, Math.PI * 2); G.stroke();
+  }
+  for (let i = 0; i < 4; i++) { // birds over the far bank
+    const sp = 9 + hash(i, 6) * 7, x = ((now * sp + hash(i, 7) * 600) % (W + 80)) - 40, y = Math.max(44, top - 14) + hash(i, 8) * 10 + Math.sin(now + i) * 1.5;
+    const f = Math.sin(now * 9 + i * 2) * 1.6, s = 1.6 + hash(i, 9);
+    G.strokeStyle = 'rgba(40,20,50,.75)'; G.lineWidth = 0.6;
+    G.beginPath(); G.moveTo(x - s, y - f); G.lineTo(x, y); G.lineTo(x + s, y - f); G.stroke();
+  }
+  for (let i = 0; i < 26; i++) { // embers / fireflies drifting up
+    const sp = 4 + hash(i, 10) * 6, y = H + 10 - ((now * sp + hash(i, 11) * (H + 20)) % (H + 20)), x = hash(i, 12) * W + Math.sin(now * 0.8 + i) * 6;
+    const a = 0.35 + 0.65 * Math.max(0, Math.sin(now * 2.5 + i * 1.7));
+    G.fillStyle = `rgba(255,200,110,${0.18 * a})`; G.beginPath(); G.arc(x, y, 2.2, 0, Math.PI * 2); G.fill();
+    G.fillStyle = `rgba(255,236,170,${0.9 * a})`; G.beginPath(); G.arc(x, y, 0.6, 0, Math.PI * 2); G.fill();
+  }
+  G.restore();
+}
+
 function drawBackdrop(now) {
   if (useArt && arenaDraw) { // the picture already has sky, clouds and arena
     R(0, 0, W, H, '#5a55a8');
     G.imageSmoothingEnabled = true;
     G.drawImage(ART.arena, arenaDraw.x, arenaDraw.y, arenaDraw.w, arenaDraw.h);
     G.imageSmoothingEnabled = false;
+    drawAmbient(now);
     return;
   }
   const g = G.createLinearGradient(0, 0, 0, H);
@@ -70,6 +113,7 @@ function drawArena() {
 }
 
 function drawMark(mk) { // scuffs and traps share this exact drawing
+  if (fxArt('scuff')) { const w = Z(mk.size) * 2.6; fxSprite(G, 'scuff', sx(mk.x), sy(mk.y), w, { h: w * SQ, flip: mk.rot > 0, alpha: 0.85 }); return; }
   const x = sx(mk.x), y = sy(mk.y), c = Math.cos(mk.rot) * Z(mk.size), s = Math.sin(mk.rot) * Z(mk.size) * SQ;
   line(x - c, y - s, x + c, y + s, 'rgba(50,40,30,.55)', 1);
   line(x - s * 0.6, y + c * 0.4, x + s * 0.6, y - c * 0.4, 'rgba(50,40,30,.45)', 1);
@@ -81,7 +125,12 @@ function drawWall(w) {
   const B = TUNE.block, k = w.cap / w.max, x = sx(w.x), y = sy(w.y), px = -w.ny, py = w.nx, hw = Z(w.hw);
   const fade = w.standing && w.t < 0.6 && Math.floor(w.t * 10) % 2 ? 0.4 : 1; // blinks just before it disappears
   G.globalAlpha = fade;
-  if (w.look === 'hill') { // Govardhana: a mound that grows
+  const art = fxArt(w.look === 'hill' ? 'hill' : 'arrowWall');
+  if (art) { // upright; narrower when the wall is seen end-on, taller as it gets stronger
+    const len = 2 * Z(w.hw) * 1.25, wide = len * Math.max(0.55, Math.abs(px));
+    const up = (w.look === 'hill' ? 0.45 + 0.55 * k : 0.6 + 0.4 * k) * len / art.w * art.h;
+    fxSprite(G, w.look === 'hill' ? 'hill' : 'arrowWall', x, y + 2, wide, { h: up, anchor: 'bottom' });
+  } else if (w.look === 'hill') { // Govardhana: a mound that grows
     const h = 4 + k * 16;
     G.fillStyle = '#6d8f3d'; G.beginPath(); G.ellipse(x, y, Math.max(Math.abs(px) * hw, hw * 0.6), h, 0, Math.PI, 0); G.fill();
     line(x - px * hw, y - py * hw * SQ, x + px * hw, y + py * hw * SQ, '#4b6527', 2);
@@ -147,6 +196,15 @@ function drawFighter(m, p, now) {
 function drawProjectile(pr0, now) {
   const pr = { ...pr0, r: Z(pr0.r) };
   const x = sx(pr.x), y = sy(pr.y) - 6, a = Math.atan2(pr.vy * SQ, pr.vx), ca = Math.cos(a), sa = Math.sin(a);
+  const name = { note: 'notes', chakra: 'chakra', wave: 'wave', tiger: 'tiger', fire: 'fire', spear: 'spear' }[pr.shape] || 'arrow';
+  if (fxArt(name)) {
+    const size = { notes: 11, chakra: pr0.r * 2.8, wave: pr0.r * 2.4, tiger: 30, fire: pr0.r * 4, spear: 18, arrow: 16 }[name] * SC;
+    const hy = sy(pr.y) - 18; // shots fly at chest height, with a shadow on the sand
+    ell(x, sy(pr.y), size * 0.3, size * 0.1, 'rgba(0,0,0,.25)');
+    const flip = name === 'notes' && pr.vx < 0; // notes stay upright
+    fxSprite(G, name, x, hy, size, name === 'chakra' ? { rot: now * 14 } : name === 'notes' ? { flip } : { rot: a, flip: name === 'wave' });
+    return;
+  }
   switch (pr.shape) {
     case 'note': ring(x, y, pr.r, pr.r, '#bfe3ff', 2); break;
     case 'chakra':
@@ -197,32 +255,49 @@ function poseOf(m, p) {
   return P.cast;
 }
 
-export function drawFight(m, now, fx) {
+// fxNow: the clock the effects were stamped with (the fight clock, which stops during pauses and scenes)
+export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now) {
   trackMotion(m);
   drawBackdrop(now);
   drawArena();
-  for (const w of m.waters) { ell(sx(w.x), sy(w.y), Z(w.r), Z(w.r) * SQ, 'rgba(60,140,220,.55)'); ring(sx(w.x), sy(w.y), Z(w.r), Z(w.r) * SQ, '#a8d8ff'); }
+  for (const w of m.waters) if (fxArt('water')) fxSprite(G, 'water', sx(w.x), sy(w.y), Z(w.r) * 2.3, { h: Z(w.r) * 2.3 * SQ }); else { ell(sx(w.x), sy(w.y), Z(w.r), Z(w.r) * SQ, 'rgba(60,140,220,.55)'); ring(sx(w.x), sy(w.y), Z(w.r), Z(w.r) * SQ, '#a8d8ff'); }
   for (const mk of m.marks) drawMark(mk);
   for (const a of m.areas) {
     const k = 1 - a.t / a.delay;
+    if (fxArt('danger')) { // the warning circle fills in as the arrows get closer
+      const w = Z(a.r) * 2.2;
+      fxSprite(G, 'danger', sx(a.x), sy(a.y), w, { h: w * SQ, alpha: 0.6 + 0.4 * Math.abs(Math.sin(now * 10)) });
+      fxSprite(G, 'danger', sx(a.x), sy(a.y), w * k, { h: w * k * SQ, alpha: 0.5 });
+      continue;
+    }
     ring(sx(a.x), sy(a.y), Z(a.r), Z(a.r) * SQ, '#ff4a3a', 1);
     ell(sx(a.x), sy(a.y), Z(a.r) * k, Z(a.r) * SQ * k, 'rgba(255,74,58,.3)');
   }
   for (const u of m.units) { ell(sx(u.x), sy(u.y) - 4, Z(u.r), Z(u.r), '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
-  for (const f of fx) if (f.ground) drawFx(f, now);
+  for (const f of fx) if (f.ground) drawFx(f, fxNow);
   const order = [...m.players, ...m.walls].sort((a, b) => a.y - b.y); // back to front
   for (const o of order) if (o.ch) drawFighter(m, o, now); else drawWall(o);
   for (const pr of m.projectiles) drawProjectile(pr, now);
-  for (const f of fx) if (!f.ground) drawFx(f, now);
-  drawHud(m);
+  for (const f of fx) if (!f.ground) drawFx(f, fxNow);
+  drawHud(m, tags);
   if (m.scene) drawScene(m);
 }
 
 function drawFx(f, now) {
   const age = now - f.t0, k = age / f.life, x = sx(f.x), y = sy(f.y);
+  const spr = { flash: 'spark', boom: 'burst', clash: 'clash' }[f.kind];
+  if (spr && fxArt(spr)) {
+    const size = { spark: 20 + k * 10, burst: Z(22) * 2 * (0.6 + k * 0.6), clash: 34 + k * 12 }[spr];
+    fxSprite(G, spr, x, spr === 'burst' ? y : y - 18, size, { alpha: 1 - k * k, anchor: spr === 'burst' ? 'bottom' : 'center' });
+    return;
+  }
+  if (f.kind === 'rain' && fxArt('rain')) { // arrows drop onto the circle
+    for (let i = 0; i < 5; i++) { const a = i * 2.4, r = (i / 5) * Z(f.r); fxSprite(G, 'rain', x + Math.cos(a) * r, y + Math.sin(a) * r * SQ - 40 * (1 - k), 22, { anchor: 'bottom', alpha: 1 - k * 0.5 }); }
+    return;
+  }
   switch (f.kind) {
     case 'pop': txt(f.text, x, y - 34 - age * 20, f.color, 'center'); break;
-    case 'flash': ring(x, y - 6, 4 + k * 12, (4 + k * 12) * 0.8, `rgba(255,255,255,${1 - k})`, 2); break;
+    case 'clash': case 'flash': ring(x, y - 6, 4 + k * 12, (4 + k * 12) * 0.8, `rgba(255,255,255,${1 - k})`, 2); break;
     case 'swing': ring(x, y - 6, 12, 9, `rgba(255,255,255,${0.8 - k * 0.8})`, 2, f.a - 1, f.a + 1); break;
     case 'boom': ell(x, y, Z(22) * (0.5 + k), Z(22) * SQ * (0.5 + k), `rgba(255,140,40,${0.8 - k * 0.8})`); break;
     case 'rain': for (let i = 0; i < 9; i++) { const a = i * 2.4, r = (i / 9) * Z(f.r); line(x + Math.cos(a) * r, y + Math.sin(a) * r * SQ - 10 * (1 - k), x + Math.cos(a) * r, y + Math.sin(a) * r * SQ, '#f5e6c0'); } break;
@@ -238,22 +313,63 @@ function bar(x, y, w, h, k, c, right) {
   const fw = Math.round(w * Math.max(0, Math.min(1, k)));
   R(right ? x + w - fw : x, y, fw, h, c);
 }
-function drawHud(m) {
-  R(0, 0, W, 42, 'rgba(10,12,20,.78)');
+// rounded box
+function box(x, y, w, h, r, fill, stroke) {
+  G.beginPath(); G.roundRect(x, y, w, h, r);
+  if (fill) { G.fillStyle = fill; G.fill(); }
+  if (stroke) { G.strokeStyle = stroke; G.lineWidth = 0.75; G.stroke(); }
+}
+const hpShown = [100, 100]; let hudLast = 0; // the health bar's red "just lost" part drains after a hit
+function drawHud(m, tags) {
+  const dt = Math.min(0.1, Math.max(0, m.t - hudLast)); hudLast = m.t;
   for (const p of m.players) {
-    const right = p.id === 1, x = right ? W - 6 : 6, al = right ? 'right' : 'left', BW = 150, bx = right ? W - 6 - BW : 6;
-    txt(p.ch.name.toUpperCase(), x, 2, p.ch.color, al);
-    bar(bx, 12, BW, 7, p.hp / 100, p.hp > 25 ? '#5ad15a' : '#e8402e', right);
-    txt(`${Math.ceil(p.hp)}%`, right ? bx - 4 : bx + BW + 4, 11, '#fff', right ? 'right' : 'left');
-    bar(bx, 22, BW, 4, p.power / p.ch.power.size, '#ffd34a', right);
-    txt(`${Math.floor(p.power)}`, right ? bx - 4 : bx + BW + 4, 20, '#ffd34a', right ? 'right' : 'left');
-    let info;
-    if (p.ch.gods) {
-      info = `MEDITATIONS ${p.meditations}  ${p.boons.length ? `BOON: ${short(p.boons[0].name)}` : 'NO BOON'}`;
-    } else info = p.boons.length ? p.boons.map((b) => short(b.name)).join(' ') : '';
-    txt(info, x, 31, '#e6dcff', al);
+    const right = p.id === 1, X = (v, w = 0) => (right ? W - v - w : v), al = right ? 'right' : 'left';
+    const pw = p.power / p.ch.power.size; // both power bars always visible (ground rule 14)
+    // panel
+    const g = G.createLinearGradient(0, 3, 0, 45);
+    g.addColorStop(0, 'rgba(34,22,52,.88)'); g.addColorStop(1, 'rgba(18,10,26,.88)');
+    box(X(4, 194), 3, 194, 42, 6, g, '#c9a24a');
+    // portrait
+    const pcx = X(24), pcy = 24;
+    ell(pcx, pcy, 17.5, 17.5, '#1a1020');
+    if (!drawPortrait(G, p.ch.id, pcx, pcy, 16)) txt(p.ch.cls === 'god' ? 'K' : 'R', pcx, pcy - 4, p.ch.color, 'center');
+    ring(pcx, pcy, 17, 17, p.ch.color, 1.5); ring(pcx, pcy, 18.6, 18.6, '#c9a24a', 0.75);
+    // name + tag
+    txt(p.ch.name.toUpperCase(), X(46), 6, p.ch.color, al);
+    G.font = `8px ${FONT}`; const nw = G.measureText(p.ch.name).width;
+    txt(tags[p.id], X(46 + nw + 8), 6, tags[p.id] === 'CPU' ? '#b8b0c8' : '#fff', al);
+    // health: red trail for what was just lost, then the colour bar
+    hpShown[p.id] = p.hp > hpShown[p.id] ? p.hp : Math.max(p.hp, hpShown[p.id] - 30 * dt);
+    const bx = X(46, 114), k = Math.max(0, p.hp / 100), kt = hpShown[p.id] / 100;
+    box(bx - 1, 15, 116, 10, 3, '#0d0812', '#5a4a2a');
+    const fill = (from, to, c1, c2) => {
+      if (to <= from) return;
+      const x0 = right ? bx + 114 * (1 - to) : bx + 114 * from, gg = G.createLinearGradient(0, 16, 0, 24);
+      gg.addColorStop(0, c1); gg.addColorStop(1, c2); box(x0, 16, 114 * (to - from), 8, 2, gg);
+    };
+    fill(k, kt, '#ff8a7a', '#c0302a');
+    const col = p.hp > 50 ? ['#8af07a', '#2e9c3a'] : p.hp > 25 ? ['#ffe07a', '#d09a1a'] : ['#ff7a5a', '#b8241a'];
+    fill(0, k, ...col);
+    R(right ? bx + 114 * (1 - k) : bx, 16, 114 * k, 1.5, 'rgba(255,255,255,.35)');
+    txt(`${Math.ceil(p.hp)}%`, X(164), 16, '#fff', al);
+    // power: gold, marked every 10%
+    box(bx - 1, 28, 116, 5, 2, '#0d0812', '#5a4a2a');
+    const pg = G.createLinearGradient(0, 29, 0, 32); pg.addColorStop(0, '#fff1a0'); pg.addColorStop(1, '#e0a21a');
+    if (pw > 0) box(right ? bx + 114 * (1 - pw) : bx, 29, 114 * pw, 3, 1.5, pg);
+    for (let i = 1; i < 10; i++) R(bx + 11.4 * i, 29, 0.5, 3, 'rgba(0,0,0,.45)');
+    txt(`${Math.floor(p.power)}`, X(164), 27, '#ffd34a', al, 6);
+    // boon / meditation line
+    let info = '';
+    if (p.ch.gods) info = `MEDITATIONS ${p.meditations}   ${p.boons.length ? `BOON: ${short(p.boons[0].name)}` : 'NO BOON'}`;
+    else if (p.boons.length) info = p.boons.map((b) => short(b.name)).join(' ');
+    if (info) txt(info, X(46), 36, p.boons.length ? '#ffcf6a' : '#c8bce0', al, 6);
   }
-  txt(clock(m.timeLeft), CX, 4, m.timeLeft <= 30 ? '#ff6a5a' : '#fff', 'center', 16);
+  // timer medallion
+  const low = m.timeLeft <= 30, tg = G.createLinearGradient(0, 3, 0, 35);
+  tg.addColorStop(0, 'rgba(60,34,20,.92)'); tg.addColorStop(1, 'rgba(24,12,10,.92)');
+  box(CX - 34, 3, 68, 32, 8, tg, '#e8c060');
+  box(CX - 31, 6, 62, 26, 6, null, 'rgba(232,192,96,.45)');
+  txt(clock(m.timeLeft), CX, 11, low && Math.floor(m.t * 2) % 2 ? '#ff6a5a' : low ? '#ffb0a0' : '#fff6dc', 'center', 16);
 }
 
 function drawScene(m) {
@@ -276,7 +392,6 @@ export function drawTitle(now, pads) {
   R(0, 0, W, H, 'rgba(10,12,20,.72)');
   txt('MYTH FIGHTER', CX, 12, '#ffcf6a', 'center', 16);
   txt('KRISHNA (GOD)  VS  RAJA RAJA CHOLA (KING)', CX, 34, '#fff', 'center');
-  txt('GREY-BOX', CX, 46, '#9aa', 'center');
   const k3 = (k, n) => k.slice(0, n).map(KEY_NAME).join('+');
   const sp = (K) => ['s1', 's2', 's3'].map((s) => K[s][0]);
   const combos = {
@@ -299,13 +414,26 @@ export function drawTitle(now, pads) {
   txt(`PADS: ${pads}`, W - 6, H - 14, '#9aa', 'right');
 }
 
-export function drawSetup(now, minutes) {
+export function drawSetup(now, o) {
   drawBackdrop(now); drawArena();
-  R(0, 0, W, H, 'rgba(10,12,20,.6)');
-  txt('MATCH LENGTH', CX, 80, '#fff', 'center', 16);
-  txt(`<  ${minutes} MIN  >`, CX, 120, '#ffcf6a', 'center', 16);
-  txt('LEFT / RIGHT TO CHANGE (1-10)', CX, 160, '#ddd', 'center');
-  txt('START / ENTER TO FIGHT    ESC BACK', CX, 176, '#ddd', 'center');
+  R(0, 0, W, H, 'rgba(10,12,20,.65)');
+  txt('MATCH SETUP', CX, 40, '#ffcf6a', 'center', 16);
+  const names = ['KRISHNA', 'RAJA RAJA CHOLA'];
+  const show = {
+    mode: ['PLAYERS', o.mode === '1p' ? '1 PLAYER VS CPU' : '2 PLAYERS'],
+    side: ['YOU PLAY', names[o.side]],
+    level: ['CPU LEVEL', o.levelName],
+    length: ['LENGTH', `${o.minutes} MIN`],
+  };
+  o.rows.forEach((r, i) => {
+    const y = 84 + i * 24, on = i === o.row, [label, val] = show[r];
+    if (on) R(CX - 170, y - 5, 340, 18, 'rgba(255,207,106,.15)');
+    txt(label, CX - 160, y, on ? '#ffcf6a' : '#ddd');
+    txt(on ? `<  ${val}  >` : val, CX + 160, y, on ? '#ffcf6a' : '#fff', 'right');
+  });
+  const tip = o.mode === '1p' ? `CPU PLAYS ${names[1 - o.side]}. USE EITHER KEY SET OR PAD 1.` : 'P1: WASD + F G H Q E R T Y    P2: ARROWS + K L ; U J I O P';
+  txt(tip, CX, 200, '#9aa', 'center');
+  txt('UP/DOWN PICK  LEFT/RIGHT CHANGE  ENTER FIGHT  ESC BACK', CX, 220, '#ddd', 'center');
 }
 
 export function drawPause(sel) {
@@ -320,5 +448,5 @@ export function drawResult(m, sel) {
   txt(why, CX, 80, '#ddd', 'center');
   txt(r.winner == null ? 'DRAW' : `${m.players[r.winner].ch.name.toUpperCase()} WINS`, CX, 100, r.winner == null ? '#fff' : m.players[r.winner].ch.color, 'center', 16);
   m.players.forEach((p, i) => txt(`${p.ch.name}: ${Math.ceil(p.hp)}% health, dealt ${Math.round(p.stats.dealt)}%`, CX, 134 + i * 12, '#ddd', 'center'));
-  ['REMATCH', 'CHANGE LENGTH', 'TITLE'].forEach((s, i) => txt((i === sel ? '> ' : '  ') + s, CX, 176 + i * 14, i === sel ? '#ffcf6a' : '#ddd', 'center'));
+  ['REMATCH', 'MATCH SETUP', 'TITLE'].forEach((s, i) => txt((i === sel ? '> ' : '  ') + s, CX, 176 + i * 14, i === sel ? '#ffcf6a' : '#ddd', 'center'));
 }
