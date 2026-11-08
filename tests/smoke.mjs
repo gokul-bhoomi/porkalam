@@ -234,6 +234,55 @@ await check('the Codex art loads: arena plus 8 frames for each fighter, and ?gre
   expect(errs.length === 0, errs.join('\n'));
 });
 
+// UI layout: render every menu page and fail if any two pieces of text overlap or text leaves the screen.
+await check('a special or signature never shows the hurt pose (paying a health cost is not a hit)', async () => {
+  await open('?seed=3&pause=1');
+  await page.waitForFunction(() => window.__game.art.ready, null, { timeout: 10000 });
+  const hurtFrames = await game(() => {
+    const d = window.__game.debug; let n = 0;
+    for (const inp of [{ s1: true }, { s2: true }, { s3: true }, { s1: true, s2: true, s3: true }]) for (const pid of [0, 1]) {
+      d.start({ seed: 3 }); d.set(0, { x: -60, power: 100 }); d.set(1, { x: 60, power: 100 });
+      for (let i = 0; i < 30; i++) d.step(1); // mid-match, like real play
+      d.setInput(pid, inp); d.step(1); d.step(1); d.setInput(pid, {});
+      for (let i = 0; i < 60; i++) { d.step(1); if (window.__game.hurt(pid)) n++; }
+    }
+    return n;
+  });
+  expect(hurtFrames === 0, `the caster showed the hurt pose for ${hurtFrames} frames`);
+});
+
+await check('no text overlaps or runs off screen on any menu page', async () => {
+  await open('?seed=3&pause=1');
+  await page.waitForFunction(() => window.__game.art.ready, null, { timeout: 10000 });
+  const problems = await game(() => {
+    const d = window.__game.debug, out = [];
+    const shot = (name) => { // render one frame with the text log on, then check every pair of boxes
+      window.__textLog = []; d.step(1);
+      const boxes = window.__textLog.filter((b) => b.a > 0.05 && b.s.trim()); window.__textLog = null;
+      for (const b of boxes) if (b.x0 < -0.5 || b.x1 > 480.5 || b.y0 < -0.5 || b.y1 > 270.5) out.push(`${name}: "${b.s}" runs off screen`);
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], c = boxes[j];
+        if (Math.min(a.x1, c.x1) - Math.max(a.x0, c.x0) > 0.6 && Math.min(a.y1, c.y1) - Math.max(a.y0, c.y0) > 0.6) out.push(`${name}: "${a.s}" overlaps "${c.s}"`);
+      }
+    };
+    shot('title');
+    d.press('confirm'); d.step(1); shot('setup 1P');
+    d.press('right'); d.step(1); shot('setup 2P'); d.press('left'); d.step(1); // back to 1 player
+    d.press('confirm'); d.step(1);
+    shot('select: Siddhan'); d.press('right'); d.step(1); shot('select: Veeran');
+    d.press('down'); d.step(1); shot('boons page'); d.press('up'); d.step(1);
+    d.press('up'); d.step(1); shot('controls page'); d.press('up'); d.step(1);
+    d.press('confirm'); d.step(1); // into the fight (Veeran vs CPU Siddhan)
+    d.step(30); shot('fight HUD');
+    const m = d.match(); m.players[0].devotion = 10; d.setInput(0, { s1: true, s2: true }); d.step(1); d.setInput(0, {}); d.step(40); shot('boon card + held boon tag');
+    d.press('pause'); d.step(1); shot('pause menu');
+    d.press('down'); d.step(1); d.press('confirm'); d.step(1);
+    for (const pg of ['P1 page', 'P2 page', 'boons page (pause)', 'controls page (pause)']) { shot(pg); d.press('right'); d.step(1); }
+    return out;
+  });
+  expect(problems.length === 0, problems.slice(0, 12).join('\n       '));
+});
+
 await check('no page or console errors', async () => {
   const errs = await game(() => window.__game.errors);
   expect(problems.length === 0 && errs.length === 0, [...problems, ...errs].join('\n'));

@@ -35,7 +35,7 @@ On the setup screen pick **1 player vs CPU** (and the CPU level) or **2 players*
 npm run verify
 ```
 
-`tests/intent.test.js` has one test per ground rule, class rule and agreed character rule. If one fails, the change goes against a design decision: ask the owner, don't edit the test. `tests/sim.test.js` checks each move's mechanics. `tests/ai.test.js` plays computer-vs-computer matches. `tests/smoke.mjs` plays the game in headless Chrome.
+`tests/intent.test.js` has one test per ground rule, class rule and agreed character rule. If one fails, the change goes against a design decision: ask the owner, don't edit the test. `tests/sim.test.js` checks each move's mechanics. `tests/ai.test.js` plays computer-vs-computer matches. `tests/smoke.mjs` plays the game in headless Chrome. It also renders every menu page and fails if any two pieces of text overlap or run off screen (every `txt` call is recorded when `window.__textLog` is set), and checks that a special or signature never shows the hurt pose.
 
 ## Layout
 
