@@ -1,6 +1,7 @@
 import { W, H, STEP, TUNE } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
-import { setCtx, R, txt, drawFight, drawTitle, drawSetup, drawPause, drawResult, CX } from './render.js';
+import { setCtx, R, txt, drawFight, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
+import { loadArt, ART } from './art.js';
 import { createInput } from './input.js';
 
 const cv = document.getElementById('screen');
@@ -97,6 +98,7 @@ function render() {
 
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) return;
+  if (e.code === 'Digit0') setUseArt(!useArt); // 0 switches between the art and the grey-box
   if (e.code === 'Backquote') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); }
 });
 addEventListener('error', (e) => S.errors.push(String(e.error?.stack || e.message)));
@@ -105,6 +107,7 @@ addEventListener('error', (e) => S.errors.push(String(e.error?.stack || e.messag
 const r1 = (v) => Math.round(v * 10) / 10;
 window.__game = {
   get screen() { return S.screen; },
+  get art() { return { ready: ART.ready, arena: !!ART.arena, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.cells.length])) }; },
   errors: S.errors,
   debug: {
     pause() { DBG.paused = true; }, resume() { DBG.paused = false; },
@@ -141,4 +144,8 @@ function frame(ts) {
   } catch (e) { S.errors.push(String(e?.stack || e)); console.error(e); }
   requestAnimationFrame(frame);
 }
-Promise.race([document.fonts.load('8px "Press Start 2P"'), new Promise((r) => setTimeout(r, 1500))]).finally(() => requestAnimationFrame(frame));
+if (qs.get('grey') === '1') setUseArt(false);
+Promise.all([
+  Promise.race([document.fonts.load('8px "Press Start 2P"'), new Promise((r) => setTimeout(r, 1500))]),
+  loadArt().then(fitView).catch((e) => S.errors.push(String(e))),
+]).finally(() => requestAnimationFrame(frame));

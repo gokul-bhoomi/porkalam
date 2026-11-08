@@ -24,6 +24,10 @@ Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: 
 | Use boon (two specials together) | R+T (any two of R/T/Y) | I+O (any two of I/O/P) | B+Y (any two of B/Y/LB) |
 | Pause | Esc | Esc | Start |
 
+## Art
+
+`art/` holds the art made with Codex image generation: `arena.png` and one sprite sheet per fighter (`krishna_sheet.png`, `rajaraja_sheet.png`: 8 frames in a row, 1-4 idle and 5-8 walk, on flat magenta). `src/art.js` removes the magenta, finds the frames and lines up their feet. `art/arena.json` says where the arena floor is in `arena.png` (centre and half-widths as fractions of the image), so the game lines up with the picture. If a file is missing, the game draws its grey-box shapes instead. Press `0` in game, or open `?grey=1`, to switch to the grey-box.
+
 ## Tests
 
 ```bash

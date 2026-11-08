@@ -1,11 +1,30 @@
-// Grey-box drawing on a 480x270 canvas. Only reads the match state.
+// Drawing on a 480x270 canvas: the generated art (src/art.js) where it exists, grey-box shapes otherwise.
+// Only reads the match state.
 import { W, H, ARENA, TUNE } from './config.js';
 import { ACTIONS, LABELS, KEYS, KEY_NAME, PAD, PAD_NAMES } from './input.js';
 import { opponent, chargeOf } from './sim.js';
+import { ART, drawSprite } from './art.js';
 
 export const FONT = '"Press Start 2P", monospace';
-export const CX = 240, CY = 160, SQ = 0.62; // arena centre on screen; y squash for the 3/4 view
-export const sx = (x) => CX + x, sy = (y) => CY + y * SQ;
+export const CX = 240;                // screen centre
+export let CY = 160, SQ = 0.62, SC = 1; // arena centre on screen, y squash for the 3/4 view, screen px per world unit (set from the art)
+export const sx = (x) => CX + x * SC, sy = (y) => CY + y * SQ * SC;
+const Z = (r) => r * SC;              // a world-unit size on screen
+export let useArt = true;             // false = grey-box shapes (?grey=1, or the G key)
+export const setUseArt = (v) => { useArt = v; fitView(); };
+
+// Line the world up with the arena floor in arena.png, then draw the picture at the matching scale.
+let arenaDraw = null;
+export function fitView() {
+  const img = ART.arena, f = ART.fit;
+  if (!useArt || !img) { CY = 160; SQ = 0.62; SC = 1; arenaDraw = null; return; }
+  const s = Math.max(W / img.width, H / img.height); // the picture covers the whole screen
+  const w = img.width * s, h = img.height * s, x = (W - w) / 2, y = (H - h) / 2;
+  SC = (f.rx * img.width * s) / ARENA.r;             // the floor's half-width = the arena radius
+  SQ = (f.ry * img.height) / (f.rx * img.width);
+  CY = y + f.cy * img.height * s;
+  arenaDraw = { s, x, y, w, h };
+}
 
 let G = null;
 export const setCtx = (g) => { G = g; };
@@ -24,6 +43,13 @@ export const clock = (s) => { const t = Math.ceil(s); return `${Math.floor(t / 6
 
 // ---------- arena ----------
 function drawBackdrop(now) {
+  if (useArt && arenaDraw) { // the picture already has sky, clouds and arena
+    R(0, 0, W, H, '#5a55a8');
+    G.imageSmoothingEnabled = true;
+    G.drawImage(ART.arena, arenaDraw.x, arenaDraw.y, arenaDraw.w, arenaDraw.h);
+    G.imageSmoothingEnabled = false;
+    return;
+  }
   const g = G.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, '#6f8fb5'); g.addColorStop(1, '#c9d6e3');
   G.fillStyle = g; G.fillRect(0, 0, W, H);
@@ -33,6 +59,7 @@ function drawBackdrop(now) {
   }
 }
 function drawArena() {
+  if (useArt && arenaDraw) return;
   const r = ARENA.r;
   ell(CX, CY + 12, r + 2, r * SQ + 6, '#4a453d');       // side of the floating rock
   ell(CX, CY + 22, r * 0.7, r * SQ * 0.7, '#3a362f');
@@ -43,7 +70,7 @@ function drawArena() {
 }
 
 function drawMark(mk) { // scuffs and traps share this exact drawing
-  const x = sx(mk.x), y = sy(mk.y), c = Math.cos(mk.rot) * mk.size, s = Math.sin(mk.rot) * mk.size * SQ;
+  const x = sx(mk.x), y = sy(mk.y), c = Math.cos(mk.rot) * Z(mk.size), s = Math.sin(mk.rot) * Z(mk.size) * SQ;
   line(x - c, y - s, x + c, y + s, 'rgba(50,40,30,.55)', 1);
   line(x - s * 0.6, y + c * 0.4, x + s * 0.6, y - c * 0.4, 'rgba(50,40,30,.45)', 1);
 }
@@ -51,17 +78,17 @@ function drawMark(mk) { // scuffs and traps share this exact drawing
 // ---------- fighters ----------
 // A wall stays where it was built. It looks weaker as its strength gets used up.
 function drawWall(w) {
-  const B = TUNE.block, k = w.cap / w.max, x = sx(w.x), y = sy(w.y), px = -w.ny, py = w.nx;
+  const B = TUNE.block, k = w.cap / w.max, x = sx(w.x), y = sy(w.y), px = -w.ny, py = w.nx, hw = Z(w.hw);
   const fade = w.standing && w.t < 0.6 && Math.floor(w.t * 10) % 2 ? 0.4 : 1; // blinks just before it disappears
   G.globalAlpha = fade;
   if (w.look === 'hill') { // Govardhana: a mound that grows
     const h = 4 + k * 16;
-    G.fillStyle = '#6d8f3d'; G.beginPath(); G.ellipse(x, y, Math.max(Math.abs(px) * w.hw, w.hw * 0.6), h, 0, Math.PI, 0); G.fill();
-    line(x - px * w.hw, y - py * w.hw * SQ, x + px * w.hw, y + py * w.hw * SQ, '#4b6527', 2);
+    G.fillStyle = '#6d8f3d'; G.beginPath(); G.ellipse(x, y, Math.max(Math.abs(px) * hw, hw * 0.6), h, 0, Math.PI, 0); G.fill();
+    line(x - px * hw, y - py * hw * SQ, x + px * hw, y + py * hw * SQ, '#4b6527', 2);
   } else { // arrow wall: more arrows the stronger it is
     const n = 2 + Math.round(k * 9);
     for (let i = 0; i < n; i++) {
-      const t = (i / (n - 1) - 0.5) * 2, ax = x + px * t * w.hw, ay = y + py * t * w.hw * SQ;
+      const t = (i / (n - 1) - 0.5) * 2, ax = x + px * t * hw, ay = y + py * t * hw * SQ;
       line(ax, ay, ax + w.nx * 2, ay - 9, '#d9c08a', 1); R(ax + w.nx * 2 - 1, ay - 10, 2, 2, '#fff');
     }
   }
@@ -75,13 +102,20 @@ function drawFighter(m, p, now) {
   const x = sx(p.x), y = sy(p.y), c = p.ch.color, o = opponent(m, p);
   ell(x, y + 1, 9, 4, 'rgba(0,0,0,.3)');
   if (p.effects.invuln && Math.floor(now * 20) % 2) G.globalAlpha = 0.4;
-  ell(x, y - 4, 8, 7, c);
-  ell(x, y - 13, 5, 5, c);
-  ring(x, y - 4, 8, 7, 'rgba(0,0,0,.5)');
-  G.globalAlpha = 1;
-  line(x + p.face.x * 4, y - 4 + p.face.y * 3, x + p.face.x * 11, y - 4 + p.face.y * 7, '#fff', 2); // facing
-  txt(p.ch.cls === 'god' ? 'K' : 'R', x, y - 8, '#fff', 'center', 8, null);
   let top = y - 30;
+  if (useArt && ART.sheets[p.ch.id]) {
+    ring(x, y + 1, Z(9), Z(9) * SQ, p.id === 0 ? 'rgba(90,160,255,.9)' : 'rgba(255,90,70,.9)', 1); // player ring
+    const moving = anim[p.id].moving, fps = moving ? 10 : 5, i = Math.floor(now * fps) % 4 + (moving ? 4 : 0);
+    drawSprite(G, p.ch.id, i, x, y + 1, p.face.x < 0);
+    top = y - ART_TOP;
+  } else {
+    ell(x, y - 4, 8, 7, c);
+    ell(x, y - 13, 5, 5, c);
+    ring(x, y - 4, 8, 7, 'rgba(0,0,0,.5)');
+    line(x + p.face.x * 4, y - 4 + p.face.y * 3, x + p.face.x * 11, y - 4 + p.face.y * 7, '#fff', 2); // facing
+    txt(p.ch.cls === 'god' ? 'K' : 'R', x, y - 8, '#fff', 'center', 8, null);
+  }
+  G.globalAlpha = 1;
   const fx = Object.entries(p.effects).filter(([k]) => k !== 'invuln' || true);
   if (fx.length) {
     const s = fx.map(([k, e]) => `${{ slow: 'SLOW', hold: 'HELD', stun: 'STUN', invuln: 'SAFE' }[k] || k.toUpperCase()} ${e.t.toFixed(1)}`).join(' ');
@@ -107,7 +141,8 @@ function drawFighter(m, p, now) {
   if (p.msg) txt(p.msg.text, x, top, '#ffb4a8', 'center');
 }
 
-function drawProjectile(pr, now) {
+function drawProjectile(pr0, now) {
+  const pr = { ...pr0, r: Z(pr0.r) };
   const x = sx(pr.x), y = sy(pr.y) - 6, a = Math.atan2(pr.vy * SQ, pr.vx), ca = Math.cos(a), sa = Math.sin(a);
   switch (pr.shape) {
     case 'note': ring(x, y, pr.r, pr.r, '#bfe3ff', 2); break;
@@ -124,17 +159,29 @@ function drawProjectile(pr, now) {
 }
 
 // ---------- the whole fight view ----------
+// walking or standing, from how far each fighter moved since the last frame
+const anim = [{ x: 0, y: 0, moving: false, still: 0 }, { x: 0, y: 0, moving: false, still: 0 }];
+const ART_TOP = 58;
+function trackMotion(m) {
+  for (const p of m.players) {
+    const a = anim[p.id], d = Math.hypot(p.x - a.x, p.y - a.y);
+    if (d > 0.2) { a.moving = true; a.still = 0; } else if (++a.still > 4) a.moving = false;
+    a.x = p.x; a.y = p.y;
+  }
+}
+
 export function drawFight(m, now, fx) {
+  trackMotion(m);
   drawBackdrop(now);
   drawArena();
-  for (const w of m.waters) { ell(sx(w.x), sy(w.y), w.r, w.r * SQ, 'rgba(60,140,220,.55)'); ring(sx(w.x), sy(w.y), w.r, w.r * SQ, '#a8d8ff'); }
+  for (const w of m.waters) { ell(sx(w.x), sy(w.y), Z(w.r), Z(w.r) * SQ, 'rgba(60,140,220,.55)'); ring(sx(w.x), sy(w.y), Z(w.r), Z(w.r) * SQ, '#a8d8ff'); }
   for (const mk of m.marks) drawMark(mk);
   for (const a of m.areas) {
     const k = 1 - a.t / a.delay;
-    ring(sx(a.x), sy(a.y), a.r, a.r * SQ, '#ff4a3a', 1);
-    ell(sx(a.x), sy(a.y), a.r * k, a.r * SQ * k, 'rgba(255,74,58,.3)');
+    ring(sx(a.x), sy(a.y), Z(a.r), Z(a.r) * SQ, '#ff4a3a', 1);
+    ell(sx(a.x), sy(a.y), Z(a.r) * k, Z(a.r) * SQ * k, 'rgba(255,74,58,.3)');
   }
-  for (const u of m.units) { ell(sx(u.x), sy(u.y) - 4, u.r, u.r, '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
+  for (const u of m.units) { ell(sx(u.x), sy(u.y) - 4, Z(u.r), Z(u.r), '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
   for (const f of fx) if (f.ground) drawFx(f, now);
   const order = [...m.players, ...m.walls].sort((a, b) => a.y - b.y); // back to front
   for (const o of order) if (o.ch) drawFighter(m, o, now); else drawWall(o);
@@ -150,8 +197,8 @@ function drawFx(f, now) {
     case 'pop': txt(f.text, x, y - 34 - age * 20, f.color, 'center'); break;
     case 'flash': ring(x, y - 6, 4 + k * 12, (4 + k * 12) * 0.8, `rgba(255,255,255,${1 - k})`, 2); break;
     case 'swing': ring(x, y - 6, 12, 9, `rgba(255,255,255,${0.8 - k * 0.8})`, 2, f.a - 1, f.a + 1); break;
-    case 'boom': ell(x, y, 22 * (0.5 + k), 22 * SQ * (0.5 + k), `rgba(255,140,40,${0.8 - k * 0.8})`); break;
-    case 'rain': for (let i = 0; i < 9; i++) { const a = i * 2.4, r = (i / 9) * f.r; line(x + Math.cos(a) * r, y + Math.sin(a) * r * SQ - 10 * (1 - k), x + Math.cos(a) * r, y + Math.sin(a) * r * SQ, '#f5e6c0'); } break;
+    case 'boom': ell(x, y, Z(22) * (0.5 + k), Z(22) * SQ * (0.5 + k), `rgba(255,140,40,${0.8 - k * 0.8})`); break;
+    case 'rain': for (let i = 0; i < 9; i++) { const a = i * 2.4, r = (i / 9) * Z(f.r); line(x + Math.cos(a) * r, y + Math.sin(a) * r * SQ - 10 * (1 - k), x + Math.cos(a) * r, y + Math.sin(a) * r * SQ, '#f5e6c0'); } break;
     case 'trail': line(sx(f.x0), sy(f.y0) - 6, x, y - 6, `rgba(180,220,255,${1 - k})`, 3); break;
     case 'global': G.fillStyle = `rgba(255,220,120,${0.5 * (1 - k)})`; G.fillRect(0, 0, W, H); break;
   }

@@ -174,6 +174,19 @@ await check('pause menu (Escape) stops the clock', async () => {
   await page.keyboard.press('Escape');
 });
 
+await check('the Codex art loads: arena plus 8 frames for each fighter, and ?grey=1 still runs', async () => {
+  await open('?seed=6&pause=1');
+  await page.waitForFunction(() => window.__game.art.ready, null, { timeout: 10000 });
+  const a = await game(() => window.__game.art);
+  expect(a.arena, 'arena.png did not load');
+  expect(a.frames.krishna === 8 && a.frames.rajaraja === 8, `frames: ${JSON.stringify(a.frames)}`);
+  await game(() => { const d = window.__game.debug; d.start({ minutes: 5 }); d.setInput(0, { mx: 1 }); d.step(30); });
+  await page.screenshot({ path: join(SHOTS, 'art.png') });
+  await open('?seed=6&pause=1&grey=1');
+  const errs = await game(() => { const d = window.__game.debug; d.start({ minutes: 5 }); d.step(30); return window.__game.errors; });
+  expect(errs.length === 0, errs.join('\n'));
+});
+
 await check('no page or console errors', async () => {
   const errs = await game(() => window.__game.errors);
   expect(problems.length === 0 && errs.length === 0, [...problems, ...errs].join('\n'));
