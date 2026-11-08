@@ -12,7 +12,7 @@ import { ARENA, TUNE, POWER, STEP, RANGES } from '../src/config.js';
 import { CHARS } from '../src/chars/index.js';
 import { GODS, findBoon } from '../src/chars/gods.js';
 import { ACTIONS, PAD, KEYS } from '../src/input.js';
-import { match, run, tap, events, steps, K, R } from './helpers.js';
+import { match, run, tap, useBoon, events, steps, K, R } from './helpers.js';
 
 const krishna = CHARS.krishna, raja = CHARS.rajaraja;
 const allMoves = () => [krishna, raja].flatMap((c) => Object.values(c.moves))
@@ -24,7 +24,7 @@ test('rule 1: health starts at 100%, which is also the maximum; healing never go
   const m = match();
   for (const p of m.players) assert.equal(p.hp, 100);
   m.players[R].hp = 95; m.players[R].boons = [{ id: 'kamandalu', name: 'Kamandalu', god: 'Brahma' }];
-  tap(m, R, 'boon'); run(m, [{}, {}], 1);
+  useBoon(m, R); run(m, [{}, {}], 1);
   assert.equal(m.players[R].hp, 100);
 });
 
@@ -206,6 +206,19 @@ test('rule 5: each character has a defence strength and type; barriers absorb a 
   assert.ok(m.players[K].block.broken);
 });
 
+test('rule 5: a defence lasts at most 3 s, then disappears until block is pressed again (owner change 2026-11-07)', () => {
+  assert.equal(TUNE.block.maxTime, 3);
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+  run(m, [{ block: true }, {}], 2.9);
+  assert.ok(m.players[K].block, 'still up at 2.9 s');
+  run(m, [{ block: true }, {}], 0.2);
+  assert.equal(m.players[K].block, null, 'gone after 3 s');
+  run(m, [{ block: true }, {}], 2);
+  assert.equal(m.players[K].block, null, 'holding the button longer does not bring it back');
+  stepMatch(m, [{}, {}]); stepMatch(m, [{ block: true }, {}]);
+  assert.ok(m.players[K].block, 'a new press raises a new one');
+});
+
 // ---------- 6. Clashes ----------
 test('rule 6: moves collide only when they touch on screen', () => {
   const m = match({ k: { x: -80, y: -50 }, r: { x: 80, y: 50 } });
@@ -358,15 +371,35 @@ test('rule 10: no controller vibration', () => {
 });
 
 // ---------- 11. Boons ----------
-test('rule 11: up to 3 boons at a time, and both players see which boon was granted', () => {
+test('rule 11: 1 boon at a time, and both players see which boon was granted (owner change 2026-11-07)', () => {
+  assert.equal(TUNE.maxBoons, 1);
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  for (let i = 0; i < 4; i++) { tap(m, R, 'cls'); run(m, [{}, {}], 10.5); }
-  assert.equal(m.players[R].boons.length, 3);
-  assert.equal(m.players[R].meditations, 3);
+  tap(m, R, 'cls'); run(m, [{}, {}], 10.5);
+  assert.equal(m.players[R].boons.length, 1);
+  tap(m, R, 'cls'); run(m, [{}, {}], 10.5);
+  assert.equal(m.players[R].boons.length, 1, 'can\'t get a second boon while holding one');
+  assert.equal(m.players[R].meditations, 1);
   const grants = events(m, 'boon');
-  assert.equal(grants.length, 3);
+  assert.equal(grants.length, 1);
   assert.ok(grants.every((e) => e.name && e.god));
   assert.ok(src('main.js').includes("e.type === 'boon'"), 'the boon is announced on the shared screen');
+});
+
+test('rule 11: a boon is used by pressing two special buttons together; there is no boon button', () => {
+  assert.ok(!BUTTONS.includes('boon') && !ACTIONS.includes('boon'));
+  for (const [a, b] of [['s1', 's2'], ['s2', 's3'], ['s1', 's3']]) {
+    const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+    m.players[R].boons = [{ id: 'vel', name: 'Vel throw', god: 'Murugan' }];
+    useBoon(m, R, a, b);
+    assert.equal(m.players[R].boons.length, 0, `${a}+${b}`);
+    assert.equal(m.players[R].cast?.move.name, 'Vel throw');
+  }
+  // one special alone still fires the special (after a short wait for a second button)
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
+  m.players[R].boons = [{ id: 'vel', name: 'Vel throw', god: 'Murugan' }];
+  tap(m, R, 's1'); run(m, [{}, {}], TUNE.chord + 0.05);
+  assert.equal(m.players[R].boons.length, 1);
+  assert.equal(events(m, 'cast').filter((e) => e.pid === R)[0]?.name, 'Split shot');
 });
 
 // ---------- 12. Extra units and arena changes ----------
@@ -482,26 +515,40 @@ test('class: meditation fills only while the opponent is far, the King can\'t mo
   assert.equal(m.players[R].med.meter, filled, 'no progress while the opponent is close');
 });
 
+const tierOf = (id) => Object.values(GODS).map((g) => g.tiers.findIndex((t) => t.some((b) => b.id === id))).find((i) => i >= 0);
+
 test('class: a hit loses only that attempt; completed meditations always count; boons get bigger', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  m.players[R].god = 2; // Brahma
   tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.times[0] + 0.1);
   assert.equal(m.players[R].meditations, 1);
+  assert.equal(tierOf(m.players[R].boons[0].id), 0, '1st = small');
+  m.players[R].boons = []; // used
   tap(m, R, 'cls'); run(m, [{}, {}], 2);
   m.hits.push({ target: m.players[R], dmg: 1, kb: 0, from: null }); stepMatch(m);
   assert.equal(m.players[R].meditations, 1, 'not reset by the hit');
   tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.times[1] + 0.1);
   assert.equal(m.players[R].meditations, 2);
-  assert.deepEqual(m.players[R].boons.map((b) => b.id), ['kamandalu', 'lotus'], '1st small, 2nd medium');
+  assert.equal(tierOf(m.players[R].boons[0].id), 1, '2nd = medium');
+});
+
+test('class: the god who answers a meditation is random; the King does not pick one (owner change 2026-11-07)', () => {
+  assert.ok(!BUTTONS.includes('god'));
+  const gods = new Set();
+  for (let seed = 1; seed <= 30; seed++) {
+    const m = match({ seed, k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
+    tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.times[0] + 0.1);
+    gods.add(events(m, 'boon')[0].god);
+  }
+  assert.equal(gods.size, raja.gods.length, 'every god answers sometimes');
 });
 
 test('class: boons are strictly single-use', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
   m.players[R].boons = [{ id: 'vel', name: 'Vel throw', god: 'Murugan' }];
-  tap(m, R, 'boon'); run(m, [{}, {}], 0.5);
+  useBoon(m, R); run(m, [{}, {}], 0.5);
   assert.equal(m.players[R].boons.length, 0);
-  tap(m, R, 'boon'); run(m, [{}, {}], 0.5);
-  assert.equal(events(m, 'release').filter((e) => e.pid === R).length, 1);
+  useBoon(m, R); run(m, [{}, {}], 0.5);
+  assert.equal(events(m, 'release').filter((e) => e.name === 'Vel throw').length, 1);
 });
 
 test('class: Brahmastra as a boon only ever comes from Brahma', () => {

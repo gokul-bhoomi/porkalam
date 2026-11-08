@@ -45,7 +45,7 @@ Arena changes (Yamuna flood, Maya) and Call a King are left out of Krishna's fir
 | Pinning arrow | Mid/long | Medium | Pins the opponent in place for ~1.5 s |
 | Arrow rain | Mid | Medium | Arrows fall on an area |
 | Signature: Tiger Arrow | Long | Very large + health | Dramatic scene. A tiger spirit rides the arrow. It pierces blocks and helpers for large damage |
-| Meditation | n/a | Time | Single-use boons from the chosen god |
+| Meditation | n/a | Time | A single-use boon from a random god |
 
 **Boons.** One random boon per level, each single-use. Praying to Krishna is left out for now.
 

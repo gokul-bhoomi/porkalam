@@ -1,4 +1,4 @@
-// Boon lists per god, used by a meditating King. tiers[0] = 1st meditation (small),
+// Boon lists per god. A meditating King gets a boon from a random god. tiers[0] = 1st meditation (small),
 // tiers[1] = 2nd (medium), tiers[2] = 3rd and later (big). A boon is picked at random from its tier.
 // Each boon is a single-use move with the same fields as any other move.
 // Praying to Krishna is left out of this version on purpose.

@@ -44,7 +44,7 @@ Same base as Euro Rush (`../euro-rush`), so reuse its patterns:
   - special move buttons
   - signature move
   - class button (meditate for a King, Brahmastra for a God)
-  - use boon
+  - use boon: press two special move buttons together
 
 ## Build order
 1. **Grey-box prototype (start here).** A "grey-box" is the game played with plain shapes and no art:

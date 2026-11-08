@@ -67,6 +67,8 @@ function drawBlock(p) {
   }
   const bw = 20;
   R(x - bw / 2, y + 6, bw, 2, 'rgba(0,0,0,.5)'); R(x - bw / 2, y + 6, bw * k, 2, '#9fe07a');
+  const left = 1 - b.held / TUNE.block.maxTime; // time left before the defence disappears
+  R(x - bw / 2, y + 9, bw * left, 1, '#ffffff');
 }
 
 function drawFighter(m, p, now) {
@@ -100,7 +102,7 @@ function drawFighter(m, p, now) {
     const k = p.med.meter / p.med.need, far = Math.hypot(p.x - o.x, p.y - o.y) > TUNE.meditate.dist;
     ring(x, y - 6, 14, 12, 'rgba(0,0,0,.4)', 3);
     ring(x, y - 6, 14, 12, '#ffd34a', 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
-    txt(`PRAYING: ${p.med.god.toUpperCase()}`, x, top, '#ffd34a', 'center'); top -= 10;
+    txt('MEDITATING', x, top, '#ffd34a', 'center'); top -= 10;
     if (!far) { txt('TOO CLOSE', x, top, '#ff7a6a', 'center'); top -= 10; }
   }
   if (p.msg) txt(p.msg.text, x, top, '#ffb4a8', 'center');
@@ -174,8 +176,7 @@ function drawHud(m) {
     txt(`${Math.floor(p.power)}`, right ? bx - 4 : bx + BW + 4, 20, '#ffd34a', right ? 'right' : 'left');
     let info;
     if (p.ch.gods) {
-      const boons = p.boons.map((b, i) => (i === p.boonSel ? `[${short(b.name)}]` : short(b.name))).join(' ') || 'NO BOONS';
-      info = `${p.ch.gods[p.god].toUpperCase()} ${p.meditations}* ${boons}`;
+      info = `MEDITATIONS ${p.meditations}  ${p.boons.length ? `BOON: ${short(p.boons[0].name)}` : 'NO BOON'}`;
     } else info = p.boons.length ? p.boons.map((b) => short(b.name)).join(' ') : '';
     txt(info, x, 31, '#e6dcff', al);
   }
@@ -203,16 +204,17 @@ export function drawTitle(now, pads) {
   txt('MYTH FIGHTER', CX, 12, '#ffcf6a', 'center', 16);
   txt('KRISHNA (GOD)  VS  RAJA RAJA CHOLA (KING)', CX, 34, '#fff', 'center');
   txt('GREY-BOX', CX, 46, '#9aa', 'center');
-  const rows = ['move', ...ACTIONS];
+  const rows = ['move', ...ACTIONS, 'boon'];
   let y = 62;
   txt('ACTION', 8, y, '#9aa'); txt('P1', 290, y, '#9aa'); txt('P2', 340, y, '#9aa'); txt('PAD', 400, y, '#9aa');
   y += 11;
   for (const a of rows) {
-    const lab = a === 'move' ? 'Move' : LABELS[a];
+    const lab = a === 'move' ? 'Move' : a === 'boon' ? 'Use boon: 2 specials together' : LABELS[a];
+    const two = (k) => `${KEY_NAME(k.s1[0])}+${KEY_NAME(k.s2[0])}`;
     txt(lab.toUpperCase().slice(0, 34), 8, y, '#ddd');
-    txt(a === 'move' ? 'WASD' : KEYS[0][a].map(KEY_NAME).join('/'), 290, y, '#fff');
-    txt(a === 'move' ? 'ARROWS' : KEYS[1][a].map(KEY_NAME).join('/'), 340, y, '#fff');
-    txt(a === 'move' ? 'STICK' : PAD_NAMES[PAD[a]], 400, y, '#fff');
+    txt(a === 'move' ? 'WASD' : a === 'boon' ? two(KEYS[0]) : KEYS[0][a].map(KEY_NAME).join('/'), 290, y, '#fff');
+    txt(a === 'move' ? 'ARROWS' : a === 'boon' ? two(KEYS[1]) : KEYS[1][a].map(KEY_NAME).join('/'), 340, y, '#fff');
+    txt(a === 'move' ? 'STICK' : a === 'boon' ? 'B+Y' : PAD_NAMES[PAD[a]], 400, y, '#fff');
     y += 11;
   }
   if (Math.floor(now * 2) % 2) txt('PRESS START / ENTER', CX, H - 14, '#ffcf6a', 'center');

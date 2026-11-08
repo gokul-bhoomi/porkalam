@@ -8,7 +8,7 @@ export default {
   speed: 80,
   defence: { type: 'barrier', name: 'Arrow wall', strength: 4, growth: 7, max: 18, cost: 1, look: 'arrows' },
   weapon: 'bow',
-  gods: ['shiva', 'murugan', 'brahma'],
+  gods: ['shiva', 'murugan', 'brahma'], // the god who answers a meditation is random
   moves: {
     a1: { name: 'Shot', kind: 'projectile', weapon: 'bow', range: 'midlong', cost: { power: 1.5 }, req: {}, cast: 0.12, damage: 3, knockback: 30,
       charge: { max: 1.2, damage: 10 }, speed: 230, radius: 3, life: 1.5, shape: 'arrow' },
@@ -21,6 +21,6 @@ export default {
       radius: 22, delay: 1 },
     sig: { name: 'Tiger Arrow', kind: 'projectile', weapon: 'bow', special: true, signature: true, scene: true, range: 'long', cost: { power: 60, health: 10 }, req: {},
       cast: 4, damage: 30, knockback: 160, speed: 260, radius: 8, life: 2, pierceBlock: true, pierceUnits: true, shape: 'tiger' },
-    cls: { name: 'Meditation', kind: 'meditate', range: 'anywhere', cost: { power: 2 }, req: { maxBoons: 3 }, cast: 0, damage: 0, knockback: 0 },
+    cls: { name: 'Meditation', kind: 'meditate', range: 'anywhere', cost: { power: 2 }, req: { maxBoons: 1 }, cast: 0, damage: 0, knockback: 0 },
   },
 };

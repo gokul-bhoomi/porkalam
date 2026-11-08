@@ -23,11 +23,11 @@ These rules sit on top of [GROUND-RULES.md](GROUND-RULES.md) and never contradic
 - **Weapon:** **one weapon per King.** Basic and special moves come from it.
 - **No arena changes.**
 - **Class ability: meditation.**
-  - Pick a god to pray to before meditating.
+  - The god who answers is random. The King doesn't pick one. (Changed by the owner on 2026-11-07.)
   - 5–10 s of continuous meditation. The King can't move.
   - The meter only fills while the opponent is beyond a set distance.
   - A hit breaks the meditation, and only that attempt is lost. **Completed meditations always count**, so the boon level never resets.
-  - The boon is random from the chosen god's list. 1st = small, 2nd = medium, 3rd and later = big.
-- **Boons are strictly single-use.** A King can hold up to 3 at a time, under the ground rules.
-- **Praying to the opponent god** is allowed but rarely answered.
+  - The boon is random from that god's list. 1st = small, 2nd = medium, 3rd and later = big.
+- **Boons are strictly single-use.** A King can hold 1 at a time, under the ground rules, and can't meditate again until it's used.
+- **The opponent god** may later answer a meditation, but rarely. (Not in this version.)
 - **Brahmastra as a boon only ever comes from Brahma.**

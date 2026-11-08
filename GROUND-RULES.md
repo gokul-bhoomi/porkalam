@@ -32,6 +32,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 ## 5. Defence
 - Block: hold it to reduce damage.
 - Holding block longer while the opponent prepares an attack makes the block stronger.
+- A defence lasts at most 3 seconds, then it disappears. Release block and press it again to raise a new one. (Added by the owner on 2026-11-07.)
 - Each character has a defence strength and a defence type. Barriers, such as a wall of arrows that absorbs a set amount of damage, are a defence type.
 
 ## 6. Clashes
@@ -65,7 +66,8 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 - No controller vibration.
 
 ## 11. Boons
-- A fighter can hold up to 3 boons at a time.
+- A fighter can hold 1 boon at a time. (Changed from 3 by the owner on 2026-11-07.)
+- A boon is used by pressing two special move buttons together. There is no separate boon button.
 - When a boon is granted, both players see which one it was.
 
 ## 12. Extra units and arena changes

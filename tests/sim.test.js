@@ -6,7 +6,7 @@ import { TUNE } from '../src/config.js';
 import { CHARS } from '../src/chars/index.js';
 import { findBoon } from '../src/chars/gods.js';
 import { rng } from '../src/util.js';
-import { match, run, tap, events, K, R } from './helpers.js';
+import { match, run, tap, useBoon, events, K, R } from './helpers.js';
 
 const krishna = CHARS.krishna, raja = CHARS.rajaraja;
 const withBoon = (m, id) => { const b = findBoon(id); m.players[R].boons.push({ id, name: b.name, god: '?' }); };
@@ -106,25 +106,25 @@ test('arrow rain lands on the opponent\'s spot after a warning, and can be walke
 
 test('boons: Damaru stuns (no moves, no block), Peacock dash can\'t be hit, Shakti Vel pierces block', () => {
   const m = match({ k: { x: -40, y: 0 }, r: { x: 40, y: 0 } });
-  withBoon(m, 'damaru'); tap(m, R, 'boon'); run(m, [{}, {}], 0.8);
+  withBoon(m, 'damaru'); useBoon(m, R); run(m, [{}, {}], 0.8);
   assert.ok(m.players[K].effects.stun);
   stepMatch(m, [{ a1: true, block: true }, {}]);
   assert.equal(m.players[K].cast, null); assert.equal(m.players[K].block, null);
 
   const d = match({ k: { x: -40, y: 0 }, r: { x: 40, y: 0 } });
-  withBoon(d, 'peacock'); tap(d, R, 'boon');
+  withBoon(d, 'peacock'); useBoon(d, R);
   d.hits.push({ target: d.players[R], dmg: 10, kb: 0, from: null }); stepMatch(d);
   assert.equal(d.players[R].hp, 100);
   assert.ok(d.players[R].x > 45);
 
   const s = match({ k: { x: -40, y: 0 }, r: { x: 60, y: 0 } });
-  withBoon(s, 'shakti'); tap(s, R, 'boon'); run(s, [{ block: true }, {}], 2);
+  withBoon(s, 'shakti'); useBoon(s, R); run(s, [{ block: true }, {}], 2);
   assert.equal(s.players[K].hp, 100 - findBoon('shakti').damage);
 });
 
 test('Lotus seat makes the next meditation twice as fast, then it is used up', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  withBoon(m, 'lotus'); tap(m, R, 'boon'); run(m, [{}, {}], 0.5);
+  withBoon(m, 'lotus'); useBoon(m, R); run(m, [{}, {}], 0.5);
   assert.ok(m.players[R].lotus);
   tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.times[0] / 2 + 0.1);
   assert.equal(m.players[R].meditations, 1);
@@ -137,21 +137,25 @@ test('pressing a move while meditating stops the meditation', () => {
   assert.equal(m.players[R].med, null);
 });
 
-test('meditation is refused with 3 boons held', () => {
+test('meditation is refused while a boon is held', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  for (let i = 0; i < 3; i++) withBoon(m, 'vel');
+  withBoon(m, 'vel');
   tap(m, R, 'cls');
-  assert.equal(m.players[R].med, null); assert.equal(m.players[R].msg.text, 'BOONS FULL');
+  assert.equal(m.players[R].med, null); assert.equal(m.players[R].msg.text, 'USE YOUR BOON FIRST');
 });
 
-test('the King picks which god to pray to; next boon cycles the selection', () => {
-  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  tap(m, R, 'god'); tap(m, R, 'god');
-  assert.equal(raja.gods[m.players[R].god], 'brahma');
-  withBoon(m, 'vel'); withBoon(m, 'spark'); tap(m, R, 'boonNext');
-  assert.equal(m.players[R].boonSel, 1);
-  tap(m, R, 'boon'); run(m, [{}, {}], 0.5);
-  assert.deepEqual(m.players[R].boons.map((b) => b.id), ['vel']);
+test('two specials pressed a few frames apart still count as the boon chord', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
+  withBoon(m, 'vel');
+  run(m, [{}, { s2: true }], 0.05); run(m, [{}, { s2: true, s3: true }], 0.05); run(m, [{}, {}], 0.1);
+  assert.equal(m.players[R].boons.length, 0);
+  assert.equal(events(m, 'cast').filter((e) => e.pid === R).map((e) => e.name).join(), 'Vel throw', 'no special went off');
+});
+
+test('without a boon, a special starts right away (no chord wait)', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
+  stepMatch(m, [{}, { s1: true }]);
+  assert.equal(m.players[R].cast?.move.name, 'Split shot');
 });
 
 test('fighters never overlap', () => {
@@ -163,7 +167,7 @@ test('fighters never overlap', () => {
 // A random mash of buttons for a whole match: no crash, numbers stay sane, and the same seed replays exactly.
 function mash(seed, seconds) {
   const m = createMatch({ seed, time: 60 }), r = rng(seed * 7 + 1);
-  const keys = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3', 'sig', 'cls', 'boon', 'god', 'boonNext'];
+  const keys = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3', 'sig', 'cls'];
   let inp = [{}, {}];
   for (let i = 0; i < seconds * 60 && m.phase === 'fight'; i++) {
     if (i % 12 === 0) inp = [0, 1].map(() => { const o = { mx: r() * 2 - 1, my: r() * 2 - 1 }; for (const k of keys) o[k] = r() < 0.12; return o; });
@@ -171,7 +175,7 @@ function mash(seed, seconds) {
     for (const p of m.players) {
       assert.ok(p.hp >= 0 && p.hp <= 100 && p.power >= 0 && p.power <= 100, 'bars stay in range');
       assert.ok(Math.hypot(p.x, p.y) <= 110 + 1e-6, 'inside the arena');
-      assert.ok(p.boons.length <= 3);
+      assert.ok(p.boons.length <= 1);
       assert.ok(m.traps.filter((t) => t.owner === p.id).length <= 3);
     }
   }
