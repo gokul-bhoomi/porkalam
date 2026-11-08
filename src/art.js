@@ -4,7 +4,14 @@
 // is lined up on the same foot baseline.
 import { RES } from './config.js';
 
-export const ART = { arena: null, fit: null, sheets: {}, ready: false };
+export const ART = { arena: null, fit: null, sheets: {}, fx: {}, ready: false };
+
+// Effect sprites (walls, shots, ground patches, bursts): two sheets of 8 square cells, same format as the fighters.
+const FX_SHEETS = ['art/fx_sheet.png', 'art/fx2_sheet.png'];
+const FX_NAMES = [
+  ['hill', 'arrowWall', 'chakra', 'notes', 'arrow', 'tiger', 'fire', 'spear'],
+  ['wave', 'water', 'scuff', 'burst', 'spark', 'rain', 'danger', 'clash'],
+];
 
 // Where the arena floor sits in arena.png, as fractions of the image: centre and half-axes.
 // Measured by hand from the image; art/arena.json overrides it when present.
@@ -89,6 +96,8 @@ export async function loadArt(base = '') {
       ART.sheets[id].act = prescale(a.c, { ...af, base: wf.bottom }, k); // ...and the feet line for both sheets
     }
   }
+  const fxImgs = await Promise.all(FX_SHEETS.map((f) => loadImg(base + f)));
+  fxImgs.forEach((img, si) => { if (img) Object.assign(ART.fx, cutFx(img, FX_NAMES[si])); });
   ART.ready = true;
   return ART;
 }
@@ -103,6 +112,56 @@ export function drawSprite(g, id, set, i, x, y, flip) {
   if (flip) g.scale(-1, 1);
   g.imageSmoothingEnabled = true;
   g.drawImage(s.canvas, f.x, s.top, f.w, h, -(f.cx - f.x) / RES, -up / RES, f.w / RES, h / RES); // 1 sheet pixel = 1 screen pixel
+  g.restore();
+  return true;
+}
+
+// Key out an effect sheet, shrink it to half size (still more pixels than the screen needs), and
+// find each cell's drawn area, so a sprite can be placed by its real edges.
+function cutFx(img, names) {
+  const { c, d } = keyOut(img), n = names.length, cw = c.width / n, px = d.data, out = {};
+  const k = 0.5, small = document.createElement('canvas');
+  small.width = Math.round(c.width * k); small.height = Math.round(c.height * k);
+  const g = small.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, small.width, small.height);
+  names.forEach((name, i) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+    for (let y = 0; y < c.height; y += 2) for (let x = Math.round(i * cw); x < Math.round((i + 1) * cw); x += 2) {
+      if (px[(y * c.width + x) * 4 + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 < 0) return;
+    out[name] = { canvas: small, x: x0 * k, y: y0 * k, w: (x1 - x0 + 2) * k, h: (y1 - y0 + 2) * k };
+  });
+  return out;
+}
+
+// Draw an effect sprite. w = drawn width in layout units; h = height (default keeps the shape).
+// anchor 'bottom' puts the bottom centre at (x, y) (things standing on the ground), 'center' the middle.
+// rot = rotation in radians (sprites point right); m = optional [a, b, c, d] matrix applied after it (walls).
+export function drawFx(g, name, x, y, w, o = {}) {
+  const f = ART.fx[name];
+  if (!f) return false;
+  const h = o.h ?? (w * f.h) / f.w;
+  g.save();
+  g.translate(x, y);
+  if (o.m) g.transform(o.m[0], o.m[1], o.m[2], o.m[3], 0, 0);
+  if (o.rot) g.rotate(o.rot);
+  if (o.flip) g.scale(-1, 1);
+  if (o.alpha != null) g.globalAlpha *= o.alpha;
+  g.imageSmoothingEnabled = true;
+  g.drawImage(f.canvas, f.x, f.y, f.w, f.h, -w / 2, o.anchor === 'bottom' ? -h : -h / 2, w, h);
+  g.restore();
+  return true;
+}
+
+// A round head-and-shoulders portrait for the HUD, cut from the first idle frame.
+export function drawPortrait(g, id, cx, cy, r) {
+  const s = ART.sheets[id]?.walk;
+  if (!s) return false;
+  const c = s.cells[0], h = s.bottom - s.top, side = h * 0.42; // the top ~40% of the figure: head and crown
+  g.save();
+  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip();
+  g.imageSmoothingEnabled = true;
+  g.drawImage(s.canvas, c.cx - side / 2, s.top, side, side, cx - r, cy - r, r * 2, r * 2);
   g.restore();
   return true;
 }

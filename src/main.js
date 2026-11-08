@@ -3,6 +3,7 @@ import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { setCtx, R, txt, drawFight, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
 import { createInput } from './input.js';
+import { createCpu, cpuInput, LEVELS, LEVEL_IDS } from './ai.js';
 
 const cv = document.getElementById('screen');
 const ctx = cv.getContext('2d');
@@ -12,14 +13,32 @@ setCtx(ctx);
 const input = createInput();
 const qs = new URLSearchParams(location.search);
 const S = {
-  screen: 'title', minutes: 5, match: null, paused: false, sel: 0, now: 0, clock: 0, fx: [], banner: null, errors: [], pads: 0,
+  screen: 'title', minutes: 5, mode: '1p', side: 0, level: 'normal', row: 0, cpu: null, match: null, paused: false, sel: 0, now: 0, clock: 0, fx: [], banner: null, errors: [], pads: 0,
   seed: Number(qs.get('seed')) || 1 + Math.floor(Math.random() * 1e6), screenAt: 0,
 };
 const DBG = { paused: qs.get('pause') === '1', override: [null, null], menu: [] };
 
+// Setup screen rows. 1 player: you pick your fighter and the computer's level.
+const ROWS = () => (S.mode === '1p' ? ['mode', 'side', 'level', 'length'] : ['mode', 'length']);
+function changeRow(dir) {
+  const row = ROWS()[S.row];
+  if (row === 'mode') { S.mode = S.mode === '1p' ? '2p' : '1p'; S.row = 0; }
+  if (row === 'side') S.side = 1 - S.side;
+  if (row === 'level') S.level = LEVEL_IDS[(LEVEL_IDS.indexOf(S.level) + dir + LEVEL_IDS.length) % LEVEL_IDS.length];
+  if (row === 'length') S.minutes = Math.max(1, Math.min(TUNE.match.max / 60, S.minutes + dir));
+}
+
 function startMatch() {
-  S.match = createMatch({ seed: S.seed++, time: S.minutes * 60 });
+  const seed = S.seed++;
+  S.match = createMatch({ seed, time: S.minutes * 60 });
+  S.cpu = S.mode === '1p' ? createCpu(1 - S.side, S.level, seed) : null; // the computer plays the other fighter
   Object.assign(S, { screen: 'fight', paused: false, fx: [], banner: null, sel: 0, screenAt: S.now });
+}
+// in 1 player mode either set of keys (and either pad) controls your fighter
+function merge(a, b) {
+  const f = { mx: a.mx || b.mx, my: a.my || b.my };
+  for (const k of Object.keys({ ...a, ...b })) if (k !== 'mx' && k !== 'my') f[k] = !!(a[k] || b[k]);
+  return f;
 }
 const go = (screen) => { S.screen = screen; S.sel = 0; S.screenAt = S.now; };
 
@@ -30,7 +49,7 @@ function onEvent(e, m) {
     if (e.heal > 0) add({ kind: 'pop', x: e.x, y: e.y, text: `+${e.heal}`, color: '#7aff8a' });
   }
   if (e.type === 'blocked') add({ kind: 'pop', x: e.x, y: e.y, text: `BLOCK ${Math.round(e.amount * 10) / 10}`, color: '#9fe07a' });
-  if (e.type === 'clash') add({ kind: 'flash', x: e.x, y: e.y, life: 0.4 });
+  if (e.type === 'clash') add({ kind: 'clash', x: e.x, y: e.y, life: 0.4 });
   if (e.type === 'swing') { const p = m.players[e.pid]; add({ kind: 'swing', x: p.x, y: p.y, a: Math.atan2(p.face.y, p.face.x), life: 0.2 }); }
   if (e.type === 'trap') add(e.kind === 'planted' ? { kind: 'boom', x: e.x, y: e.y, life: 0.5, ground: true } : { kind: 'flash', x: e.x, y: e.y, life: 0.5 });
   if (e.type === 'rain') add({ kind: 'rain', x: e.x, y: e.y, r: e.r, life: 0.35 });
@@ -44,7 +63,6 @@ function onEvent(e, m) {
 function update(dt) {
   const inp = input.poll();
   S.pads = inp.pads;
-  for (let i = 0; i < 2; i++) if (DBG.override[i]) inp.fight[i] = { ...DBG.override[i] };
   while (DBG.menu.length) { const { pid, action } = DBG.menu.shift(); inp.menu[pid][action] = true; }
   const m = inp.menu, any = (a) => m[0][a] || m[1][a];
   S.fx = S.fx.filter((f) => S.clock - f.t0 < f.life);
@@ -52,8 +70,11 @@ function update(dt) {
   if (S.screen === 'title') {
     if (any('confirm') || any('pause')) go('setup');
   } else if (S.screen === 'setup') {
-    if (any('left')) S.minutes = Math.max(1, S.minutes - 1);
-    if (any('right')) S.minutes = Math.min(TUNE.match.max / 60, S.minutes + 1);
+    const n = ROWS().length;
+    if (any('up')) S.row = (S.row + n - 1) % n;
+    if (any('down')) S.row = (S.row + 1) % n;
+    if (any('left')) changeRow(-1);
+    if (any('right')) changeRow(1);
     if (any('confirm')) startMatch();
     else if (any('back')) go('title');
   } else if (S.screen === 'fight') {
@@ -73,7 +94,14 @@ function update(dt) {
     }
     if (any('pause')) { S.paused = true; S.sel = 0; return; }
     if (!match.scene) S.clock += dt;
-    stepMatch(match, inp.fight, dt);
+    let fight = inp.fight;
+    if (S.cpu) {
+      fight = [{}, {}];
+      fight[S.side] = merge(inp.fight[0], inp.fight[1]);
+      fight[S.cpu.pid] = cpuInput(match, S.cpu, dt);
+    }
+    for (let i = 0; i < 2; i++) if (DBG.override[i]) fight[i] = { ...DBG.override[i] };
+    stepMatch(match, fight, dt);
     for (const e of match.events.splice(0)) onEvent(e, match);
     if (match.phase === 'done') { S.screenAt = S.now; S.sel = 0; }
   }
@@ -83,9 +111,9 @@ function render() {
   ctx.setTransform(RES, 0, 0, RES, 0, 0); // draw in 480x270 layout units on the full-HD canvas
   R(0, 0, W, H, '#000');
   if (S.screen === 'title') drawTitle(S.now, S.pads);
-  else if (S.screen === 'setup') drawSetup(S.now, S.minutes);
+  else if (S.screen === 'setup') drawSetup(S.now, { ...S, rows: ROWS(), levelName: LEVELS[S.level].name });
   else if (S.screen === 'fight') {
-    drawFight(S.match, S.now, S.fx);
+    drawFight(S.match, S.now, S.fx, S.cpu ? (S.cpu.pid === 0 ? ['CPU', 'YOU'] : ['YOU', 'CPU']) : ['P1', 'P2'], S.clock);
     if (S.banner && S.now - S.banner.t0 < 3) {
       R(0, H - 34, W, 30, 'rgba(10,12,20,.8)');
       txt(S.banner.text, CX, H - 30, '#ffcf6a', 'center');
@@ -107,21 +135,24 @@ addEventListener('error', (e) => S.errors.push(String(e.error?.stack || e.messag
 const r1 = (v) => Math.round(v * 10) / 10;
 window.__game = {
   get screen() { return S.screen; },
-  get art() { return { ready: ART.ready, arena: !!ART.arena, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
+  get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
   errors: S.errors,
   debug: {
     pause() { DBG.paused = true; }, resume() { DBG.paused = false; },
     step(n = 1) { for (let i = 0; i < n; i++) update(STEP); render(); },
     setInput(pid, inp) { DBG.override[pid] = inp; }, clearInput() { DBG.override = [null, null]; },
     press(action, pid = 0) { DBG.menu.push({ pid, action }); },
-    start(o = {}) { if (o.minutes) S.minutes = o.minutes; if (o.seed) S.seed = o.seed; startMatch(); },
+    start(o = {}) { // debug starts default to 2 players; pass { mode: '1p', side, level } for the computer
+      if (o.minutes) S.minutes = o.minutes; if (o.seed) S.seed = o.seed;
+      S.mode = o.mode || '2p'; S.side = o.side ?? 0; S.level = o.level || 'normal'; startMatch();
+    },
     set(pid, fields) { Object.assign(S.match.players[pid], fields); },
     match() { return S.match; },
     unit(o) { return spawnUnit(S.match, o).id; },
     snapshot() {
       const m = S.match;
       return {
-        screen: S.screen, paused: S.paused, minutes: S.minutes, fx: S.fx.map((f) => f.text || f.kind), banner: S.banner?.text || null,
+        screen: S.screen, paused: S.paused, minutes: S.minutes, mode: S.mode, side: S.side, level: S.level, cpu: S.cpu ? S.cpu.pid : null, fx: S.fx.map((f) => f.text || f.kind), banner: S.banner?.text || null,
         match: m && {
           phase: m.phase, result: m.result, timeLeft: r1(m.timeLeft), duration: m.duration, scene: m.scene?.name || null,
           projectiles: m.projectiles.length, marks: m.marks.length,

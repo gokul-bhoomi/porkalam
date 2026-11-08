@@ -63,12 +63,29 @@ await check('menus: pick a 7 minute match and start it', async () => {
     const d = window.__game.debug;
     d.pause(); d.press('confirm'); d.step(1);
     const setup = d.snapshot().screen;
+    // rows (1 player): players, you play, cpu level, length
+    d.press('down'); d.step(1); d.press('right'); d.step(1);          // play as Raja Raja Chola
+    d.press('down'); d.step(1); d.press('right'); d.step(1);          // CPU level normal -> hard
+    d.press('up', 1); d.step(1); d.press('up'); d.step(1); d.press('up'); d.step(1); // wraps round to length
     d.press('right'); d.step(1); d.press('right', 1); d.step(1);
     d.press('confirm'); d.step(1);
     return { setup, snap: d.snapshot() };
   });
   expect(s.setup === 'setup', `expected setup, got ${s.setup}`);
   expect(s.snap.screen === 'fight' && s.snap.match.duration === 420, `expected a 7 minute fight, got ${s.snap.screen} ${s.snap.match?.duration}`);
+  expect(s.snap.mode === '1p' && s.snap.side === 1 && s.snap.level === 'hard' && s.snap.cpu === 0, `expected 1 player as the King vs a hard CPU: ${JSON.stringify(s.snap)}`);
+});
+
+await check('1 player: the computer fights back and either key set moves you', async () => {
+  await open('?seed=5&pause=1');
+  await game(() => window.__game.debug.start({ minutes: 2, mode: '1p', side: 0, level: 'hard' }));
+  await page.keyboard.down('ArrowRight'); // P2 keys also move the 1-player fighter
+  const x = await game(() => { const d = window.__game.debug, x0 = d.snapshot().match.players[0].x; d.step(30); return [x0, d.snapshot().match.players[0].x]; });
+  await page.keyboard.up('ArrowRight');
+  expect(x[1] > x[0] + 10, `arrow keys did not move Krishna: ${x}`);
+  const s = await game(() => { const d = window.__game.debug; d.step(60 * 20); return d.snapshot().match; });
+  expect(s.players[0].hp < 100, `the CPU never hit Krishna in 20 s: ${JSON.stringify(s.players)}`);
+  await page.screenshot({ path: join(SHOTS, 'cpu.png') });
 });
 
 await check('a gamepad moves Krishna and fires the flute (P1 pad)', async () => {
@@ -180,6 +197,7 @@ await check('the Codex art loads: arena plus 8 frames for each fighter, and ?gre
   const a = await game(() => window.__game.art);
   expect(a.arena, 'arena.png did not load');
   expect(a.frames.krishna === 8 && a.frames.rajaraja === 8, `frames: ${JSON.stringify(a.frames)}`);
+  expect(a.fx === 16, `expected 16 effect sprites, got ${a.fx}`);
   await game(() => { const d = window.__game.debug; d.start({ minutes: 5 }); d.setInput(0, { mx: 1 }); d.step(30); });
   await page.screenshot({ path: join(SHOTS, 'art.png') });
   await open('?seed=6&pause=1&grey=1');
