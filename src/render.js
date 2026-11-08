@@ -225,7 +225,7 @@ function drawProjectile(pr0, now) {
   const pr = { ...pr0, r: Z(pr0.r) };
   const x = sx(pr.x), y = sy(pr.y) - 6, a = Math.atan2(pr.vy * SQ, pr.vx), ca = Math.cos(a), sa = Math.sin(a);
   if (pr.shape === 'orb') { // the mage's mantra bolt: a glowing teal orb with a short tail
-    const hy = sy(pr.y) - 18, r = Z(pr0.r) * 1.3, g = G.createRadialGradient(x, hy, 0, x, hy, r * 2.2);
+    const hy = sy(pr.y) - 18, r = Z(pr0.r) * 1.3 * (1 + Math.max(0, pr0.dmg - 4) / 9), g = G.createRadialGradient(x, hy, 0, x, hy, r * 2.2); // a charged bolt is bigger
     g.addColorStop(0, 'rgba(235,255,252,1)'); g.addColorStop(0.35, 'rgba(90,230,215,.9)'); g.addColorStop(1, 'rgba(40,160,170,0)');
     ell(x, sy(pr.y), r * 0.8, r * 0.3, 'rgba(0,0,0,.2)');
     for (let i = 1; i <= 3; i++) ell(x - ca * i * r * 0.9, hy - sa * i * r * 0.9, r * (1 - i * 0.22), r * (1 - i * 0.22), `rgba(90,230,215,${0.35 - i * 0.09})`);

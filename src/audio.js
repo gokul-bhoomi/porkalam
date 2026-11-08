@@ -90,12 +90,12 @@ function brass(t, d = 1.2, peak = 0.12, s = 0) { // a low horn blast
 }
 
 // ---------- music ----------
-// Cinematic, slow and dark (owner, 2026-11-08: the drum-loop music didn't work). At 66 bpm:
+// Cinematic and dark (owner, 2026-11-08: the drum-loop music didn't work; then 'a bit faster'). At 88 bpm:
 //  - warm string pads moving through Dm - Bb - Gm - A (two bars each), with a sub bass under them
 //  - a bansuri-like flute playing slow, breathy phrases in D minor (a Kirwani-like colour), with rests
 //  - in a fight: a heartbeat pulse, and a big war drum with a short roll every four bars
 //  - menus: pads and flute only
-const BPM = 66, BEAT = 60 / BPM;
+const BPM = 88, BEAT = 60 / BPM; // 66 -> 88 (owner, 2026-11-08: a bit faster)
 const CHORDS = [[0, 3, 7], [-4, 0, 3], [-7, -2, 2], [-5, -1, 2]]; // Dm, Bb, Gm, A (semitones from D)
 const FLUTE = [0, 2, 3, 5, 7, 8, 11, 12, 14, 15]; // D minor with a raised 7th (harmonic minor)
 export function setMusic(mode) { // 'menu', 'fight', or null
@@ -136,7 +136,7 @@ function phrase(t) { // 3-5 slow notes moving mostly by step, ending long on a c
   const n = 3 + Math.floor(Math.random() * 3);
   for (let k = 0; k < n; k++) {
     i = Math.max(0, Math.min(FLUTE.length - 1, i + [-2, -1, -1, 1, 1, 2][Math.floor(Math.random() * 6)]));
-    const last = k === n - 1, d = last ? BEAT * 3 : BEAT * [0.5, 1, 1, 1.5][Math.floor(Math.random() * 4)];
+    const last = k === n - 1, d = last ? BEAT * 2.5 : BEAT * [0.5, 0.5, 1, 1][Math.floor(Math.random() * 4)];
     flute(last ? [0, 3, 7, 12][Math.floor(Math.random() * 4)] : FLUTE[i], tt, d * 0.95);
     tt += d;
   }
@@ -148,9 +148,12 @@ export function tickMusic() {
   while (nextBeat < now + 0.3) {
     const t = nextBeat, b = beat % 32; // 8 bars of 4 beats
     if (b % 8 === 0) pad(CHORDS[(b / 8) % 4], t, BEAT * 8);
-    if ((b === 2 || b === 18) && Math.random() < 0.85) phrase(t);
+    if ((b === 2 || b === 10 || b === 18 || b === 26) && Math.random() < 0.7) phrase(t);
     if (musicMode === 'fight') {
       if (b % 2 === 0) { osc('sine', 55, t, 0.004, 0.22, 0.28, musicBus, { glide: 40 }); osc('sine', 55, t + BEAT * 0.28, 0.004, 0.14, 0.25, musicBus, { glide: 40 }); } // heartbeat
+      const root = CHORDS[Math.floor(b / 8) % 4][0]; // a driving low string pulse in eighths
+      for (const h of [0, 0.5]) osc('sawtooth', hz(root, 0), t + h * BEAT, 0.005, 0.05, BEAT * 0.4, musicBus, { lp: [600, 200, 2] });
+      if (b % 4 === 2) tom(t + BEAT / 2, 0.12, 110, musicBus);
       if (b % 16 === 0) { boom(t, 0.6, 46); noise(t, 1.2, 0.05, musicBus, { type: 'lowpass', f: 300, a: 0.01 }); }   // war drum
       if (b % 16 === 15) for (let k = 0; k < 4; k++) tom(t + k * BEAT / 4, 0.1 + k * 0.04, 95, musicBus);          // roll into it
     }
