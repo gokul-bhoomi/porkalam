@@ -30,10 +30,10 @@ export const TUNE = {
   // opponent prepares an attack), for at most buildTime s. When block is let go, the wall stays where it is,
   // at the size it reached, for standTime s.
   block: { prepMult: 2, buildTime: 3, standTime: 3, gap: 14, halfWidth: [8, 20] },
-  trap: { max: 3, delay: [5, 30], cost: 4, plantedDmg: 12, plantedR: 20, plantedKb: 120, waterR: 22, waterTime: 8, waterSlow: 0.5 },
-  mark: { life: [5, 30], max: 40, offset: 12 }, // floor marks (scuffs and traps look the same)
-  maxBoons: 1,          // ground rule 11
   chord: 0.08,          // special buttons pressed within this time count as one combo (boon / signature)
-  meditate: { dist: 90, times: [5, 7.5, 10], cost: 2 },
+  // Meditation (ground rule 11, owner 2026-11-08): fills a devotion bar of `segments` parts, segTime s each,
+  // only while the opponent is further than `dist`. Only full segments count. A barrier of `barrier` strength
+  // goes up around the meditating fighter. Boons cost `tiers` segments: small, medium, divine weapon.
+  meditate: { dist: 90, cost: 2, segments: 10, segTime: 2.5, barrier: 25, tiers: [3, 6, 10] },
   scene: 2.5,           // dramatic scene length for power moves; the whole game pauses
 };

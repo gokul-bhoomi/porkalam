@@ -51,19 +51,21 @@ function onEvent(e, m) {
   if (e.type === 'blocked') add({ kind: 'pop', x: e.x, y: e.y, text: `BLOCK ${Math.round(e.amount * 10) / 10}`, color: '#9fe07a' });
   if (e.type === 'clash') add({ kind: 'clash', x: e.x, y: e.y, life: 0.4 });
   if (e.type === 'swing') { const p = m.players[e.pid]; add({ kind: 'swing', x: p.x, y: p.y, a: Math.atan2(p.face.y, p.face.x), life: 0.2 }); }
-  if (e.type === 'trap') add(e.kind === 'planted' ? { kind: 'boom', x: e.x, y: e.y, life: 0.5, ground: true } : { kind: 'flash', x: e.x, y: e.y, life: 0.5 });
+  if (e.type === 'barrier') add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 });
+  if (e.type === 'medStop' && m.players[e.pid].msg?.text === 'BARRIER BROKEN') add({ kind: 'boom', x: m.players[e.pid].x, y: m.players[e.pid].y, life: 0.5, ground: true });
   if (e.type === 'rain') add({ kind: 'rain', x: e.x, y: e.y, r: e.r, life: 0.35 });
   if (e.type === 'blink') add({ kind: 'trail', x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'release') { // power moves land with a bang in the arena, right after their scene
     const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
-    if (e.name === 'Vishwaroopam') { add({ kind: 'global', x: 0, y: 0, life: 0.6 }); add({ kind: 'ghost', scene: 'vishwaroopam', x: 0, y: 0, life: 1.2 }); add({ kind: 'shock', x: p.x, y: p.y, life: 1.0, color: '255,214,120', r: 160 }); shake(4, 0.7); }
-    if (e.name === 'Tiger Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }
+    if (e.name === 'Thousand-Arm Form') { add({ kind: 'global', x: 0, y: 0, life: 0.6, color: '150,240,230' }); add({ kind: 'ghost', scene: 'siddhan_sig', x: 0, y: 0, life: 1.2 }); add({ kind: 'shock', x: p.x, y: p.y, life: 1.0, color: '255,214,120', r: 160 }); shake(4, 0.7); }
+    if (e.name === 'Gaja Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }
+    if (e.name === 'Shakti Vel') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,200,90', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Pashupatastra') { add({ kind: 'bolt', x: p.x, y: p.y, life: 0.5 }); add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '170,220,255', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Brahmastra') { for (const q of m.players) add({ kind: 'pillar', x: q.x, y: q.y, life: 1.2 }); add({ kind: 'global', x: 0, y: 0, life: 0.9, color: '255,255,255' }); shake(5, 1.0); }
   }
   if (e.type === 'wall') add({ kind: 'pop', x: e.x, y: e.y - 8, text: 'WALL', color: '#ffb46a' });
-  if (e.type === 'boon') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()} GOT ${e.name.toUpperCase()}`, sub: `BOON FROM ${e.god.toUpperCase()}`, t0: S.now };
-  if (e.type === 'boonUsed') S.banner = { text: `${e.name.toUpperCase()}!`, sub: 'BOON USED', t0: S.now };
+  if (e.type === 'boon') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()} INVOKES ${e.name.toUpperCase()}`, sub: `${e.tier.toUpperCase()} BOON FROM ${e.god.toUpperCase()}`, t0: S.now };
+  if (e.type === 'medFull') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()}: DEVOTION FULL`, sub: 'A DIVINE WEAPON IS READY', t0: S.now };
 }
 
 function update(dt) {
@@ -168,9 +170,9 @@ window.__game = {
         screen: S.screen, paused: S.paused, minutes: S.minutes, mode: S.mode, side: S.side, level: S.level, cpu: S.cpu ? S.cpu.pid : null, fx: S.fx.map((f) => f.text || f.kind), banner: S.banner?.text || null,
         match: m && {
           phase: m.phase, result: m.result, timeLeft: r1(m.timeLeft), duration: m.duration, scene: m.scene?.name || null,
-          projectiles: m.projectiles.length, marks: m.marks.length,
+          projectiles: m.projectiles.length,
           players: m.players.map((p) => ({ id: p.id, name: p.ch.name, x: r1(p.x), y: r1(p.y), hp: r1(p.hp), power: r1(p.power), cast: p.cast?.move.name || null,
-            block: !!p.block, med: !!p.med, boons: p.boons.map((b) => b.name), meditations: p.meditations, effects: Object.keys(p.effects) })),
+            block: !!p.block, med: !!p.med, barrier: p.med ? r1(p.med.barrier) : null, devotion: p.devotion, effects: Object.keys(p.effects) })),
         },
       };
     },

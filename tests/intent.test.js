@@ -14,8 +14,8 @@ import { GODS, findBoon } from '../src/chars/gods.js';
 import { ACTIONS, PAD, KEYS } from '../src/input.js';
 import { match, run, tap, useBoon, events, steps, K, R } from './helpers.js';
 
-const krishna = CHARS.krishna, raja = CHARS.rajaraja;
-const allMoves = () => [krishna, raja].flatMap((c) => Object.values(c.moves))
+const mage = CHARS.siddhan, warrior = CHARS.veeran; // P1 = Mage (Siddhan), P2 = Warrior (Veeran)
+const allMoves = () => [mage, warrior].flatMap((c) => Object.values(c.moves))
   .concat(Object.values(GODS).flatMap((g) => g.tiers.flat()));
 const src = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
 
@@ -23,8 +23,9 @@ const src = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8')
 test('rule 1: health starts at 100%, which is also the maximum; healing never goes above it', () => {
   const m = match();
   for (const p of m.players) assert.equal(p.hp, 100);
-  m.players[R].hp = 95; m.players[R].boons = [{ id: 'kamandalu', name: 'Kamandalu', god: 'Brahma' }];
-  useBoon(m, R); run(m, [{}, {}], 1);
+  m.players[R].hp = 95; // Kamandalu restores 10%, but never above 100%
+  m.players[R].cast = { move: findBoon('kamandalu'), slot: 'boon', t: 0, dir: null };
+  run(m, [{}, {}], 1);
   assert.equal(m.players[R].hp, 100);
 });
 
@@ -51,7 +52,7 @@ test('rule 2: power refills at a constant rate, the same at any health level', (
   run(a, [{}, {}], 2); const p1 = a.players[K].power;
   run(a, [{}, {}], 2); const p2 = a.players[K].power;
   run(b, [{}, {}], 4);
-  assert.ok(Math.abs(p1 - 2 * krishna.power.refill) < 1e-6, 'constant rate');
+  assert.ok(Math.abs(p1 - 2 * mage.power.refill) < 1e-6, 'constant rate');
   assert.ok(Math.abs(p2 - 2 * p1) < 1e-6, 'same rate later on');
   assert.ok(Math.abs(b.players[K].power - p2) < 1e-6, 'same rate at low health');
 });
@@ -96,7 +97,7 @@ test('rule 4: every move has a cost, requirements, a range, a cast time, damage 
     assert.ok(mv.range in RANGES, `${mv.name} range`);
     assert.ok(typeof mv.cast === 'number' && typeof mv.damage === 'number' && typeof mv.knockback === 'number', mv.name);
   }
-  for (const c of [krishna, raja]) {
+  for (const c of [mage, warrior]) {
     for (const s of ['a1', 'a2']) assert.ok(c.moves[s].cost.power <= 3, `${c.moves[s].name} is a basic move and costs very little power`);
     assert.ok(c.defence.cost <= 3, 'block is a basic move too');
   }
@@ -106,21 +107,21 @@ test('rule 4: long-distance special moves have no distance requirement', () => {
   for (const mv of allMoves().filter((x) => x.special && (x.range === 'long' || x.range === 'midlong'))) {
     assert.ok(rangeOK(mv, 0) && rangeOK(mv, 1000), mv.name);
   }
-  assert.ok(!rangeOK(raja.moves.a1, 5), 'a basic mid/long move still needs distance');
+  assert.ok(!rangeOK(warrior.moves.a1, 5), 'a basic mid/long move still needs distance');
 });
 
 test('rule 4: no cooldowns (a move can be used again as soon as the last one ends)', () => {
   const m = match({ k: { x: -60, power: 50 }, r: { x: 60 } });
-  for (let i = 0; i < 3; i++) { tap(m, K, 'a1'); run(m, [{}, {}], krishna.moves.a1.cast); }
+  for (let i = 0; i < 3; i++) { tap(m, K, 'a1'); run(m, [{}, {}], mage.moves.a1.cast); }
   assert.equal(events(m, 'release').filter((e) => e.pid === K).length, 3);
 });
 
 test('rule 4: a move only brings its own user to 0 health if it says so', () => {
   const m = match({ k: { hp: 10, power: 100 } });
-  assert.equal(whyNot(m, m.players[K], krishna.moves.sig), 'NO HEALTH');
+  assert.equal(whyNot(m, m.players[K], mage.moves.sig), 'NO HEALTH');
   for (const mv of allMoves()) if (mv.selfKO) assert.equal(mv.kind, 'brahmastra');
   m.players[K].hp = 3;
-  assert.equal(whyNot(m, m.players[K], krishna.moves.cls), null, 'Brahmastra says so');
+  assert.equal(whyNot(m, m.players[K], findBoon('brahmastra')), null, 'Brahmastra says so');
 });
 
 test('rule 4: attacks turn toward the opponent automatically', () => {
@@ -134,7 +135,7 @@ test('rule 4: attacks turn toward the opponent automatically', () => {
 
 test('rule 4: projectiles fly in a straight line and can be dodged by moving', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 90, y: 0 } });
-  tap(m, R, 'a1'); run(m, [{}, {}], raja.moves.a1.cast);
+  tap(m, R, 'a1'); run(m, [{}, {}], warrior.moves.a1.cast);
   const pr = m.projectiles[0], v = [pr.vx, pr.vy];
   let lastAngle = null;
   for (let i = 0; i < 60 && m.projectiles.length; i++) {
@@ -145,7 +146,7 @@ test('rule 4: projectiles fly in a straight line and can be dodged by moving', (
   assert.equal(m.players[K].hp, 100, 'Krishna stepped out of the arrow\'s line');
   // the chakra re-aims between legs, but every leg is a straight line
   const c = match({ k: { x: -60, power: 100 }, r: { x: 80 } });
-  tap(c, K, 's1'); run(c, [{}, {}], krishna.moves.s1.cast);
+  tap(c, K, 's1'); run(c, [{}, {}], mage.moves.s1.cast);
   let turns = 0, prev = null;
   for (let i = 0; i < steps(2) && c.projectiles.length; i++) {
     stepMatch(c, [{}, { my: -1 }]);
@@ -153,18 +154,18 @@ test('rule 4: projectiles fly in a straight line and can be dodged by moving', (
     if (p && prev && (p.vx !== prev[0] || p.vy !== prev[1])) { turns++; assert.ok(p.lt === 0, 'turns only between legs'); }
     if (p) prev = [p.vx, p.vy];
   }
-  assert.ok(turns <= krishna.moves.s1.legs - 1);
+  assert.ok(turns <= mage.moves.s1.legs - 1);
 });
 
 test('rule 4: power moves get a short dramatic scene, and the game pauses for both players', () => {
   const m = match({ k: { x: -60 }, r: { x: 80, power: 100 } });
-  tap(m, R, 'sig'); run(m, [{}, {}], raja.moves.sig.cast);
-  assert.equal(m.scene?.name, 'Tiger Arrow');
+  tap(m, R, 'sig'); run(m, [{}, {}], warrior.moves.sig.cast);
+  assert.equal(m.scene?.name, 'Gaja Arrow');
   const before = JSON.stringify({ k: [m.players[K].x, m.players[K].power], r: m.players[R].power, t: m.timeLeft });
   run(m, [{ mx: 1, a1: true }, { mx: -1 }], TUNE.scene * 0.9);
   assert.equal(JSON.stringify({ k: [m.players[K].x, m.players[K].power], r: m.players[R].power, t: m.timeLeft }), before, 'nothing moves during the scene');
-  for (const c of [krishna, raja]) assert.ok(c.moves.sig.scene, `${c.moves.sig.name} has a scene`);
-  assert.ok(krishna.moves.cls.scene && findBoon('brahmastra').scene);
+  for (const c of [mage, warrior]) assert.ok(c.moves.sig.scene, `${c.moves.sig.name} has a scene`);
+  for (const id of ['pashupatastra', 'shakti', 'brahmastra']) assert.ok(findBoon(id).scene, `${id} has a scene`);
 });
 
 // ---------- 5. Defence ----------
@@ -194,7 +195,7 @@ test('rule 5: holding block longer while the opponent prepares an attack makes i
 });
 
 test('rule 5: each character has a defence strength and type; barriers absorb a set amount', () => {
-  for (const c of [krishna, raja]) {
+  for (const c of [mage, warrior]) {
     assert.ok(c.defence.type && c.defence.strength > 0 && c.defence.max >= c.defence.strength);
   }
   const m = match({ k: { x: -20, y: 0 }, r: { x: 20, y: 0 } });
@@ -275,25 +276,29 @@ test('rule 6: both fighters always pay their full cost in a clash', () => {
   const paid = m.players.map((p) => 50 + POWER.refill * STEP - p.power);
   run(m, [{}, {}], 1);
   assert.ok(events(m, 'clash').length >= 1);
-  assert.ok(Math.abs(paid[K] - krishna.moves.a1.cost.power) < 1e-6 && Math.abs(paid[R] - raja.moves.a1.cost.power) < 1e-6);
+  assert.ok(Math.abs(paid[K] - mage.moves.a1.cost.power) < 1e-6 && Math.abs(paid[R] - warrior.moves.a1.cost.power) < 1e-6);
 });
 
 // ---------- 7. Interruption ----------
-test('rule 7: any hit breaks casting and meditation, and the cost is still spent', () => {
+test('rule 7: any hit breaks casting, and the cost is still spent; meditation is protected by its barrier (owner change 2026-11-08)', () => {
   const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 60, y: 0 } });
   tap(m, K, 's2'); run(m, [{}, {}], 0.5);
   const spent = 100 - m.players[K].power;
   m.hits.push({ target: m.players[K], dmg: 1, kb: 0, from: null });
   stepMatch(m);
   assert.equal(m.players[K].cast, null, 'cast broken');
-  assert.ok(spent >= krishna.moves.s2.cost.power - 3);
+  assert.ok(spent >= mage.moves.s2.cost.power - 3);
   assert.equal(events(m, 'release').filter((e) => e.pid === K).length, 0);
 
   const n = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
   tap(n, R, 'cls'); run(n, [{}, {}], 1);
   assert.ok(n.players[R].med);
-  n.hits.push({ target: n.players[R], dmg: 1, kb: 0, from: null }); stepMatch(n);
-  assert.equal(n.players[R].med, null, 'meditation broken');
+  n.hits.push({ target: n.players[R], dmg: 5, kb: 0, from: null }); stepMatch(n);
+  assert.ok(n.players[R].med, 'an ordinary hit lands on the barrier and does not break meditation');
+  assert.equal(n.players[R].hp, 100);
+  n.hits.push({ target: n.players[R], dmg: 5, kb: 0, from: null, divine: true }); stepMatch(n);
+  assert.equal(n.players[R].med, null, 'a divine weapon goes through the barrier and breaks meditation');
+  assert.equal(n.players[R].hp, 95);
 });
 
 // ---------- 8. Order within one instant ----------
@@ -328,105 +333,68 @@ test('rule 9: effects are visible on the fighter', () => {
   for (const k of ['SLOW', 'HELD', 'STUN']) assert.ok(r.includes(`'${k}'`), `${k} label drawn`);
 });
 
-// ---------- 10. Traps ----------
-const trapMatch = () => match({ k: { x: -15, y: 0, power: 100 }, r: { x: 15, y: 0, power: 100 } });
-const setTrap = (m, pid, kind = 'trapPlant') => {
-  tap(m, pid, 'a2', { [kind]: true }); run(m, [{}, {}], 0.3);
-  Object.assign(m.players[K], { x: -15, y: 0, kvx: 0, kvy: 0 }); Object.assign(m.players[R], { x: 15, y: 0, kvx: 0, kvy: 0 }); // back to close range
-};
-
-test('rule 10: up to 3 active traps per fighter; one comes back when one goes off', () => {
-  const m = trapMatch();
-  for (let i = 0; i < 5; i++) { setTrap(m, K); m.players[K].power = 100; }
-  assert.equal(m.traps.filter((t) => t.owner === K).length, 3);
-  m.traps.sort((a, b) => a.t - b.t);
-  m.traps[0].t = STEP; m.players[R].x = 80; m.players[K].x = -80;
-  stepMatch(m);
-  assert.equal(m.players[K].trapsActive, 2);
-  m.players[K].x = -15; m.players[R].x = 15;
-  setTrap(m, K);
-  assert.equal(m.traps.filter((t) => t.owner === K).length, 3);
+// ---------- 10. Traps (removed by the owner, 2026-11-08) ----------
+test('rule 10: there are no traps: no trap buttons, no traps, floor marks or water patches (owner change 2026-11-08)', () => {
+  assert.ok(!BUTTONS.some((b) => /trap/i.test(b)) && !ACTIONS.some((b) => /trap/i.test(b)));
+  const m = match();
+  assert.ok(!('traps' in m) && !('marks' in m) && !('waters' in m));
+  assert.ok(!('trap' in TUNE));
 });
 
-test('rule 10: a planted trap can only be set close to the opponent', () => {
-  const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 60, y: 0 } });
-  setTrap(m, K);
-  assert.equal(m.traps.length, 0);
-});
-
-test('rule 10: traps go off after a random 5-30 s and hurt anyone on them, including the setter', () => {
-  const delays = [];
-  for (let seed = 1; seed < 40; seed++) {
-    const m = trapMatch(); m.rand = createMatch({ seed }).rand;
-    setTrap(m, K); delays.push(m.traps[0].t + 0.3 - 0.12);
-  }
-  assert.ok(delays.every((d) => d >= 5 - 0.01 && d <= 30 + 0.01), 'between 5 and 30 s');
-  assert.ok(new Set(delays.map((d) => Math.round(d))).size > 5, 'random');
-  const m = trapMatch(); setTrap(m, K);
-  const tr = m.traps[0]; m.players[K].x = tr.x; m.players[K].y = tr.y; m.players[R].x = 80;
-  const hp = m.players[K].hp; tr.t = STEP; stepMatch(m);
-  assert.ok(m.players[K].hp < hp, 'the setter is hurt');
-});
-
-test('rule 10: a water trap turns ground to water and slows anyone in it', () => {
-  const m = trapMatch(); setTrap(m, R, 'trapWater');
-  const tr = m.traps[0]; tr.t = STEP;
-  m.players[R].x = tr.x; m.players[R].y = tr.y; m.players[K].x = -80;
-  stepMatch(m); stepMatch(m);
-  assert.equal(m.waters.length, 1);
-  assert.ok(m.players[R].effects.slow, 'the setter is slowed too');
-});
-
-test('rule 10: the trap cost is paid normally, when the trap is set', () => {
-  const m = trapMatch(); m.players[K].power = 50;
-  stepMatch(m, [{ a2: true, trapPlant: true }, {}]);
-  assert.ok(Math.abs(50 + POWER.refill * STEP - m.players[K].power - (krishna.moves.a2.cost.power + TUNE.trap.cost)) < 1e-6);
-});
-
-test('rule 10: a trap is set with the normal close attack and its mark looks exactly like a floor scuff', () => {
-  const a = trapMatch(), b = trapMatch();
-  setTrap(a, K); tap(b, K, 'a2'); run(b, [{}, {}], 0.3);
-  assert.equal(a.traps.length, 1); assert.equal(b.traps.length, 0);
-  assert.deepEqual(events(a, 'cast').map((e) => e.slot), events(b, 'cast').map((e) => e.slot), 'same move, same swing');
-  assert.equal(a.marks.length, 1); assert.equal(b.marks.length, 1);
-  assert.deepEqual(Object.keys(a.marks[0]).sort(), Object.keys(b.marks[0]).sort());
-  assert.ok(!/\.traps\b/.test(src('render.js')), 'the renderer never looks at hidden traps');
-});
-
-test('rule 10: no controller vibration', () => {
-  for (const f of ['input.js', 'main.js', 'render.js', 'sim.js']) assert.ok(!/vibrat|rumble|haptic/i.test(src(f).replace(/\/\/.*$/gm, '')), f);
-});
-
-// ---------- 11. Boons ----------
-test('rule 11: 1 boon at a time, and both players see which boon was granted (owner change 2026-11-07)', () => {
-  assert.equal(TUNE.maxBoons, 1);
+// ---------- 11. Meditation, devotion and boons (owner change 2026-11-08) ----------
+const M = TUNE.meditate;
+test('rule 11: meditating fills a 10-segment devotion bar; only full segments count', () => {
+  assert.equal(M.segments, 10);
   const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  tap(m, R, 'cls'); run(m, [{}, {}], 10.5);
-  assert.equal(m.players[R].boons.length, 1);
-  tap(m, R, 'cls'); run(m, [{}, {}], 10.5);
-  assert.equal(m.players[R].boons.length, 1, 'can\'t get a second boon while holding one');
-  assert.equal(m.players[R].meditations, 1);
-  const grants = events(m, 'boon');
-  assert.equal(grants.length, 1);
-  assert.ok(grants.every((e) => e.name && e.god));
+  tap(m, R, 'cls'); run(m, [{}, {}], M.segTime * 3.5);
+  assert.equal(m.players[R].devotion, 3);
+  assert.ok(m.players[R].med.meter > 0, 'a fourth segment is part-filled');
+  tap(m, R, 'block'); run(m, [{}, {}], 0.1);
+  assert.equal(m.players[R].med, null, 'stopped');
+  assert.equal(m.players[R].devotion, 3, 'the part-filled segment is lost, full ones are kept');
+  tap(m, R, 'cls'); run(m, [{}, {}], M.segTime * 0.8);
+  assert.equal(m.players[R].devotion, 3, 'a new meditation starts the next segment from empty');
+  run(m, [{}, {}], M.segTime * 10);
+  assert.equal(m.players[R].devotion, M.segments, 'the bar tops out at 10');
+  assert.equal(m.players[R].med, null, 'meditation ends when the bar is full');
+});
+
+test('rule 11: two specials spend devotion: 3 = small boon, 6 = medium, 10 = divine weapon; random god; both players see it', () => {
+  assert.deepEqual(M.tiers, [3, 6, 10]);
+  assert.ok(!BUTTONS.includes('boon') && !ACTIONS.includes('boon'));
+  for (const [have, tier, left] of [[3, 'small', 0], [5, 'small', 2], [6, 'medium', 0], [9, 'medium', 3], [10, 'divine', 0]]) {
+    const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+    m.players[R].devotion = have;
+    useBoon(m, R);
+    const e = events(m, 'boon')[0];
+    assert.ok(e && e.tier === tier && e.god && e.name, `${have} segments buy a ${tier} boon`);
+    assert.equal(m.players[R].devotion, left);
+  }
+  for (const [a, b] of [['s1', 's2'], ['s2', 's3'], ['s1', 's3']]) {
+    const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+    m.players[R].devotion = 3; useBoon(m, R, a, b);
+    assert.equal(events(m, 'boon').length, 1, `${a}+${b}`);
+  }
+  // with less than 3 banked, two specials don't buy anything, and one special alone is just that special
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
+  m.players[R].devotion = 2;
+  tap(m, R, 's1'); run(m, [{}, {}], TUNE.chord + 0.05);
+  assert.equal(events(m, 'cast').filter((e) => e.pid === R)[0]?.name, 'Split shot');
+  assert.equal(m.players[R].devotion, 2);
   assert.ok(src('main.js').includes("e.type === 'boon'"), 'the boon is announced on the shared screen');
 });
 
-test('rule 11: a boon is used by pressing two special buttons together; there is no boon button', () => {
-  assert.ok(!BUTTONS.includes('boon') && !ACTIONS.includes('boon'));
-  for (const [a, b] of [['s1', 's2'], ['s2', 's3'], ['s1', 's3']]) {
-    const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
-    m.players[R].boons = [{ id: 'vel', name: 'Vel throw', god: 'Murugan' }];
-    useBoon(m, R, a, b);
-    assert.equal(m.players[R].boons.length, 0, `${a}+${b}`);
-    assert.equal(m.players[R].cast?.move.name, 'Vel throw');
-  }
-  // one special alone still fires the special (after a short wait for a second button)
-  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
-  m.players[R].boons = [{ id: 'vel', name: 'Vel throw', god: 'Murugan' }];
-  tap(m, R, 's1'); run(m, [{}, {}], TUNE.chord + 0.05);
-  assert.equal(m.players[R].boons.length, 1);
-  assert.equal(events(m, 'cast').filter((e) => e.pid === R)[0]?.name, 'Split shot');
+test('rule 11: the meditation barrier soaks damage instead of health; breaking it ends meditation', () => {
+  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
+  tap(m, R, 'cls'); run(m, [{}, {}], 0.5);
+  assert.equal(m.players[R].med.barrier, M.barrier);
+  m.hits.push({ target: m.players[R], dmg: M.barrier - 5, kb: 0, from: null }); stepMatch(m);
+  assert.ok(m.players[R].med && m.players[R].hp === 100);
+  m.hits.push({ target: m.players[R], dmg: 8, kb: 0, from: null }); stepMatch(m);
+  assert.equal(m.players[R].med, null, 'barrier broken');
+  assert.equal(m.players[R].hp, 97, 'what the barrier could not hold gets through');
+  for (const id of ['pashupatastra', 'shakti', 'brahmastra']) assert.ok(findBoon(id).divine, `${id} is a divine weapon`);
+  assert.equal(GODS.shiva.tiers[2].concat(GODS.murugan.tiers[2], GODS.brahma.tiers[2]).filter((b) => !b.divine).length, 0, 'every top-tier boon is divine');
 });
 
 // ---------- 12. Extra units and arena changes ----------
@@ -457,7 +425,7 @@ test('rule 13: nobody leaves the round arena, it never grows, and being knocked 
   const n = match({ k: { x: 60, y: 0 }, r: { x: 80, y: 0 } });
   tap(n, K, 'a2'); run(n, [{}, {}], 1);
   assert.ok(events(n, 'wall').length === 1);
-  assert.ok(n.players[R].hp <= 100 - krishna.moves.a2.damage - TUNE.wallDmg + 1e-6);
+  assert.ok(n.players[R].hp <= 100 - mage.moves.a2.damage - TUNE.wallDmg + 1e-6);
   assert.ok(!/ARENA\.r\s*[+\-*]?=/.test(src('sim.js')), 'the arena never grows');
 });
 
@@ -466,21 +434,20 @@ test('rule 14: every fighter uses the same button layout, fully playable on a co
   assert.deepEqual(ACTIONS, BUTTONS);
   for (const a of ACTIONS) { assert.ok(Number.isInteger(PAD[a]), `${a} on the pad`); for (const k of KEYS) assert.ok(k[a]?.length, `${a} on the keyboard`); }
   assert.equal(new Set(ACTIONS.map((a) => PAD[a])).size, ACTIONS.length, 'no two actions share a pad button');
-  for (const c of [krishna, raja]) assert.deepEqual(Object.keys(c.moves).sort(), ['a1', 'a2', 'cls', 's1', 's2', 's3', 'sig']);
+  for (const c of [mage, warrior]) assert.deepEqual(Object.keys(c.moves).sort(), ['a1', 'a2', 'cls', 's1', 's2', 's3', 'sig']);
 });
 
-test('controls (owner, 2026-11-07): signature = all 3 specials together, class move = down + special 1, no extra buttons', () => {
-  assert.deepEqual(BUTTONS, ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3']);
-  for (const [c, pid] of [[krishna, K], [raja, R]]) {
+test('controls (owner, 2026-11-07/08): signature = all 3 specials together, meditate = down + special 1, no extra buttons', () => {
+  assert.deepEqual(BUTTONS, ['a1', 'a2', 'block', 's1', 's2', 's3']);
+  for (const [c, pid] of [[mage, K], [warrior, R]]) {
     const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 60, y: 0, power: 100 } });
     stepMatch(m, pid === K ? [{ s2: true }, {}] : [{}, { s2: true }]); // pressed a frame or two apart still counts
     stepMatch(m, pid === K ? [{ s1: true, s2: true, s3: true }, {}] : [{}, { s1: true, s2: true, s3: true }]);
     assert.equal(m.players[pid].cast?.move.name, c.moves.sig.name);
-    const n = match({ k: { x: -90, y: 0, power: 100, hp: 4 }, r: { x: 90, y: 0 } });
+    const n = match({ k: { x: -90, y: 0, power: 100 }, r: { x: 90, y: 0 } });
     tap(n, pid, 's1', { my: 1 });
-    const started = events(n, 'cast').concat(events(n, 'meditate')).filter((e) => e.pid === pid);
-    assert.equal(started.length, 1);
-    assert.ok(pid === K ? started[0].name === 'Brahmastra' : n.players[R].med, c.moves.cls.name);
+    assert.equal(events(n, 'meditate').filter((e) => e.pid === pid).length, 1);
+    assert.ok(n.players[pid].med, `${c.name} meditates`);
   }
 });
 
@@ -491,7 +458,7 @@ test('rule 14: one shared screen; both power bars are visible', () => {
 
 // ---------- 15. Character sheet ----------
 test('rule 15: every fighter is defined by the same character sheet', () => {
-  for (const c of [krishna, raja]) {
+  for (const c of [mage, warrior]) {
     assert.equal(c.health, 100);
     assert.ok(c.power.size > 0 && c.power.refill > 0 && c.speed > 0);
     assert.ok(c.defence.strength > 0 && c.defence.type);
@@ -502,95 +469,86 @@ test('rule 15: every fighter is defined by the same character sheet', () => {
 
 // ================= class rules =================
 test('class: power bar size and refill speed are the same for every class', () => {
-  assert.deepEqual(krishna.power, raja.power);
+  assert.deepEqual(mage.power, warrior.power);
 });
 
 test('class: every character has 2 basic attacks + 1 block, each with their own special block', () => {
-  for (const c of [krishna, raja]) assert.ok(c.moves.a1 && c.moves.a2 && c.defence);
-  assert.notEqual(krishna.defence.name, raja.defence.name);
+  for (const c of [mage, warrior]) assert.ok(c.moves.a1 && c.moves.a2 && c.defence);
+  assert.notEqual(mage.defence.name, warrior.defence.name);
 });
 
-test('class: Gods are slow and can\'t run, but can blink for power; Kings are fast', () => {
-  assert.ok(krishna.speed < raja.speed);
+test('classes (owner, 2026-11-08): two classes, Mages and Warriors, and no Monsters', () => {
+  assert.deepEqual(Object.values(CHARS).map((c) => c.cls).sort(), ['mage', 'warrior']);
+  assert.ok(!Object.values(CHARS).some((c) => /monster|god|king/.test(c.cls)));
+});
+
+test('theme (owner, 2026-11-08): inspired by Hindu mythology; the fighters are original, the real gods only grant boons', () => {
+  for (const c of Object.values(CHARS)) assert.ok(!/krishna|raja|chola|shiva|murugan|brahma|vishnu/i.test(`${c.id} ${c.name}`), c.name);
+  assert.deepEqual(Object.keys(GODS).sort(), ['brahma', 'murugan', 'shiva']);
+  assert.ok(src('render.js').includes('INSPIRED BY HINDU MYTHOLOGY'));
+});
+
+test('class: Mages are slow and can\'t run, but can blink for power; Warriors are fast', () => {
+  assert.ok(mage.speed < warrior.speed);
   assert.ok(!BUTTONS.includes('run'));
-  const blink = krishna.moves.s3;
+  const blink = mage.moves.s3;
   assert.equal(blink.kind, 'blink'); assert.ok(blink.cost.power > 0);
   const m = match({ k: { x: -40, y: 0, power: 50 }, r: { x: 80 } });
   tap(m, K, 's3', { mx: 0, my: 1 });
   assert.ok(m.players[K].y > blink.distance - 2, 'blinked');
 });
 
-test('class: God basic moves are mostly mid/long range, weak up close', () => {
-  assert.equal(krishna.moves.a1.range, 'mid');
-  assert.ok(krishna.moves.a2.damage <= raja.moves.a2.damage);
+test('class: Mage basic moves are mostly mid/long range, weak up close', () => {
+  assert.equal(mage.moves.a1.range, 'mid');
+  assert.ok(mage.moves.a2.damage <= warrior.moves.a2.damage);
 });
 
-test('class: Brahmastra needs health below 5% plus all power; a long chant; both reach 0 = draw', () => {
-  const b = krishna.moves.cls;
-  assert.ok(b.cast >= 4.5 && b.cast <= 5.5);
-  const m = match({ k: { x: -90, hp: 6, power: 100 }, r: { x: 90 } });
-  assert.ok(whyNot(m, m.players[K], b));
-  m.players[K].hp = 4; m.players[K].power = 99;
-  assert.ok(whyNot(m, m.players[K], b));
-  m.players[K].power = 100;
-  assert.equal(whyNot(m, m.players[K], b), null);
-  tap(m, K, 'cls');
-  assert.ok(m.players[K].power < 0.1, 'all power spent');
+test('class: Brahmastra is a divine-weapon boon either class can earn; both fighters reach 0 = draw (owner change 2026-11-08)', () => {
+  const b = findBoon('brahmastra');
+  assert.ok(b.divine && b.selfKO && b.cast >= 4.5 && b.cast <= 5.5);
+  for (const c of [mage, warrior]) assert.equal(c.moves.cls.kind, 'meditate', `${c.name}'s class move is meditation`);
+  const m = match({ k: { x: -90 }, r: { x: 90 } });
+  m.players[K].cast = { move: b, slot: 'boon', t: 0, dir: null };
   run(m, [{}, {}], b.cast + TUNE.scene + 0.2);
   assert.deepEqual(m.result, { winner: null, reason: 'brahmastra' });
 });
 
-test('class: a King has one weapon, and his basic and special moves come from it', () => {
-  assert.equal(raja.weapon, 'bow');
-  for (const s of ['a1', 'a2', 's1', 's2', 's3', 'sig']) assert.equal(raja.moves[s].weapon, 'bow');
+test('class: a Warrior has one weapon, and his basic and special moves come from it', () => {
+  assert.equal(warrior.weapon, 'bow');
+  for (const s of ['a1', 'a2', 's1', 's2', 's3', 'sig']) assert.equal(warrior.moves[s].weapon, 'bow');
 });
 
-test('class: meditation fills only while the opponent is far, the King can\'t move, 5-10 s', () => {
-  for (const t of TUNE.meditate.times) assert.ok(t >= 5 && t <= 10);
-  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  tap(m, R, 'cls');
-  run(m, [{}, { mx: -1 }], 2);
-  assert.equal(m.players[R].x, 100, 'can\'t move while meditating');
-  const filled = m.players[R].med.meter;
-  m.players[K].x = 100 - TUNE.meditate.dist + 5;
-  run(m, [{}, {}], 1);
-  assert.equal(m.players[R].med.meter, filled, 'no progress while the opponent is close');
+test('class: both classes meditate; it fills only while the opponent is far, and the fighter can\'t move', () => {
+  for (const [c, pid] of [[mage, K], [warrior, R]]) {
+    const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
+    tap(m, pid, 'cls');
+    run(m, pid === K ? [{ mx: 1 }, {}] : [{}, { mx: -1 }], 2);
+    assert.equal(m.players[pid].x, pid === K ? -100 : 100, `${c.name} can't move while meditating`);
+    const filled = m.players[pid].med.meter, dv = m.players[pid].devotion;
+    m.players[1 - pid].x = m.players[pid].x + (pid === K ? 1 : -1) * (M.dist - 5);
+    run(m, [{}, {}], 1);
+    assert.ok(m.players[pid].med.meter === filled && m.players[pid].devotion === dv, 'no progress while the opponent is close');
+  }
 });
 
-const tierOf = (id) => Object.values(GODS).map((g) => g.tiers.findIndex((t) => t.some((b) => b.id === id))).find((i) => i >= 0);
-
-test('class: a hit loses only that attempt; completed meditations always count; boons get bigger', () => {
-  const m = match({ k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-  tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.times[0] + 0.1);
-  assert.equal(m.players[R].meditations, 1);
-  assert.equal(tierOf(m.players[R].boons[0].id), 0, '1st = small');
-  m.players[R].boons = []; // used
-  tap(m, R, 'cls'); run(m, [{}, {}], 2);
-  m.hits.push({ target: m.players[R], dmg: 1, kb: 0, from: null }); stepMatch(m);
-  assert.equal(m.players[R].meditations, 1, 'not reset by the hit');
-  tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.times[1] + 0.1);
-  assert.equal(m.players[R].meditations, 2);
-  assert.equal(tierOf(m.players[R].boons[0].id), 1, '2nd = medium');
-});
-
-test('class: the god who answers a meditation is random; the King does not pick one (owner change 2026-11-07)', () => {
+test('class: the god who answers is random; nobody picks one (owner change 2026-11-07)', () => {
   assert.ok(!BUTTONS.includes('god'));
   const gods = new Set();
   for (let seed = 1; seed <= 30; seed++) {
-    const m = match({ seed, k: { x: -100, y: 0 }, r: { x: 100, y: 0 } });
-    tap(m, R, 'cls'); run(m, [{}, {}], TUNE.meditate.times[0] + 0.1);
+    const m = match({ seed, k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
+    m.players[R].devotion = 3; useBoon(m, R);
     gods.add(events(m, 'boon')[0].god);
   }
-  assert.equal(gods.size, raja.gods.length, 'every god answers sometimes');
+  assert.equal(gods.size, Object.keys(GODS).length, 'every god answers sometimes');
 });
 
-test('class: boons are strictly single-use', () => {
+test('class: boons are strictly single-use: each one is paid for with devotion', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });
-  m.players[R].boons = [{ id: 'vel', name: 'Vel throw', god: 'Murugan' }];
+  m.players[R].devotion = 3;
   useBoon(m, R); run(m, [{}, {}], 0.5);
-  assert.equal(m.players[R].boons.length, 0);
   useBoon(m, R); run(m, [{}, {}], 0.5);
-  assert.equal(events(m, 'release').filter((e) => e.name === 'Vel throw').length, 1);
+  assert.equal(events(m, 'boon').length, 1);
+  assert.equal(m.players[R].devotion, 0);
 });
 
 test('class: Brahmastra as a boon only ever comes from Brahma', () => {
@@ -600,13 +558,13 @@ test('class: Brahmastra as a boon only ever comes from Brahma', () => {
   }
 });
 
-test('class: Kings make no arena changes', () => {
-  assert.ok(!Object.values(raja.moves).some((mv) => mv.kind === 'arena'));
+test('class: Warriors make no arena changes', () => {
+  assert.ok(!Object.values(warrior.moves).some((mv) => mv.kind === 'arena'));
 });
 
 // ================= character rules (CHARACTERS.md) =================
 test('characters: signature moves have a ~4 s cast; no moving or blocking; a hit breaks it, the cost stays spent', () => {
-  for (const c of [krishna, raja]) assert.ok(c.moves.sig.cast >= 3.5 && c.moves.sig.cast <= 4.5, c.name);
+  for (const c of [mage, warrior]) assert.ok(c.moves.sig.cast >= 3.5 && c.moves.sig.cast <= 4.5, c.name);
   const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 60, y: 0 } });
   tap(m, K, 'sig');
   run(m, [{ mx: 1, block: true }, {}], 2);
@@ -616,20 +574,19 @@ test('characters: signature moves have a ~4 s cast; no moving or blocking; a hit
   assert.ok(m.players[K].power < 50 && m.players[K].hp < 90, 'power and health cost spent');
 });
 
-test('characters: Venu Ganam has a 2 s cast and then the King is held still for 3 s', () => {
-  const v = krishna.moves.s2;
+test('characters: the binding chant has a 2 s cast and then the opponent is held still for 3 s', () => {
+  const v = mage.moves.s2;
   assert.equal(v.cast, 2); assert.deepEqual(v.effect, { kind: 'hold', time: 3 });
 });
 
-test('characters: Tiger Arrow pierces blocks', () => {
+test('characters: Gaja Arrow pierces blocks', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 80, y: 0, power: 100 } });
   tap(m, R, 'sig');
-  run(m, [{ block: true }, {}], raja.moves.sig.cast + TUNE.scene + 1);
-  assert.ok(m.players[K].hp <= 100 - raja.moves.sig.damage + 1e-6);
+  run(m, [{ block: true }, {}], warrior.moves.sig.cast + TUNE.scene + 1);
+  assert.ok(m.players[K].hp <= 100 - warrior.moves.sig.damage + 1e-6);
 });
 
 test('characters: Brahma\'s boons are Kamandalu (10% health), Lotus seat (2x meditation) and Brahmastra', () => {
   assert.deepEqual(GODS.brahma.tiers.map((t) => t[0].id), ['kamandalu', 'lotus', 'brahmastra']);
   assert.equal(findBoon('kamandalu').heal, 10);
-  assert.ok(!Object.keys(GODS).includes('krishna'), 'praying to Krishna is left out for now');
 });
