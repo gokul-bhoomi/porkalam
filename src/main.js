@@ -74,6 +74,16 @@ function onEvent(e, m) {
   if (e.type === 'scene') { sound.play('powerUp'); sound.duck(0.15, 2.6); }
   if (e.type === 'release' && POWER_MOVES.has(e.name)) sound.play('powerLand');
   if (e.type === 'end') { sound.play(e.reason === 'ko' || e.reason === 'double' || e.reason === 'brahmastra' ? 'ko' : 'tick'); if (e.winner != null) setTimeout(() => sound.play('win'), 1200); }
+  if (e.type === 'hp' && e.dmg > 0 && (e.srcs || []).some((s) => POWER_MOVES.has(s))) { // a power move lands: the island shatters
+    add({ kind: 'shatter', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 2.2 });
+    add({ kind: 'scar', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 60, ground: true }); // the fissures stay
+    for (let i = 0; i < 5; i++) { const a = Math.random() * Math.PI * 2, r = 12 + Math.random() * 40; crack(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, 0.9 + Math.random() * 0.6); }
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3; add({ kind: 'splash', x: Math.cos(a) * ARENA.r, y: Math.sin(a) * ARENA.r, life: 1.4, big: 2.6 }); }
+    add({ kind: 'shake', x: 0, y: 0, amp: 6, life: 0.9 });
+    add({ kind: 'global', x: 0, y: 0, life: 0.35, color: '255,255,255' });
+    S.slowmo = { t0: S.now, short: true }; // a heavy hit-stop
+    sound.play('shatter2');
+  }
   if (e.type === 'hp') {
     if (e.dmg >= 8) crack(e.x, e.y, Number.isFinite(e.dmg) ? Math.min(1.4, e.dmg / 25) : 1.6); // heavy hits break the sand
     if (e.dmg > 0) { add({ kind: 'pop', x: e.x, y: e.y, text: Number.isFinite(e.dmg) ? `-${Math.round(e.dmg * 10) / 10}` : 'X', color: '#ff6a5a' }); add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 }); }
@@ -88,11 +98,6 @@ function onEvent(e, m) {
   if (e.type === 'blink') add({ kind: 'trail', x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'release') { // power moves land with a bang in the arena, right after their scene
     const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
-    if (POWER_MOVES.has(e.name)) { // the ground breaks around the target and the river is thrown up round the island
-      const o = m.players[1 - e.pid];
-      for (let i = 0; i < 4; i++) { const a = Math.random() * Math.PI * 2, r = 10 + Math.random() * 30; crack(o.x + Math.cos(a) * r, o.y + Math.sin(a) * r, 0.7 + Math.random() * 0.6); }
-      for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2 + Math.random() * 0.4; add({ kind: 'splash', x: Math.cos(a) * ARENA.r, y: Math.sin(a) * ARENA.r, life: 1.1, big: 1.6 }); }
-    }
     if (e.name === 'Thousand-Arm Form') { add({ kind: 'global', x: 0, y: 0, life: 0.6, color: '150,240,230' }); add({ kind: 'ghost', scene: 'siddhan_sig', x: 0, y: 0, life: 1.2 }); add({ kind: 'shock', x: p.x, y: p.y, life: 1.0, color: '255,214,120', r: 160 }); shake(4, 0.7); }
     if (e.name === 'Gaja Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Shakti Vel') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,200,90', r: 60 }); shake(3, 0.4); }
@@ -236,6 +241,7 @@ let last = performance.now(), acc = 0;
 function timeScale() {
   if (!S.slowmo || S.screen !== 'fight' || S.paused) return 1;
   const t = S.now - S.slowmo.t0;
+  if (S.slowmo.short) { if (t > 0.6) { S.slowmo = null; return 1; } return t < 0.25 ? 0.1 : 0.1 + 0.9 * ((t - 0.25) / 0.35); } // impact hit-stop
   if (t > 1.5) { S.slowmo = null; return 1; }
   return t < 1.0 ? 0.3 : 0.3 + 0.7 * ((t - 1.0) / 0.5);
 }

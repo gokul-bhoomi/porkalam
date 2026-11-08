@@ -8,7 +8,7 @@ export const GODS = {
     tiers: [
       [{ id: 'spark', name: 'Third-eye spark', kind: 'projectile', range: 'midlong', cost: { power: 0 }, req: {}, cast: 0.3, damage: 8, knockback: 60, speed: 210, radius: 4, life: 1.5, shape: 'fire' }],
       [{ id: 'damaru', name: 'Damaru', kind: 'projectile', range: 'mid', cost: { power: 0 }, req: {}, cast: 0.4, damage: 2, knockback: 0, speed: 160, radius: 10, life: 1.5, effect: { kind: 'stun', time: 1.5 }, shape: 'wave' }],
-      [{ id: 'pashupatastra', name: 'Pashupatastra', kind: 'projectile', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 35, knockback: 160, speed: 300, radius: 7, life: 2, shape: 'fire' }],
+      [{ id: 'pashupatastra', name: 'Pashupatastra', kind: 'projectile', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 45, knockback: 160, speed: 300, radius: 7, life: 2, shape: 'fire' }],
     ],
   },
   murugan: {
@@ -16,7 +16,7 @@ export const GODS = {
     tiers: [
       [{ id: 'vel', name: 'Vel throw', kind: 'projectile', range: 'midlong', cost: { power: 0 }, req: {}, cast: 0.3, damage: 9, knockback: 80, speed: 260, radius: 3, life: 1.5, shape: 'spear' }],
       [{ id: 'peacock', name: 'Peacock dash', kind: 'dash', range: 'anywhere', cost: { power: 0 }, req: {}, cast: 0, damage: 0, knockback: 0, speed: 300, time: 0.25, invuln: 0.45 }],
-      [{ id: 'shakti', name: 'Shakti Vel', kind: 'projectile', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 0.6, damage: 25, knockback: 140, speed: 260, radius: 5, life: 2, pierceBlock: true, shape: 'spear' }],
+      [{ id: 'shakti', name: 'Shakti Vel', kind: 'projectile', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 0.6, damage: 35, knockback: 140, speed: 260, radius: 5, life: 2, pierceBlock: true, shape: 'spear' }],
     ],
   },
   brahma: {
@@ -33,7 +33,7 @@ export const GODS = {
     tiers: [
       [{ id: 'flute', name: 'Flute charm', kind: 'projectile', range: 'mid', cost: { power: 0 }, req: {}, cast: 0.4, damage: 2, knockback: 0, speed: 110, radius: 10, life: 1.6, effect: { kind: 'hold', time: 1.5 }, shape: 'wave' }],
       [{ id: 'sudarshana', name: 'Sudarshana Chakra', kind: 'projectile', range: 'anywhere', cost: { power: 0 }, req: {}, cast: 0.5, damage: 14, knockback: 90, speed: 130, radius: 6, life: 3, legs: 3, legTime: 0.9, shape: 'chakra' }],
-      [{ id: 'vishwaroopam', name: 'Vishwaroopam', kind: 'global', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 30, knockback: 60 }],
+      [{ id: 'vishwaroopam', name: 'Vishwaroopam', kind: 'global', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 40, knockback: 60 }],
     ],
   },
 };

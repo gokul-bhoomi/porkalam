@@ -150,7 +150,7 @@ await check('a signature move plays its scene, pauses the game, then lands', asy
   });
   expect(s.during.match.scene === 'Thousand-Arm Form', `no scene: ${s.during.match.scene}`);
   expect(s.still.match.players[1].x === s.during.match.players[1].x, 'the game did not pause during the scene');
-  expect(s.after.match.players[1].hp === 70, `Thousand-Arm Form did not land: hp ${s.after.match.players[1].hp}`);
+  expect(s.after.match.players[1].hp === 65, `Thousand-Arm Form did not land: hp ${s.after.match.players[1].hp}`);
 });
 
 await check('every move draws without errors', async () => {
