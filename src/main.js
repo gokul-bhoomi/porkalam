@@ -142,7 +142,7 @@ addEventListener('blur', autoPause);
 const r1 = (v) => Math.round(v * 10) / 10;
 window.__game = {
   get screen() { return S.screen; },
-  get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
+  get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, scenes: Object.keys(ART.scenes).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
   errors: S.errors,
   debug: {
     pause() { DBG.paused = true; }, resume() { DBG.paused = false; },

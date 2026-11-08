@@ -202,7 +202,7 @@ function drawProjectile(pr0, now) {
     const hy = sy(pr.y) - 18; // shots fly at chest height, with a shadow on the sand
     ell(x, sy(pr.y), size * 0.3, size * 0.1, 'rgba(0,0,0,.25)');
     const flip = name === 'notes' && pr.vx < 0; // notes stay upright
-    fxSprite(G, name, x, hy, size, name === 'chakra' ? { rot: now * 14 } : name === 'notes' ? { flip } : { rot: a, flip: name === 'wave' });
+    fxSprite(G, name, x, hy, size, name === 'chakra' ? { spin: now * 14 } : name === 'notes' ? { flip } : { rot: a, flip: name === 'wave' });
     return;
   }
   switch (pr.shape) {
@@ -372,18 +372,105 @@ function drawHud(m, tags) {
   txt(clock(m.timeLeft), CX, 11, low && Math.floor(m.t * 2) % 2 ? '#ff6a5a' : low ? '#ffb0a0' : '#fff6dc', 'center', 16);
 }
 
+// ---------- dramatic scenes (ground rule 4: the game pauses while one plays) ----------
+// A 2.5 s cut-in: flash, the painting slides in on a slanted panel, letterbox bars close in, the camera
+// drifts and zooms, light rays / streaks / sparks in the scene's colours, the move name slams in, white flash out.
+// Paintings are art/scene_<key>.png; without one, a painted backdrop with the fighter drawn large stands in.
+const SCENE_LOOK = {
+  vishwaroopam: { at: [0.6, 0.16], glow: '255,214,120', spark: '255,236,170', bg: ['#2a1a5a', '#05030f'], sub: 'THE COSMIC FORM' },
+  tiger_arrow: { at: [0.6, 0.33], glow: '255,130,50', spark: '255,196,96', bg: ['#7a1a10', '#140404'], sub: 'THE CHOLA TIGER' },
+  brahmastra_krishna: { at: [0.42, 0.18], glow: '255,246,214', spark: '255,255,236', bg: ['#4a3a20', '#0a0806'], sub: 'THE FINAL WEAPON' },
+  brahmastra_king: { at: [0.74, 0.38], glow: '255,246,214', spark: '255,255,236', bg: ['#4a3a20', '#0a0806'], sub: 'BOON OF BRAHMA' },
+  pashupatastra: { at: [0.82, 0.37], glow: '160,215,255', spark: '210,240,255', bg: ['#1a2a6a', '#03050f'], sub: 'BOON OF SHIVA' },
+};
+export const sceneKey = (name, chId) => ({ Vishwaroopam: 'vishwaroopam', 'Tiger Arrow': 'tiger_arrow', Pashupatastra: 'pashupatastra',
+  Brahmastra: chId === 'krishna' ? 'brahmastra_krishna' : 'brahmastra_king' })[name] || null;
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const easeOut = (v) => 1 - (1 - v) ** 3;
+
 function drawScene(m) {
-  const s = m.scene, p = m.players[s.pid], k = s.t / s.dur;
-  G.fillStyle = 'rgba(0,0,0,.55)'; G.fillRect(0, 0, W, H);
-  R(0, 0, W, 50, '#000'); R(0, H - 50, W, 50, '#000');
-  const g = G.createLinearGradient(0, 50, 0, H - 50);
-  g.addColorStop(0, p.ch.color); g.addColorStop(1, '#000');
-  G.globalAlpha = 0.5; G.fillStyle = g; G.fillRect(0, 50, W, H - 100); G.globalAlpha = 1;
-  const zoom = 1 + k * 0.3;
-  txt(p.ch.name.toUpperCase(), CX, 90, '#fff', 'center');
-  txt(s.name.toUpperCase(), CX, 120 - k * 6, '#ffcf6a', 'center', Math.round(16 * zoom));
-  txt('(DRAMATIC SCENE GOES HERE)', CX, 170, 'rgba(255,255,255,.6)', 'center');
-  R(CX - 80, H - 30, 160 * k, 2, '#ffcf6a');
+  const s = m.scene, p = m.players[s.pid], k = clamp01(s.t / s.dur), t = s.t;
+  const key = sceneKey(s.name, p.ch.id), look = SCENE_LOOK[key] || { glow: '255,220,140', spark: '255,240,200', bg: [p.ch.color, '#000'], sub: '' };
+  const img = useArt && key ? ART.scenes[key] : null;
+  const inK = easeOut(clamp01(k / 0.12));                       // panel slide-in
+  const hit = clamp01((t - 0.45) / 0.35);                       // title slam
+  const shake = t > 0.45 && t < 0.9 ? (1 - (t - 0.45) / 0.45) * 2.5 : 0;
+  G.save();
+  G.translate(Math.sin(t * 90) * shake, Math.cos(t * 71) * shake);
+  G.fillStyle = `rgba(0,0,0,${0.65 * inK})`; G.fillRect(-10, -10, W + 20, H + 20); // freeze-frame dims
+
+  // the slanted panel slides in from the right
+  const dx = (1 - inK) * (W + 80) - 40;
+  G.save();
+  G.beginPath(); G.moveTo(dx + 40, -10); G.lineTo(W + 60, -10); G.lineTo(W + 60, H + 10); G.lineTo(dx - 40, H + 10); G.closePath(); G.clip();
+  const z = 1.0 + 0.07 * k, pan = -k * 14; // slow push-in and drift
+  if (img) {
+    const sc = Math.max(W / img.width, H / img.height) * z, w = img.width * sc, h = img.height * sc;
+    G.imageSmoothingEnabled = true;
+    G.drawImage(img, CX - w / 2 + pan, H / 2 - h / 2, w, h);
+  } else {
+    const g = G.createLinearGradient(0, 0, W, H); g.addColorStop(0, look.bg[0]); g.addColorStop(1, look.bg[1]);
+    G.fillStyle = g; G.fillRect(-10, -10, W + 20, H + 20);
+    if (useArt && ART.sheets[p.ch.id]) { // the fighter, big
+      G.save(); G.translate(150 + pan, 250); G.scale(3.6 * z, 3.6 * z);
+      drawSprite(G, p.ch.id, ART.sheets[p.ch.id].act ? 'act' : 'walk', ART.sheets[p.ch.id].act ? POSES[p.ch.id].cast : 0, 0, 0, false);
+      G.restore();
+    }
+  }
+  // light rays from where the power gathers
+  const at = look.at || [0.64, 0.42], fx0 = W * at[0] + pan, fy0 = H * at[1], soft = img ? 0.55 : 1; // the painting carries most of it
+  G.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 16; i++) {
+    const a = i * (Math.PI * 2 / 16) + t * 0.35, w = 0.06 + 0.04 * Math.sin(i * 3.1 + t * 2);
+    G.fillStyle = `rgba(${look.glow},${(0.07 + 0.05 * Math.sin(t * 3 + i)) * soft})`;
+    G.beginPath(); G.moveTo(fx0, fy0); G.arc(fx0, fy0, 420, a - w, a + w); G.closePath(); G.fill();
+  }
+  const core = G.createRadialGradient(fx0, fy0, 0, fx0, fy0, 90 + 30 * Math.sin(t * 6));
+  core.addColorStop(0, `rgba(${look.glow},${0.45 * inK * soft})`); core.addColorStop(1, `rgba(${look.glow},0)`);
+  G.fillStyle = core; G.fillRect(0, 0, W, H);
+  // speed streaks rushing right, and sparks
+  G.lineCap = 'round';
+  for (let i = 0; i < 22; i++) {
+    const y = 34 + hash(i, 20) * (H - 68), sp = 300 + hash(i, 21) * 400, len = 20 + hash(i, 22) * 60;
+    const x = ((t * sp + hash(i, 23) * (W + 200)) % (W + 200)) - 100;
+    G.strokeStyle = `rgba(255,255,255,${0.12 + 0.18 * hash(i, 24)})`; G.lineWidth = 0.5 + hash(i, 25);
+    G.beginPath(); G.moveTo(x - len, y); G.lineTo(x, y); G.stroke();
+  }
+  for (let i = 0; i < 46; i++) {
+    const a = hash(i, 30) * Math.PI * 2, sp = 40 + hash(i, 31) * 120, life = (t * (0.6 + hash(i, 32)) + hash(i, 33)) % 1;
+    const x = fx0 + Math.cos(a) * sp * life * 2.2, y = fy0 + Math.sin(a) * sp * life * 1.3 - life * 20, r = (1 - life) * (1 + hash(i, 34) * 1.6);
+    G.fillStyle = `rgba(${look.spark},${(1 - life) * 0.9})`; G.beginPath(); G.arc(x, y, Math.max(0.2, r), 0, Math.PI * 2); G.fill();
+  }
+  G.globalCompositeOperation = 'source-over';
+  // vignette
+  const vg = G.createRadialGradient(CX, H / 2, H * 0.35, CX, H / 2, W * 0.62);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
+  G.fillStyle = vg; G.fillRect(0, 0, W, H);
+  G.restore(); // panel clip
+  // the panel's bright leading edge
+  G.strokeStyle = `rgba(${look.glow},${0.9 * (1 - clamp01((k - 0.1) / 0.1))})`; G.lineWidth = 3;
+  G.beginPath(); G.moveTo(dx + 40, -10); G.lineTo(dx - 40, H + 10); G.stroke();
+
+  // letterbox bars
+  const bar = 30 * inK;
+  R(-10, -10, W + 20, bar + 10, '#000'); R(-10, H - bar, W + 20, bar + 10, '#000');
+  // title: fighter, then the move name slamming down, then a gold line
+  if (hit > 0) {
+    const e = easeOut(hit), sz = 1 + 1.8 * (1 - e), y = H - 62;
+    G.globalAlpha = e;
+    txt(p.ch.name.toUpperCase(), CX, y - 14, p.ch.color, 'center');
+    G.save(); G.translate(CX, y + 12); G.scale(sz, sz);
+    txt(s.name.toUpperCase(), 0, -12, '#ffe7a0', 'center', 24, 'rgba(40,16,0,.9)');
+    G.restore();
+    const lw = 150 * easeOut(clamp01((t - 0.7) / 0.4));
+    R(CX - lw, y + 38, lw * 2, 1, `rgba(${look.glow},.9)`);
+    if (look.sub) txt(look.sub, CX, y + 44, `rgba(${look.spark},.9)`, 'center', 8, null);
+    G.globalAlpha = 1;
+  }
+  G.restore(); // shake
+  // flashes: a white pop at the start, and a white-out into the move going off
+  const flash = Math.max(0, 1 - t / 0.12) * 0.9 + clamp01((k - 0.84) / 0.16) ** 2 * 0.95;
+  if (flash > 0.01) { G.fillStyle = `rgba(255,252,240,${flash})`; G.fillRect(0, 0, W, H); }
 }
 
 // ---------- screens ----------
