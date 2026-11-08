@@ -4,7 +4,9 @@
 // is lined up on the same foot baseline.
 import { RES } from './config.js';
 
-export const ART = { arena: null, fit: null, sheets: {}, fx: {}, ready: false };
+export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, ready: false };
+// Dramatic scene paintings (art/scene_<key>.png), drawn by drawScene in render.js.
+const SCENES = ['vishwaroopam', 'tiger_arrow', 'brahmastra_krishna', 'brahmastra_king', 'pashupatastra'];
 
 // Effect sprites (walls, shots, ground patches, bursts): two sheets of 8 square cells, same format as the fighters.
 const FX_SHEETS = ['art/fx_sheet.png', 'art/fx2_sheet.png'];
@@ -96,6 +98,8 @@ export async function loadArt(base = '') {
       ART.sheets[id].act = prescale(a.c, { ...af, base: wf.bottom }, k); // ...and the feet line for both sheets
     }
   }
+  const sceneImgs = await Promise.all(SCENES.map((k) => loadImg(`${base}art/scene_${k}.png`)));
+  SCENES.forEach((k, i) => { if (sceneImgs[i]) ART.scenes[k] = sceneImgs[i]; });
   const fxImgs = await Promise.all(FX_SHEETS.map((f) => loadImg(base + f)));
   fxImgs.forEach((img, si) => { if (img) Object.assign(ART.fx, cutFx(img, FX_NAMES[si])); });
   ART.ready = true;
@@ -145,6 +149,14 @@ export function drawFx(g, name, x, y, w, o = {}) {
   g.translate(x, y);
   if (o.m) g.transform(o.m[0], o.m[1], o.m[2], o.m[3], 0, 0);
   if (o.rot) g.rotate(o.rot);
+  if (o.spin != null) { // a flat disc seen from above: spin it in its own plane, then squash it back into perspective
+    const q = h / w;
+    g.scale(1, q); g.rotate(o.spin);
+    g.imageSmoothingEnabled = true;
+    g.drawImage(f.canvas, f.x, f.y, f.w, f.h, -w / 2, -w / 2, w, w);
+    g.restore();
+    return true;
+  }
   if (o.flip) g.scale(-1, 1);
   if (o.alpha != null) g.globalAlpha *= o.alpha;
   g.imageSmoothingEnabled = true;
