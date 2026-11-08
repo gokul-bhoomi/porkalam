@@ -19,8 +19,8 @@ Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: 
 | Hold + basic 2: planted trap | Q | U | RT |
 | Hold + basic 2: water trap | E | J | LT |
 | Special 1 / 2 / 3 | R / T / Y | I / O / P | B / Y / LB |
-| Signature | V | M | D-pad up |
-| Class (Meditate / Brahmastra) | B | , | D-pad left |
+| Signature (all three specials together) | R+T+Y | I+O+P | B+Y+LB |
+| Class: Meditate / Brahmastra (down + special 1) | S+R | ↓+I | Stick down + B |
 | Use boon (two specials together) | R+T (any two of R/T/Y) | I+O (any two of I/O/P) | B+Y (any two of B/Y/LB) |
 | Pause | Esc | Esc | Start |
 

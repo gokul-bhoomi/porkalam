@@ -1,4 +1,5 @@
 // Krishna (God). Numbers are first guesses, to be tuned in play with the owner.
+// Slots: a1/a2 basic, s1-s3 specials, sig = all 3 specials together, cls = down + special 1.
 // Move fields (ground rule 4): cost {power, health}, req, range, cast (s), damage (%), knockback (world units/s).
 import { POWER } from '../config.js';
 

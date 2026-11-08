@@ -104,7 +104,7 @@ await check('meditation grants a boon and both players see the banner', async ()
   const s = await game(() => {
     const d = window.__game.debug; d.start({ minutes: 5 });
     d.set(0, { x: -100, y: 0 }); d.set(1, { x: 100, y: 0 });
-    d.setInput(1, { cls: true }); d.step(1); d.setInput(1, {}); d.step(60 * 5 + 10);
+    d.setInput(1, { s1: true, my: 1 }); d.step(1); d.setInput(1, {}); d.step(60 * 5 + 20);
     return d.snapshot();
   });
   expect(s.match.players[1].boons.length === 1, 'no boon');
@@ -117,7 +117,7 @@ await check('a signature move plays its scene, pauses the game, then lands', asy
   const s = await game(() => {
     const d = window.__game.debug; d.start({ minutes: 5 });
     d.set(0, { x: -60, y: 0, power: 100 }); d.set(1, { x: 80, y: 0 });
-    d.setInput(0, { sig: true }); d.step(1); d.setInput(0, {}); d.step(60 * 4 + 5);
+    d.setInput(0, { s1: true, s2: true, s3: true }); d.step(1); d.setInput(0, {}); d.step(60 * 4 + 5);
     const during = d.snapshot();
     d.setInput(1, { mx: -1 }); d.step(30);
     const still = d.snapshot();

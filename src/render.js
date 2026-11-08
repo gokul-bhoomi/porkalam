@@ -204,17 +204,22 @@ export function drawTitle(now, pads) {
   txt('MYTH FIGHTER', CX, 12, '#ffcf6a', 'center', 16);
   txt('KRISHNA (GOD)  VS  RAJA RAJA CHOLA (KING)', CX, 34, '#fff', 'center');
   txt('GREY-BOX', CX, 46, '#9aa', 'center');
-  const rows = ['move', ...ACTIONS, 'boon'];
+  const k3 = (k, n) => k.slice(0, n).map(KEY_NAME).join('+');
+  const sp = (K) => ['s1', 's2', 's3'].map((s) => K[s][0]);
+  const combos = {
+    sig: ['Signature: all 3 specials', k3(sp(KEYS[0]), 3), k3(sp(KEYS[1]), 3), 'B+Y+LB'],
+    boon: ['Use boon: 2 specials', k3(sp(KEYS[0]), 2), k3(sp(KEYS[1]), 2), 'B+Y'],
+    cls: ['Meditate/Brahmastra: down+sp1', `S+${KEY_NAME(KEYS[0].s1[0])}`, `DN+${KEY_NAME(KEYS[1].s1[0])}`, 'DOWN+B'],
+  };
+  const rows = ['move', ...ACTIONS, 'sig', 'boon', 'cls'];
   let y = 62;
   txt('ACTION', 8, y, '#9aa'); txt('P1', 290, y, '#9aa'); txt('P2', 340, y, '#9aa'); txt('PAD', 400, y, '#9aa');
   y += 11;
   for (const a of rows) {
-    const lab = a === 'move' ? 'Move' : a === 'boon' ? 'Use boon: 2 specials together' : LABELS[a];
-    const two = (k) => `${KEY_NAME(k.s1[0])}+${KEY_NAME(k.s2[0])}`;
-    txt(lab.toUpperCase().slice(0, 34), 8, y, '#ddd');
-    txt(a === 'move' ? 'WASD' : a === 'boon' ? two(KEYS[0]) : KEYS[0][a].map(KEY_NAME).join('/'), 290, y, '#fff');
-    txt(a === 'move' ? 'ARROWS' : a === 'boon' ? two(KEYS[1]) : KEYS[1][a].map(KEY_NAME).join('/'), 340, y, '#fff');
-    txt(a === 'move' ? 'STICK' : a === 'boon' ? 'B+Y' : PAD_NAMES[PAD[a]], 400, y, '#fff');
+    const row = a === 'move' ? ['Move', 'WASD', 'ARROWS', 'STICK'] : combos[a]
+      || [LABELS[a], KEYS[0][a].map(KEY_NAME).join('/'), KEYS[1][a].map(KEY_NAME).join('/'), PAD_NAMES[PAD[a]]];
+    txt(row[0].toUpperCase().slice(0, 34), 8, y, combos[a] ? '#ffcf6a' : '#ddd');
+    row.slice(1).forEach((s, i) => txt(s, [290, 340, 400][i], y, '#fff'));
     y += 11;
   }
   if (Math.floor(now * 2) % 2) txt('PRESS START / ENTER', CX, H - 14, '#ffcf6a', 'center');

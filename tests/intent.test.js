@@ -442,6 +442,21 @@ test('rule 14: every fighter uses the same button layout, fully playable on a co
   for (const c of [krishna, raja]) assert.deepEqual(Object.keys(c.moves).sort(), ['a1', 'a2', 'cls', 's1', 's2', 's3', 'sig']);
 });
 
+test('controls (owner, 2026-11-07): signature = all 3 specials together, class move = down + special 1, no extra buttons', () => {
+  assert.deepEqual(BUTTONS, ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3']);
+  for (const [c, pid] of [[krishna, K], [raja, R]]) {
+    const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 60, y: 0, power: 100 } });
+    stepMatch(m, pid === K ? [{ s2: true }, {}] : [{}, { s2: true }]); // pressed a frame or two apart still counts
+    stepMatch(m, pid === K ? [{ s1: true, s2: true, s3: true }, {}] : [{}, { s1: true, s2: true, s3: true }]);
+    assert.equal(m.players[pid].cast?.move.name, c.moves.sig.name);
+    const n = match({ k: { x: -90, y: 0, power: 100, hp: 4 }, r: { x: 90, y: 0 } });
+    tap(n, pid, 's1', { my: 1 });
+    const started = events(n, 'cast').concat(events(n, 'meditate')).filter((e) => e.pid === pid);
+    assert.equal(started.length, 1);
+    assert.ok(pid === K ? started[0].name === 'Brahmastra' : n.players[R].med, c.moves.cls.name);
+  }
+});
+
 test('rule 14: one shared screen; both power bars are visible', () => {
   const r = src('render.js');
   assert.ok(/for \(const p of m\.players\)[\s\S]{0,600}p\.power \/ p\.ch\.power\.size/.test(r), 'the HUD draws a power bar for each player');
@@ -492,7 +507,7 @@ test('class: Brahmastra needs health below 5% plus all power; a long chant; both
   assert.ok(whyNot(m, m.players[K], b));
   m.players[K].power = 100;
   assert.equal(whyNot(m, m.players[K], b), null);
-  stepMatch(m, [{ cls: true }, {}]);
+  tap(m, K, 'cls');
   assert.ok(m.players[K].power < 0.1, 'all power spent');
   run(m, [{}, {}], b.cast + TUNE.scene + 0.2);
   assert.deepEqual(m.result, { winner: null, reason: 'brahmastra' });

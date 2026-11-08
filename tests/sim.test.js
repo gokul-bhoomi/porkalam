@@ -115,7 +115,8 @@ test('boons: Damaru stuns (no moves, no block), Peacock dash can\'t be hit, Shak
   withBoon(d, 'peacock'); useBoon(d, R);
   d.hits.push({ target: d.players[R], dmg: 10, kb: 0, from: null }); stepMatch(d);
   assert.equal(d.players[R].hp, 100);
-  assert.ok(d.players[R].x > 45);
+  run(d, [{}, {}], 0.2);
+  assert.ok(d.players[R].x > 60, 'dashed away');
 
   const s = match({ k: { x: -40, y: 0 }, r: { x: 60, y: 0 } });
   withBoon(s, 'shakti'); useBoon(s, R); run(s, [{ block: true }, {}], 2);
@@ -152,9 +153,23 @@ test('two specials pressed a few frames apart still count as the boon chord', ()
   assert.equal(events(m, 'cast').filter((e) => e.pid === R).map((e) => e.name).join(), 'Vel throw', 'no special went off');
 });
 
-test('without a boon, a special starts right away (no chord wait)', () => {
+test('a special goes off after the short combo wait', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
   stepMatch(m, [{}, { s1: true }]);
+  assert.equal(m.players[R].cast, null, 'waiting to see if more specials join');
+  run(m, [{}, {}], TUNE.chord);
+  assert.equal(m.players[R].cast?.move.name, 'Split shot');
+});
+
+test('two specials without a boon just fire the first one', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
+  tap(m, R, 's1', { s2: true });
+  assert.equal(m.players[R].cast?.move.name, 'Split shot');
+});
+
+test('special 1 while moving sideways is still special 1 (only a clear down is the class move)', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
+  tap(m, R, 's1', { mx: 1, my: 0.3 });
   assert.equal(m.players[R].cast?.move.name, 'Split shot');
 });
 
@@ -167,7 +182,7 @@ test('fighters never overlap', () => {
 // A random mash of buttons for a whole match: no crash, numbers stay sane, and the same seed replays exactly.
 function mash(seed, seconds) {
   const m = createMatch({ seed, time: 60 }), r = rng(seed * 7 + 1);
-  const keys = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3', 'sig', 'cls'];
+  const keys = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3'];
   let inp = [{}, {}];
   for (let i = 0; i < seconds * 60 && m.phase === 'fight'; i++) {
     if (i % 12 === 0) inp = [0, 1].map(() => { const o = { mx: r() * 2 - 1, my: r() * 2 - 1 }; for (const k of keys) o[k] = r() < 0.12; return o; });

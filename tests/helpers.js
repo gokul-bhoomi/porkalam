@@ -14,11 +14,15 @@ export function match(o = {}) {
 export const steps = (s) => Math.round(s / STEP);
 // run for s seconds with the same held inputs
 export function run(m, inputs = [{}, {}], s = STEP) { for (let i = 0; i < steps(s); i++) stepMatch(m, inputs); }
-// press a button for one step (then release it for one step)
+// The combos (owner, 2026-11-07): 'sig' = all 3 specials, 'cls' = down + special 1.
+export const COMBO = { sig: { s1: true, s2: true, s3: true }, cls: { s1: true, my: 1 } };
+// press a button (or combo) for one step, then release it; specials also wait out the combo window
 export function tap(m, pid, button, extra = {}) {
   const a = [{}, {}], b = [{}, {}];
-  a[pid] = { [button]: true, ...extra }; b[pid] = { ...extra };
+  a[pid] = { ...(COMBO[button] || { [button]: true }), ...extra }; b[pid] = { ...extra };
+  if (b[pid].my === 1 && button === 'cls') delete b[pid].my;
   stepMatch(m, a); stepMatch(m, b);
+  for (let i = 0; i < 30 && m.players[pid].chord; i++) stepMatch(m, b);
 }
 // use the held boon: two special buttons pressed together
 export function useBoon(m, pid, a = 's1', b = 's2') { tap(m, pid, a, { [b]: true }); }

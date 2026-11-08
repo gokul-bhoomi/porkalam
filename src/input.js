@@ -2,25 +2,25 @@
 // Gamepad 1 = P1, gamepad 2 = P2 (standard mapping). Every fighter uses the same layout (ground rule 14).
 // No controller vibration (ground rule 10: it would give traps away).
 
-// No boon button: pressing two special buttons together uses the boon (handled in the sim).
-export const ACTIONS = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3', 'sig', 'cls'];
+// Combos are handled in the sim: 3 specials = signature, 2 specials = boon, down + special 1 = class move.
+export const ACTIONS = ['a1', 'a2', 'block', 'trapPlant', 'trapWater', 's1', 's2', 's3'];
 
 export const LABELS = {
   a1: 'Basic attack 1', a2: 'Basic attack 2 (close)', block: 'Block', trapPlant: 'Hold + basic 2: planted trap', trapWater: 'Hold + basic 2: water trap',
-  s1: 'Special 1', s2: 'Special 2', s3: 'Special 3', sig: 'Signature', cls: 'Class (meditate / Brahmastra)',
+  s1: 'Special 1', s2: 'Special 2', s3: 'Special 3',
 };
 
 // standard gamepad buttons: 0 A, 1 B, 2 X, 3 Y, 4 LB, 5 RB, 6 LT, 7 RT, 8 Back, 9 Start, 12-15 d-pad up/down/left/right
-export const PAD = { a1: 0, a2: 2, s1: 1, s2: 3, s3: 4, block: 5, trapWater: 6, trapPlant: 7, sig: 12, cls: 14 };
+export const PAD = { a1: 0, a2: 2, s1: 1, s2: 3, s3: 4, block: 5, trapWater: 6, trapPlant: 7 };
 export const PAD_NAMES = { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT', 8: 'BACK', 12: 'D-UP', 13: 'D-DOWN', 14: 'D-LEFT', 15: 'D-RIGHT' };
 
 export const KEYS = [
   { up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'],
     a1: ['KeyF'], a2: ['KeyG'], block: ['KeyH'], trapPlant: ['KeyQ'], trapWater: ['KeyE'], s1: ['KeyR'], s2: ['KeyT'], s3: ['KeyY'],
-    sig: ['KeyV'], cls: ['KeyB'], confirm: ['KeyF', 'Space', 'Enter'], back: ['Escape'] },
+    confirm: ['KeyF', 'Space', 'Enter'], back: ['Escape'] },
   { up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
     a1: ['KeyK'], a2: ['KeyL'], block: ['Semicolon'], trapPlant: ['KeyU'], trapWater: ['KeyJ'], s1: ['KeyI'], s2: ['KeyO'], s3: ['KeyP'],
-    sig: ['KeyM'], cls: ['Comma'], confirm: ['KeyK', 'Enter'], back: [] },
+    confirm: ['KeyK', 'Enter'], back: [] },
 ];
 export const KEY_NAME = (code) => code.replace(/^Key/, '').replace('Semicolon', ';').replace('Comma', ',').replace('Period', '.').replace('Slash', '/').replace('Quote', "'").replace('Escape', 'ESC');
 
