@@ -376,34 +376,48 @@ function drawFx(f, now) {
   }
   switch (f.kind) {
     case 'shake': case 'god': break;
-    case 'arms': { // Thousand-Arm Form: a fan of spectral arms opens behind the caster, then a barrage of palms
-      const tx = sx(f.tx), ty = sy(f.ty) - 18, face = tx >= x ? 1 : -1, cx = x - face * 4, cy = y - 30; // from his back
-      const fade = 1 - clamp01((age - f.life + 0.4) / 0.4), open = easeOut(clamp01(age / 0.3));
-      const haveArt = !!ART.fx.arm1;
-      G.save(); // drawn normally: Codex's hands already glow, and additive blending washed them out to white on the sand
-      if (f.part === 'fan' && ART.arms) { G.globalAlpha = 0.25 * fade * open; const w = 200, h = w * ART.arms.height / ART.arms.width; G.save(); G.translate(cx, cy - 20); G.scale(face, 1); G.drawImage(ART.arms, -w * 0.32, -h * 0.62, w, h); G.restore(); G.globalAlpha = 1; }
-      // 1) the fan: 18 arms radiating behind and around him, like the many-armed form, waving gently
-      const N = 18;
+    case 'arms': { // Thousand-Arm Form: a precise ring opens, holds, then sends its palms forward
+      const tx = sx(f.tx), ty = sy(f.ty) - 18, cx = x, cy = y - 30;
+      const fade = 1 - clamp01((age - f.life + 0.4) / 0.4), open = easeOut(clamp01(age / 0.12));
+      const N = 16, radius = 62, launchAt = 0.22, impactAt = 0.4;
+      const angle = (i) => -Math.PI / 2 + (i % N) / N * Math.PI * 2;
+      // Every palm shares one radius and pulse; the vertical circle isn't squashed into the arena plane.
+      const pulse = (t) => radius * (1 + 0.012 * Math.sin(t * Math.PI * 4));
+      const haveArt = useArt && !!ART.fx.circlePalm;
+      G.save();
       if (f.part === 'fan') for (let i = 0; i < N; i++) {
-        const t = i / (N - 1), ang = -Math.PI + t * Math.PI * 1.15 - 0.075 * Math.PI + Math.sin(age * 4 + i) * 0.05; // a wide arc above him
-        const len = (58 + 14 * Math.sin(i * 1.7)) * open, a = Math.cos(ang) * face, bsin = Math.sin(ang);
-        const ex = cx + a * len, ey = cy + bsin * len * 0.8, rot = Math.atan2(bsin * 0.8, a);
-        if (haveArt) fxSprite(G, `arm${1 + (i % 4)}`, (cx + ex) / 2, (cy + ey) / 2, len, { rot: a < 0 ? rot - Math.PI : rot, flip: a < 0, alpha: (0.75 + 0.25 * Math.sin(age * 6 + i)) * fade });
-        else { G.strokeStyle = `rgba(90,240,220,${0.6 * fade})`; G.lineWidth = 2; G.beginPath(); G.moveTo(cx, cy); G.lineTo(ex, ey); G.stroke(); ell(ex, ey, 2.5, 2.5, `rgba(200,255,250,${0.8 * fade})`); }
+        const a = angle(i), departure = launchAt + i * 0.004;
+        const armFade = fade * (1 - clamp01((age - departure) / 0.12));
+        if (armFade <= 0) continue;
+        const r = pulse(Math.min(age, departure)) * open, ex = cx + Math.cos(a) * r, ey = cy + Math.sin(a) * r;
+        // Solid tapered forearms leave the palm silhouettes clear instead of stacking wispy arm paintings.
+        G.save(); G.translate(cx, cy); G.rotate(a); G.globalAlpha = armFade;
+        const shade = G.createLinearGradient(0, 0, r, 0);
+        shade.addColorStop(0, 'rgba(20,130,125,0)'); shade.addColorStop(0.35, 'rgba(20,150,140,0.65)'); shade.addColorStop(1, '#39d5c1');
+        G.fillStyle = shade; G.beginPath(); G.moveTo(8, -2); G.lineTo(Math.max(8, r - 9), -4);
+        G.lineTo(Math.max(8, r - 9), 4); G.lineTo(8, 2); G.closePath(); G.fill(); G.restore();
+        // Palm sprites are upright in the sheet: rotate their fingers outward along each spoke.
+        if (age < departure) {
+          if (haveArt) fxSprite(G, 'circlePalm', ex, ey, 23 * open, { rot: a + Math.PI / 2, alpha: fade });
+          else ell(ex, ey, 3 * open, 4 * open, `rgba(200,255,250,${fade})`);
+        }
       }
-      // 2) the barrage: 22 palms leap from the fan and strike the target one after another, landing by 0.4 s
-      if (f.part === 'palms') for (let i = 0; i < 22; i++) {
-        const t0 = i * 0.009, fl = clamp01((age - t0) / 0.2);
-        if (fl <= 0) continue;
-        const t = (i % N) / (N - 1), ang = -Math.PI + t * Math.PI * 1.15 - 0.075 * Math.PI, ox = cx + Math.cos(ang) * face * 62, oy = cy + Math.sin(ang) * 48;
-        const ex = tx + (hash(i, 70) - 0.5) * 18, ey = ty + (hash(i, 71) - 0.5) * 16, arc = -30 * (1 - Math.abs(t - 0.5) * 2);
-        const px = ox + (ex - ox) * fl, py = oy + (ey - oy) * fl + arc * Math.sin(Math.PI * fl), dir = Math.atan2(ey - oy, ex - ox);
+      if (f.part === 'palms') for (let i = 0; i < N; i++) {
+        const t0 = launchAt + i * 0.004, flight = impactAt - t0, fl = clamp01((age - t0) / flight);
+        if (age < t0) continue;
+        const a = angle(i), r = pulse(t0), ox = cx + Math.cos(a) * r, oy = cy + Math.sin(a) * r;
+        // A small, evenly spaced impact ring replaces the scattered random strike positions.
+        const ex = tx + Math.cos(a) * 8, ey = ty + Math.sin(a) * 8;
+        const travel = fl * fl * (3 - 2 * fl), px = ox + (ex - ox) * travel, py = oy + (ey - oy) * travel;
         if (fl < 1) {
-          if (haveArt) fxSprite(G, `palm${1 + (i % 4)}`, px, py, 30, { rot: face < 0 ? dir - Math.PI : dir, flip: face < 0, alpha: fade });
-          else ell(px, py, 3, 3, `rgba(200,255,250,${fade})`);
-        } else { // landed: a small flash where each palm strikes
-          const k3 = clamp01((age - t0 - 0.2) / 0.25);
-          if (k3 < 1) { const r3 = 4 + 10 * k3; const g3 = G.createRadialGradient(ex, ey, 0, ex, ey, r3); g3.addColorStop(0, `rgba(230,255,252,${(1 - k3) * fade})`); g3.addColorStop(1, 'rgba(80,230,210,0)'); G.fillStyle = g3; G.beginPath(); G.arc(ex, ey, r3, 0, Math.PI * 2); G.fill(); }
+          const dir = Math.atan2(ey - oy, ex - ox), turn = travel * travel;
+          const from = a + Math.PI / 2, to = dir + Math.PI / 2;
+          const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+          if (haveArt) fxSprite(G, 'circlePalm', px, py, 23, { rot: from + delta * turn, alpha: fade });
+          else ell(px, py, 3, 4, `rgba(200,255,250,${fade})`);
+        } else {
+          const flash = clamp01((age - t0 - flight) / 0.2);
+          if (flash < 1) { const rr = 3 + 7 * flash; const glow = G.createRadialGradient(ex, ey, 0, ex, ey, rr); glow.addColorStop(0, `rgba(230,255,252,${(1 - flash) * fade})`); glow.addColorStop(1, 'rgba(80,230,210,0)'); G.fillStyle = glow; G.beginPath(); G.arc(ex, ey, rr, 0, Math.PI * 2); G.fill(); }
         }
       }
       G.restore();
