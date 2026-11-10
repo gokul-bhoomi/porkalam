@@ -1,9 +1,10 @@
 import { W, H, RES, STEP, TUNE, ARENA } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { CHARS } from './chars/index.js';
-import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, CX, fitView, setUseArt, useArt } from './render.js';
+import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, drawRemap, drawTutorial, CX, fitView, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
-import { createInput, KEYS, KEY_NAME } from './input.js';
+import { createInput, KEYS, KEY_NAME, PAD, PAD_NAMES, REMAP, ACTIONS, RESERVED, PAD_RESERVED, setKey, setPad, resetControls } from './input.js';
+import { createTutorial, startTutorial, nextLesson, frozen, beforeStep, afterStep, view as tutView, lesson } from './tutorial.js';
 import * as sound from './audio.js';
 import { createCpu, cpuInput, LEVELS, LEVEL_IDS } from './ai.js';
 
@@ -34,9 +35,11 @@ function changeRow(dir) {
 function startMatch() {
   S.offer = null;
   const seed = S.seed++;
-  S.match = createMatch({ seed, time: S.minutes * 60, chars: S.chars || ['siddhan', 'veeran'] });
-  S.cpu = S.mode === '1p' ? createCpu(1 - S.side, S.level, seed) : null; // the computer plays the other fighter
+  S.match = createMatch({ seed, time: S.tutorial ? TUNE.match.max : S.minutes * 60, chars: S.chars || ['siddhan', 'veeran'] });
+  S.cpu = S.mode === '1p' && !S.tutorial ? createCpu(1 - S.side, S.level, seed) : null; // the computer plays the other fighter
   Object.assign(S, { screen: 'fight', paused: false, fx: [], banner: null, sel: 0, screenAt: S.now });
+  S.tut = null;
+  if (S.tutorial) { S.side = 0; S.tut = createTutorial(); startTutorial(S.tut, S.match, S.now); }
 }
 // in 1 player mode either set of keys (and either pad) controls your fighter
 function merge(a, b) {
@@ -130,8 +133,71 @@ function onEvent(e, m) {
 // how this player uses a held boon (their two special keys, and the pad), or null for the computer
 function useHint(pid) {
   if (S.cpu && S.cpu.pid === pid) return null;
-  const K = KEYS[S.cpu ? 0 : pid], k = (a) => KEY_NAME(K[a][0]);
-  return { keys: `${k('s1')} + ${k('s2')}`, pad: 'B + Y' };
+  if (S.tut && pid === 1) return null; // the training dummy
+  const K = KEYS[S.cpu || S.tut ? 0 : pid], k = (a) => KEY_NAME(K[a][0]);
+  return { keys: `${k('s1')} + ${k('s2')}`, pad: `${PAD_NAMES[PAD.s1]} + ${PAD_NAMES[PAD.s2]}` };
+}
+
+const pauseItems = () => (S.tut && !S.tut.free ? ['RESUME', 'MOVES & BOONS', 'CONTROLS', 'NEXT LESSON', 'QUIT TO TITLE'] : ['RESUME', 'MOVES & BOONS', 'CONTROLS', 'QUIT TO TITLE']);
+
+// ---------- Controls screen: remap each player's keys and the pad buttons ----------
+// Rows: every remappable action, then RESET and BACK. Columns: P1 keys, P2 keys, pad. Confirm on a cell waits
+// for the new key (or pad button); ESC cancels. A key that's already taken swaps with the action that had it.
+const CTL_ROWS = [...REMAP, 'reset', 'back'];
+function openControls(from) { S.ctl = { row: 0, col: 0, listen: false, msg: null, from }; S.screen = 'controls'; S.screenAt = S.now; sound.play('tick'); }
+function closeControls() {
+  input.cancelCapture();
+  if (S.ctl.from === 'pause') { S.screen = 'fight'; S.paused = true; } else { S.screen = 'title'; }
+  sound.play('tick');
+}
+const ACTION_NAME = { up: 'MOVE UP', down: 'MOVE DOWN', left: 'MOVE LEFT', right: 'MOVE RIGHT', a1: 'ATTACK 1', a2: 'ATTACK 2', block: 'BLOCK', s1: 'SPECIAL 1', s2: 'SPECIAL 2', s3: 'SPECIAL 3' };
+function say(text, good) { S.ctl.msg = { text, good, t0: S.now }; }
+function listen() {
+  const c = S.ctl, action = CTL_ROWS[c.row];
+  c.listen = true;
+  if (c.col < 2) {
+    const pid = c.col;
+    input.capture({
+      onKey: (code) => {
+        c.listen = false;
+        if (code === 'Escape') return say('CANCELLED');
+        if (RESERVED.has(code)) return say(`${KEY_NAME(code)} IS USED BY THE GAME. PICK ANOTHER KEY`);
+        const sw = setKey(pid, action, code);
+        say(`P${pid + 1} ${ACTION_NAME[action]} = ${KEY_NAME(code)}${sw ? `  (SWAPPED WITH P${sw.pid + 1} ${ACTION_NAME[sw.action]})` : ''}`, true);
+        sound.play('start');
+      },
+      onPad: () => { c.listen = false; say('CANCELLED: PRESS A KEY ON THE KEYBOARD FOR THIS COLUMN'); },
+    });
+  } else {
+    const wait = () => input.capture({
+      onKey: (code) => { if (code === 'Escape') { c.listen = false; say('CANCELLED'); } else wait(); },
+      onPad: (btn) => {
+        c.listen = false;
+        if (PAD_RESERVED.has(btn)) return say(`${PAD_NAMES[btn] || 'START'} IS USED BY THE MENUS. PICK ANOTHER BUTTON`);
+        const sw = setPad(action, btn);
+        say(`PAD ${ACTION_NAME[action]} = ${PAD_NAMES[btn] || `BUTTON ${btn}`}${sw ? `  (SWAPPED WITH ${ACTION_NAME[sw]})` : ''}`, true);
+        sound.play('start');
+      },
+    });
+    wait();
+  }
+}
+function updateControls(any) {
+  const c = S.ctl;
+  if (c.listen) { if (!input.capturing) c.listen = false; return; }
+  const n = CTL_ROWS.length;
+  if (any('up')) { c.row = (c.row + n - 1) % n; sound.play('tick'); }
+  if (any('down')) { c.row = (c.row + 1) % n; sound.play('tick'); }
+  if (any('left')) { c.col = (c.col + 2) % 3; sound.play('tick'); }
+  if (any('right')) { c.col = (c.col + 1) % 3; sound.play('tick'); }
+  if (any('back') || any('pause')) return closeControls();
+  if (any('confirm')) {
+    const row = CTL_ROWS[c.row];
+    if (row === 'back') return closeControls();
+    if (row === 'reset') { resetControls(); say('ALL CONTROLS ARE BACK TO THE DEFAULTS', true); sound.play('start'); return; }
+    if (c.col === 2 && !ACTIONS.includes(row)) return say('ON A PAD YOU MOVE WITH THE LEFT STICK OR THE D-PAD');
+    listen();
+  }
 }
 
 function update(dt) {
@@ -143,9 +209,19 @@ function update(dt) {
   const m = inp.menu, any = (a) => m[0][a] || m[1][a];
   S.fx = S.fx.filter((f) => S.clock - f.t0 < f.life);
 
-  if (S.screen === 'title') {
-    if (any('confirm') || any('pause')) go('setup');
+  if (S.screen === 'title') { // PLAY / TUTORIAL / CONTROLS
+    S.titleSel ??= 0;
+    if (any('up')) { S.titleSel = (S.titleSel + 2) % 3; sound.play('tick'); }
+    if (any('down')) { S.titleSel = (S.titleSel + 1) % 3; sound.play('tick'); }
+    if (any('confirm') || any('pause')) {
+      if (S.titleSel === 0) { S.tutorial = false; go('setup'); }
+      else if (S.titleSel === 1) { S.tutorial = true; S.mode = '1p'; go('select'); S.cursor = [0, CHAR_IDS.length > 1 ? 1 : 0]; S.locked = [false, false]; S.focus = 0; S.boonsPage = S.controlsPage = false; }
+      else openControls('title');
+    }
+  } else if (S.screen === 'controls') {
+    updateControls(any);
   } else if (S.screen === 'setup') {
+    S.tutorial = false;
     const n = ROWS().length;
     if (any('up')) S.row = (S.row + n - 1) % n;
     if (any('down')) S.row = (S.row + 1) % n;
@@ -167,7 +243,7 @@ function update(dt) {
       } else if (mm.back) S.locked[pid] = false;
       else if (mm.confirm && humans.every((h) => S.locked[h])) break;
     }
-    if (humans.every((h) => !S.locked[h]) && any('back')) { go('setup'); return; }
+    if (humans.every((h) => !S.locked[h]) && any('back')) { go(S.tutorial ? 'title' : 'setup'); return; }
     if (humans.every((h) => S.locked[h])) {
       if (S.mode === '1p') S.cursor[1] = (S.cursor[0] + 1) % CHAR_IDS.length; // the computer takes the other fighter
       S.chars = [CHAR_IDS[S.cursor[0]], CHAR_IDS[S.cursor[1]]]; S.side = 0;
@@ -182,10 +258,17 @@ function update(dt) {
         if (any('back') || any('confirm') || any('pause')) S.info = null;
         return;
       }
-      if (any('up')) S.sel = (S.sel + 2) % 3;
-      else if (any('down')) S.sel = (S.sel + 1) % 3;
-      else if (any('confirm')) { if (S.sel === 0) S.paused = false; else if (S.sel === 1) S.info = 0; else go('title'); }
-      else if (any('pause')) S.paused = false;
+      const items = pauseItems(), n = items.length;
+      if (any('up')) S.sel = (S.sel + n - 1) % n;
+      else if (any('down')) S.sel = (S.sel + 1) % n;
+      else if (any('confirm')) {
+        const it = items[S.sel];
+        if (it === 'RESUME') S.paused = false;
+        else if (it === 'MOVES & BOONS') S.info = 0;
+        else if (it === 'CONTROLS') openControls('pause');
+        else if (it === 'NEXT LESSON') { nextLesson(S.tut, match, S.now); S.paused = false; }
+        else go('title');
+      } else if (any('pause')) S.paused = false;
       return;
     }
     if (match.phase === 'done') {
@@ -196,16 +279,26 @@ function update(dt) {
       return;
     }
     if (any('pause')) { S.paused = true; S.sel = 0; S.info = null; return; }
+    const T = S.tut;
+    if (T && frozen(T)) { // a lesson that explains: the fight waits for a confirm
+      if (any('confirm')) { nextLesson(T, match, S.now); T.release = true; sound.play('tick'); }
+      return;
+    }
     if (!match.scene) S.clock += dt;
     let fight = inp.fight;
-    if (S.cpu) {
+    if (S.cpu || T) {
       fight = [{}, {}];
       fight[S.side] = merge(inp.fight[0], inp.fight[1]);
-      fight[S.cpu.pid] = cpuInput(match, S.cpu, dt);
+      fight[1 - S.side] = S.cpu ? cpuInput(match, S.cpu, dt) : beforeStep(T, match, dt);
+    }
+    if (T?.release) { // the button that closed an explaining lesson doesn't also attack
+      if (ACTIONS.some((a) => fight[0][a])) fight[0] = { mx: fight[0].mx, my: fight[0].my }; else T.release = false;
     }
     for (let i = 0; i < 2; i++) if (DBG.override[i]) fight[i] = { ...DBG.override[i] };
     stepMatch(match, fight, dt);
-    for (const e of match.events.splice(0)) onEvent(e, match);
+    const events = match.events.splice(0);
+    if (T) afterStep(T, match, events, match.t); // sim time, so "well done" lasts the same at any frame rate
+    for (const e of events) if (!(T && e.type === 'end')) onEvent(e, match);
     if (match.phase === 'done') { S.screenAt = S.now; S.sel = 0; }
   }
 }
@@ -213,12 +306,13 @@ function update(dt) {
 function render() {
   ctx.setTransform(RES, 0, 0, RES, 0, 0); // draw in 480x270 layout units on the full-HD canvas
   R(0, 0, W, H, '#000');
-  if (S.screen === 'title') drawTitle(S.now, S.pads);
+  if (S.screen === 'title') drawTitle(S.now, S.pads, S.titleSel || 0);
   else if (S.screen === 'select') drawSelect(S.now, { ...S, ids: CHAR_IDS, chars: CHARS });
   else if (S.screen === 'setup') drawSetup(S.now, { ...S, rows: ROWS(), levelName: LEVELS[S.level].name });
   else if (S.screen === 'fight') {
     const hints = [0, 1].map(useHint);
-    drawFight(S.match, S.now, S.fx, S.cpu ? (S.cpu.pid === 0 ? ['CPU', 'YOU'] : ['YOU', 'CPU']) : ['P1', 'P2'], S.clock, hints);
+    drawFight(S.match, S.now, S.fx, S.tut ? ['YOU', 'DUMMY'] : S.cpu ? (S.cpu.pid === 0 ? ['CPU', 'YOU'] : ['YOU', 'CPU']) : ['P1', 'P2'], S.clock, hints);
+    if (S.tut && !S.paused && !S.match.scene) { const v = tutView(S.tut, S.match); if (v) drawTutorial(v, S.now); }
     if (S.offer && S.now - S.offer.t0 < 4.5) drawOffer(S.offer, S.match.players[S.offer.pid], hints[S.offer.pid], S.now - S.offer.t0);
     if (S.banner && S.now - S.banner.t0 < 3) {
       R(0, H - 34, W, 30, 'rgba(10,12,20,.8)');
@@ -226,12 +320,16 @@ function render() {
       txt(S.banner.sub, CX, H - 18, '#ddd', 'center');
     }
     if (S.match.phase === 'done') drawResult(S.match, S.sel, S.now - S.screenAt);
-    if (S.paused) { drawPause(S.sel); if (S.info != null) drawInfo(S.info, S.match.players.map((p) => p.ch)); }
+    if (S.paused) { drawPause(S.sel, pauseItems()); if (S.info != null) drawInfo(S.info, S.match.players.map((p) => p.ch)); }
+  } else if (S.screen === 'controls') {
+    if (S.ctl.from === 'pause' && S.match) { drawFight(S.match, S.now, S.fx, ['', ''], S.clock); }
+    drawRemap(S.now, S.ctl, S.pads);
   }
 }
 
 addEventListener('keydown', (e) => {
   sound.unlock(); // browsers allow sound only after the first key press
+  if (e.captured) return; // the Controls screen took this key
   if (e.code === 'KeyM') sound.toggleMute();
   if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) return;
   if (e.code === 'Digit0') setUseArt(!useArt); // 0 switches between the art and the grey-box
@@ -253,6 +351,10 @@ window.__game = {
   get screen() { return S.screen; },
   hurt(pid) { return S.match ? isHurtPose(S.match, pid) : false; },
   get boonsPage() { return !!S.boonsPage; },
+  get tutorial() { return S.tut ? { lesson: lesson(S.tut)?.id || null, i: S.tut.i, free: S.tut.free, done: S.tut.doneAt != null } : null; },
+  get controls() { return S.ctl ? { row: S.ctl.row, col: S.ctl.col, listen: S.ctl.listen, msg: S.ctl.msg?.text || null } : null; },
+  get keys() { return KEYS.map((K) => Object.fromEntries(REMAP.map((a) => [a, K[a][0]]))); },
+  get pad() { return { ...PAD }; },
   get sounds() { return [...sound.log]; },
   get audio() { return { state: sound.state(), muted: sound.isMuted() }; },
   get art() { return { ready: ART.ready, arena: !!ART.arena, fx: Object.keys(ART.fx).length, scenes: Object.keys(ART.scenes).length, sceneLayers: Object.keys(ART.sceneLayers).length, gods: Object.keys(ART.gods).length, sheets: Object.keys(ART.sheets), frames: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.walk.cells.length])), actions: Object.fromEntries(Object.entries(ART.sheets).map(([k, s]) => [k, s.act ? s.act.cells.length : 0])) }; },
@@ -262,9 +364,10 @@ window.__game = {
     step(n = 1) { for (let i = 0; i < n; i++) update(STEP); render(); },
     setInput(pid, inp) { DBG.override[pid] = inp; }, clearInput() { DBG.override = [null, null]; },
     press(action, pid = 0) { DBG.menu.push({ pid, action }); },
-    start(o = {}) { // debug starts default to 2 players; pass { mode: '1p', side, level } for the computer
+    controls(from = 'title') { openControls(from); },
+    start(o = {}) { // debug starts default to 2 players; pass { mode: '1p', side, level } for the computer, { tutorial: true } for the tutorial
       if (o.minutes) S.minutes = o.minutes; if (o.seed) S.seed = o.seed;
-      S.mode = o.mode || '2p'; S.side = o.side ?? 0; S.level = o.level || 'normal'; startMatch();
+      S.mode = o.tutorial ? '1p' : o.mode || '2p'; S.side = o.side ?? 0; S.level = o.level || 'normal'; S.tutorial = !!o.tutorial; if (o.chars) S.chars = o.chars; startMatch();
     },
     set(pid, fields) { Object.assign(S.match.players[pid], fields); },
     match() { return S.match; },

@@ -58,11 +58,11 @@ test('Sudarshana Chakra re-aims and catches a fighter who sidesteps once', () =>
 
 test('the binding chant holds the Warrior still for 3 s (he can still act)', () => {
   const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 40, y: 0 } });
-  tap(m, K, 's2'); run(m, [{}, {}], 2 + 1);
+  tap(m, K, 's2'); run(m, [{}, {}], 1 + 1.2);
   assert.ok(m.players[R].effects.hold);
   const x = m.players[R].x; run(m, [{}, { mx: 1 }], 1);
   assert.ok(Math.abs(m.players[R].x - x) < 1);
-  run(m, [{}, {}], 2); run(m, [{}, { mx: 1 }], 0.5);
+  run(m, [{}, {}], 2.2); run(m, [{}, { mx: 1 }], 0.5);
   assert.ok(m.players[R].x > x + 10, 'free again');
 });
 

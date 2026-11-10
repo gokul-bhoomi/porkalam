@@ -21,8 +21,8 @@ export default {
       speed: 240, radius: 3, life: 1.5, effect: { kind: 'hold', time: 1.5 }, shape: 'arrow' },
     s3: { name: 'Arrow rain', short: 'Arrows fall on a spot', desc: 'Marks where the opponent stands; a second later arrows fall there. Walk out of the red circle.', kind: 'area', weapon: 'bow', special: true, range: 'mid', cost: { power: 20 }, req: {}, cast: 0.8, damage: 10, knockback: 40,
       radius: 22, delay: 1 },
-    sig: { name: 'Gaja Arrow', short: 'Elephant arrow, 35%', desc: 'A 4 s draw, then a spectral war elephant rides the arrow: 35%, through any block. Costs 10% health.', kind: 'projectile', weapon: 'bow', special: true, signature: true, scene: true, range: 'long', cost: { power: 60, health: 10 }, req: {},
-      cast: 4, damage: 35, knockback: 160, speed: 260, radius: 8, life: 2, pierceBlock: true, pierceUnits: true, shape: 'elephant' }, // a spectral war elephant rides the arrow
+    sig: { name: 'Gaja Arrow', short: 'Elephant arrow, 35%', desc: 'A 2 s draw, then a spectral war elephant rides the arrow: 35%, through any block. Costs 10% health.', kind: 'projectile', weapon: 'bow', special: true, signature: true, scene: true, range: 'long', cost: { power: 60, health: 10 }, req: {},
+      cast: 2, damage: 35, knockback: 160, speed: 260, radius: 8, life: 2, pierceBlock: true, pierceUnits: true, shape: 'elephant' }, // a spectral war elephant rides the arrow; draw 4 -> 2 s (owner, 2026-11-09)
     cls: { name: 'Meditation', short: 'Earn devotion for boons', desc: 'Sit behind a barrier and fill devotion, one segment at a time.', kind: 'meditate', range: 'anywhere', cost: { power: 2 }, req: {}, cast: 0, damage: 0, knockback: 0 },
   },
 };

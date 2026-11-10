@@ -4,7 +4,7 @@ These follow [GROUND-RULES.md](GROUND-RULES.md) and [CLASS-RULES.md](CLASS-RULES
 
 Both fighters are **original characters**. The game is inspired by Indian mythology: it shows in their dress and the arena, and the real gods appear only as givers of boons. (They replaced Krishna and Raja Raja Chola on 2026-11-08.)
 
-**Signature moves have a long cast (~4 s).** The fighter stands still and can't move or block. Any hit breaks it, and the cost is still spent. When the cast completes, a power-up plays in the arena itself: the camera closes in, the world around the sand island becomes the power, and the move goes off.
+**Signature moves have a 2 s cast** (was ~4 s; owner, 2026-11-09), and both signatures do the same damage (35%). The fighter stands still and can't move or block. Any hit breaks it, and the cost is still spent. When the cast completes, a power-up plays in the arena itself: the camera closes in, the world around the sand island becomes the power, and the move goes off.
 
 ## Siddhan (Mage)
 A young wandering mystic-sorcerer: saffron and indigo robes, rudraksha beads, a topknot, and a staff topped with a brass bell. His magic glows teal.
@@ -16,7 +16,7 @@ A young wandering mystic-sorcerer: saffron and indigo robes, rudraksha beads, a 
 | Mantra bolt (basic) | Mid | Small (3 power) | A glowing teal orb. Tap for a quick bolt, hold to charge (more damage and a bigger orb, up to 11%) |
 | Palm push (basic) | Close | Small | Small damage, big knockback |
 | Spinning chakra | Anywhere | Large | Homing disc, medium damage |
-| Binding chant | Mid | Medium | 2 s cast, then the opponent is held still for 3 s |
+| Binding chant | Mid | Medium | 1 s cast (was 2 s; owner, 2026-11-09), then the opponent is held still for 3 s |
 | Blink | Anywhere | Small | Short teleport |
 | Signature: Thousand-Arm Form | Anywhere | Very large + health | Power-up in the arena. Large damage across the whole arena |
 | Meditation | n/a | Time | Fills devotion behind a barrier |

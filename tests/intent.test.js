@@ -617,20 +617,21 @@ test('class: Warriors make no arena changes', () => {
 });
 
 // ================= character rules (CHARACTERS.md) =================
-test('characters: signature moves have a ~4 s cast; no moving or blocking; a hit breaks it, the cost stays spent', () => {
-  for (const c of [mage, warrior]) assert.ok(c.moves.sig.cast >= 3.5 && c.moves.sig.cast <= 4.5, c.name);
+test('characters: signature moves have a 2 s cast (owner, 2026-11-09) and the same damage; no moving or blocking; a hit breaks it, the cost stays spent', () => {
+  for (const c of [mage, warrior]) assert.equal(c.moves.sig.cast, 2, c.name);
+  assert.equal(mage.moves.sig.damage, warrior.moves.sig.damage);
   const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 60, y: 0 } });
   tap(m, K, 'sig');
-  run(m, [{ mx: 1, block: true }, {}], 2);
+  run(m, [{ mx: 1, block: true }, {}], 1);
   assert.equal(m.players[K].x, -60); assert.equal(m.players[K].block, null);
   m.hits.push({ target: m.players[K], dmg: 1, kb: 0, from: null }); stepMatch(m);
   assert.equal(m.players[K].cast, null);
   assert.ok(m.players[K].power < 50 && m.players[K].hp < 90, 'power and health cost spent');
 });
 
-test('characters: the binding chant has a 2 s cast and then the opponent is held still for 3 s', () => {
+test('characters: the binding chant has a 1 s cast (owner, 2026-11-09: was 2 s) and then the opponent is held still for 3 s', () => {
   const v = mage.moves.s2;
-  assert.equal(v.cast, 2); assert.deepEqual(v.effect, { kind: 'hold', time: 3 });
+  assert.equal(v.cast, 1); assert.deepEqual(v.effect, { kind: 'hold', time: 3 });
 });
 
 test('characters: Gaja Arrow pierces blocks', () => {
