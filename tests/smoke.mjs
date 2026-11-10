@@ -145,7 +145,7 @@ await check('a signature move plays its scene, pauses the game, then lands', asy
   const s = await game(() => {
     const d = window.__game.debug; d.start({ minutes: 5 });
     d.set(0, { x: -60, y: 0, power: 100 }); d.set(1, { x: 80, y: 0 });
-    d.setInput(0, { s1: true, s2: true, s3: true }); d.step(1); d.setInput(0, {}); d.step(60 * 4 + 5);
+    d.setInput(0, { s1: true, s2: true, s3: true }); d.step(1); d.setInput(0, {}); d.step(60 * 2 + 5);
     const during = d.snapshot();
     d.setInput(1, { mx: -1 }); d.step(30);
     const still = d.snapshot();
@@ -251,6 +251,87 @@ await check('a special or signature never shows the hurt pose (paying a health c
   expect(hurtFrames === 0, `the caster showed the hurt pose for ${hurtFrames} frames`);
 });
 
+await check('controls screen: remap a key (taken keys swap, game keys refused), a pad button, reset; saved across reloads', async () => {
+  await open('?seed=3&pause=1');
+  await game(() => localStorage.removeItem('porkalam.controls.v1'));
+  await open('?seed=3&pause=1');
+  const s = await game(() => {
+    const d = window.__game.debug, g = window.__game, out = {};
+    const key = (code) => { dispatchEvent(new KeyboardEvent('keydown', { code })); d.step(1); dispatchEvent(new KeyboardEvent('keyup', { code })); d.step(1); };
+    key('KeyS'); key('KeyS'); key('Enter'); out.screen = g.screen; // title: PLAY, TUTORIAL, CONTROLS
+    for (let i = 0; i < 6; i++) key('KeyS');                          // down to BLOCK
+    key('Enter'); out.listening = g.controls.listen;
+    key('KeyJ'); out.block = g.keys[0].block;
+    key('KeyS'); key('Enter'); key('KeyK');                           // P1 special 1 = K, which P2 attack 1 had
+    out.s1 = g.keys[0].s1; out.p2a1 = g.keys[1].a1;
+    key('Enter'); key('KeyM'); out.refused = g.controls.msg; out.s1After = g.keys[0].s1;
+    key('KeyD'); key('KeyD'); key('Enter');                           // pad column, special 1
+    window.__pad(0, 6, true); d.step(1); window.__pad(0, 6, false); d.step(1); // LT
+    out.pad = g.pad;
+    return out;
+  });
+  expect(s.screen === 'controls' && s.listening, `controls screen did not open or listen: ${JSON.stringify(s)}`);
+  expect(s.block === 'KeyJ', `P1 block not remapped: ${s.block}`);
+  expect(s.s1 === 'KeyK' && s.p2a1 === 'KeyR', `taken key did not swap: ${s.s1} ${s.p2a1}`);
+  expect(/USED BY THE GAME/.test(s.refused || '') && s.s1After === 'KeyK', `M was not refused: ${s.refused}`);
+  expect(s.pad.s1 === 6 && s.pad.s2 === 3, `pad special 1 not remapped to LT: ${JSON.stringify(s.pad)}`);
+  await open('?seed=3&pause=1');
+  const after = await game(() => {
+    const d = window.__game.debug, g = window.__game;
+    const kept = g.keys[0].block === 'KeyJ' && g.pad.s1 === 6;
+    d.start({ mode: '2p' }); d.step(1);
+    dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ' })); d.step(10); const blocking = !!d.match().players[0].block; dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyJ' }));
+    d.controls('title'); d.step(1);
+    for (let i = 0; i < 10; i++) d.press('down'), d.step(1);
+    d.press('confirm'); d.step(1); // RESET TO DEFAULTS
+    return { kept, blocking, reset: g.keys[0].block === 'KeyH' && g.pad.s1 === 1 };
+  });
+  expect(after.kept, 'remapped controls were not saved across a reload');
+  expect(after.blocking, 'the remapped block key does not block in a fight');
+  expect(after.reset, 'reset to defaults did not restore the controls');
+  await game(() => localStorage.removeItem('porkalam.controls.v1'));
+});
+
+await check('tutorial: every lesson can be completed in order, and the dummy never gets knocked out', async () => {
+  await open('?seed=3&pause=1');
+  const s = await game(() => {
+    const d = window.__game.debug, g = window.__game, seen = [];
+    const L = () => g.tutorial.lesson;
+    d.press('down'); d.step(1); d.press('confirm'); d.step(1); // title -> TUTORIAL -> fighter select
+    const pick = g.screen;
+    d.press('confirm'); d.step(1);                             // you play Siddhan, the dummy is Veeran
+    const until = (id, act, max = 3000) => { // repeat the action until the lesson moves on
+      seen.push(id);
+      for (let f = 0; f < max && L() === id; f += 10) { act(f); d.step(10); }
+      d.setInput(0, {});
+      return L() !== id;
+    };
+    const place = (gap) => { d.set(0, { x: -gap / 2, y: 0 }); d.set(1, { x: gap / 2, y: 0 }); };
+    const ok = [
+      pick === 'select' && g.screen === 'fight',
+      until('welcome', () => d.press('confirm')),
+      until('hud', () => d.press('confirm')),
+      until('move', (f) => d.setInput(0, { mx: f % 400 < 200 ? 1 : -1, my: 0 })),
+      until('a1', (f) => { if (f % 100 === 0) place(80); d.setInput(0, { a1: f % 100 < 30 }); }),
+      until('a2', (f) => { if (f % 60 === 0) place(24); d.setInput(0, { a2: f % 60 < 10 }); }),
+      until('block', () => d.setInput(0, { block: true })),
+      until('specials', (f) => { if (f % 200 === 0) place(80); const s = ['s1', 's2', 's3'][Math.floor(f / 200) % 3]; d.setInput(0, f % 200 < 10 ? { [s]: true } : {}); }),
+      until('sig', (f) => d.setInput(0, f < 10 ? { s1: true, s2: true, s3: true } : {})),
+      until('meditate', (f) => d.setInput(0, f < 10 ? { my: 1, s1: true } : {})),
+      until('boons', () => d.press('confirm')),
+      until('boon', (f) => d.setInput(0, f % 100 < 10 ? { s1: true, s2: true } : {})),
+      until('tips', () => d.press('confirm')),
+      until('done', () => d.press('confirm')),
+    ];
+    const m = d.match();
+    return { ok, seen, free: g.tutorial.free, phase: m.phase, hp: m.players.map((p) => p.hp), timeLeft: m.timeLeft, duration: m.duration };
+  });
+  const failedAt = s.ok.findIndex((v) => !v);
+  expect(failedAt < 0, `tutorial got stuck at ${failedAt === 0 ? 'the start' : s.seen[failedAt - 1]}`);
+  expect(s.free && s.phase === 'fight', 'the tutorial did not end in free practice');
+  expect(s.hp.every((h) => h > 0) && s.timeLeft === s.duration, `knocked out or clock running: ${JSON.stringify(s)}`);
+});
+
 await check('no text overlaps or runs off screen on any menu page', async () => {
   await open('?seed=3&pause=1');
   await page.waitForFunction(() => window.__game.art.ready, null, { timeout: 10000 });
@@ -278,6 +359,16 @@ await check('no text overlaps or runs off screen on any menu page', async () => 
     d.press('pause'); d.step(1); shot('pause menu');
     d.press('down'); d.step(1); d.press('confirm'); d.step(1);
     for (const pg of ['P1 page', 'P2 page', 'boons page (pause)', 'controls page (pause)']) { shot(pg); d.press('right'); d.step(1); }
+    d.controls('pause'); d.step(1); shot('remap screen');
+    d.start({ tutorial: true, chars: ['veeran', 'siddhan'] }); d.step(2);
+    for (let i = 0; i < 16 && window.__game.tutorial.lesson; i++) { // every lesson card
+      const n = window.__game.tutorial.lesson;
+      shot(`tutorial: ${n}`);
+      if (['welcome', 'hud', 'boons', 'tips', 'done'].includes(n)) { d.press('confirm'); d.step(1); continue; }
+      d.press('pause'); d.step(1); if (i === 2) shot('tutorial pause menu');
+      for (let k = 0; k < 3; k++) { d.press('down'); d.step(1); }
+      d.press('confirm'); d.step(1); // NEXT LESSON
+    }
     return out;
   });
   expect(problems.length === 0, problems.slice(0, 12).join('\n       '));

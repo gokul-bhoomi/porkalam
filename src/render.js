@@ -1,7 +1,7 @@
 // Drawing on a 480x270 canvas: the generated art (src/art.js) where it exists, grey-box shapes otherwise.
 // Only reads the match state.
 import { W, H, RES, ARENA, TUNE } from './config.js';
-import { ACTIONS, LABELS, KEYS, KEY_NAME, PAD, PAD_NAMES } from './input.js';
+import { ACTIONS, LABELS, KEYS, KEY_NAME, PAD, PAD_NAMES, REMAP } from './input.js';
 import { opponent, chargeOf } from './sim.js';
 import { ART, drawSprite, drawFx as fxSprite, drawPortrait, POSES } from './art.js';
 import { GODS as GODS_LIST } from './chars/gods.js';
@@ -893,7 +893,7 @@ export function drawSelect(now, o) {
     const tag = o.mode === '1p' ? 'YOU' : `P${pid + 1}`;
     txt(o.locked[pid] ? `${tag} READY` : tag, x + (pid ? cw - 2 : 2), y0 + chh + 6, `rgb(${col})`, pid ? 'right' : 'left', 6);
   }
-  if (o.mode === '1p') txt('THE CPU TAKES THE OTHER FIGHTER', x0 + cw + gap / 2, y0 + chh + 18, '#9aa', 'center', 5);
+  if (o.mode === '1p') txt(o.tutorial ? 'THE OTHER ONE IS YOUR TRAINING DUMMY' : 'THE CPU TAKES THE OTHER FIGHTER', x0 + cw + gap / 2, y0 + chh + 18, '#9aa', 'center', 5);
   box(232, 28, 242, 222, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)');
   drawMoveList(o.chars[o.ids[o.cursor[o.focus || 0]]], 240, 34, 226);
   txt(o.mode === '1p' ? 'LEFT/RIGHT CHOOSE   ENTER LOCK IN   UP: CONTROLS   DOWN: BOONS' : 'LEFT/RIGHT CHOOSE   ATTACK 1 LOCK IN   UP: CONTROLS   DOWN: BOONS', CX, 258, '#ddd', 'center', 5);
@@ -914,11 +914,13 @@ function drawControls(pads = 0) {
   txt('CONTROLS', CX, 8, '#ffcf6a', 'center', 16);
   const k3 = (k, n) => k.slice(0, n).map(KEY_NAME).join('+');
   const sp = (K) => ['s1', 's2', 's3'].map((s) => K[s][0]);
-  const rows = [['MOVE', 'WASD', 'ARROWS', 'STICK'],
-    ...['a1', 'a2', 'block', 's1', 's2', 's3'].map((a) => [{ a1: 'ATTACK 1', a2: 'ATTACK 2 (CLOSE)', block: 'BLOCK', s1: 'SPECIAL 1', s2: 'SPECIAL 2', s3: 'SPECIAL 3' }[a], KEYS[0][a].map(KEY_NAME).join('/'), KEYS[1][a].map(KEY_NAME).join('/'), PAD_NAMES[PAD[a]]]),
-    ['SIGNATURE: ALL 3 SPECIALS', k3(sp(KEYS[0]), 3), k3(sp(KEYS[1]), 3), 'B+Y+LB'],
-    ['BOON: 2 SPECIALS', k3(sp(KEYS[0]), 2), k3(sp(KEYS[1]), 2), 'B+Y'],
-    ['MEDITATE: DOWN + SPECIAL 1', `S+${KEY_NAME(KEYS[0].s1[0])}`, `DOWN+${KEY_NAME(KEYS[1].s1[0])}`, 'DOWN+B'],
+  const mv = (K) => (K.up[0] === 'ArrowUp' && K.left[0] === 'ArrowLeft' && K.down[0] === 'ArrowDown' && K.right[0] === 'ArrowRight' ? 'ARROWS' : ['up', 'left', 'down', 'right'].map((a) => KEY_NAME(K[a][0])).join(''));
+  const pn = (a) => PAD_NAMES[PAD[a]] || `#${PAD[a]}`;
+  const rows = [['MOVE', mv(KEYS[0]), mv(KEYS[1]), 'STICK'],
+    ...['a1', 'a2', 'block', 's1', 's2', 's3'].map((a) => [{ a1: 'ATTACK 1', a2: 'ATTACK 2 (CLOSE)', block: 'BLOCK', s1: 'SPECIAL 1', s2: 'SPECIAL 2', s3: 'SPECIAL 3' }[a], KEYS[0][a].map(KEY_NAME).join('/'), KEYS[1][a].map(KEY_NAME).join('/'), pn(a)]),
+    ['SIGNATURE: ALL 3 SPECIALS', k3(sp(KEYS[0]), 3), k3(sp(KEYS[1]), 3), `${pn('s1')}+${pn('s2')}+${pn('s3')}`],
+    ['BOON: 2 SPECIALS', k3(sp(KEYS[0]), 2), k3(sp(KEYS[1]), 2), `${pn('s1')}+${pn('s2')}`],
+    ['MEDITATE: DOWN + SPECIAL 1', `${KEY_NAME(KEYS[0].down[0])}+${KEY_NAME(KEYS[0].s1[0])}`, `${KEY_NAME(KEYS[1].down[0])}+${KEY_NAME(KEYS[1].s1[0])}`, `DOWN+${pn('s1')}`],
     ['PAUSE', 'ESC', 'ESC', 'START']];
   let y = 40;
   [['', 30], ['P1', 250], ['P2', 320], ['PAD', 405]].forEach(([t, x]) => txt(t, x, y, '#9aa', 'left', 8));
@@ -930,10 +932,10 @@ function drawControls(pads = 0) {
     r.slice(1).forEach((v, j) => txt(v, [250, 320, 405][j], y, '#fff', 'left', 6));
     y += 15;
   });
-  txt(`M: SOUND ON/OFF    \`: FULLSCREEN    PADS CONNECTED: ${pads}`, CX, y + 8, '#9aa', 'center', 6);
+  txt(`M: SOUND   \`: FULLSCREEN   PADS: ${pads}   REMAP: TITLE OR PAUSE > CONTROLS`, CX, y + 8, '#9aa', 'center', 5);
 }
 // Title screen: the Codex key art (art/title.png), the logo and 'press start'.
-export function drawTitle(now, pads) {
+export function drawTitle(now, pads, sel = 0) {
   const img = ART.title;
   if (img) { const sc = Math.max(W / img.width, H / img.height), w = img.width * sc, h = img.height * sc; G.imageSmoothingEnabled = true; G.drawImage(img, (W - w) / 2, (H - h) / 2, w, h); }
   else { drawBackdrop(now); drawArena(); R(0, 0, W, H, 'rgba(10,12,20,.5)'); }
@@ -951,7 +953,13 @@ export function drawTitle(now, pads) {
   txt('INSPIRED BY INDIAN MYTHOLOGY', CX, 76, '#f0dca8', 'center', 7);
   const bot = G.createLinearGradient(0, H - 50, 0, H); bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(1, 'rgba(0,0,0,.7)');
   G.fillStyle = bot; G.fillRect(0, H - 50, W, 50);
-  if (Math.floor(now * 2) % 2) txt('PRESS START / ENTER', CX, H - 26, '#fff2c0', 'center', 8);
+  const bg = G.createLinearGradient(0, H - 70, 0, H); bg.addColorStop(0, 'rgba(0,0,0,0)'); bg.addColorStop(1, 'rgba(0,0,0,.55)');
+  G.fillStyle = bg; G.fillRect(0, H - 70, W, 70);
+  ['PLAY', 'TUTORIAL', 'CONTROLS'].forEach((s, i) => {
+    const on = i === sel, y = H - 54 + i * 14;
+    if (on) box(CX - 60, y - 3, 120, 13, 4, 'rgba(255,207,106,.18)', 'rgba(255,207,106,.6)');
+    txt(on ? `> ${s} <` : s, CX, y, on ? '#ffe7a0' : '#d8cfb8', 'center', 8);
+  });
   txt('M: SOUND', 6, H - 10, '#c8bca0', 'left', 5);
   txt(`PADS: ${pads}`, W - 6, H - 10, '#c8bca0', 'right', 5);
 }
@@ -977,10 +985,86 @@ export function drawSetup(now, o) {
   txt('UP/DOWN PICK  LEFT/RIGHT CHANGE  ENTER FIGHT  ESC BACK', CX, 220, '#ddd', 'center');
 }
 
-export function drawPause(sel) {
-  R(0, 0, W, H, 'rgba(0,0,0,.6)');
-  txt('PAUSED', CX, 90, '#fff', 'center', 16);
-  ['RESUME', 'MOVES & BOONS', 'QUIT TO TITLE'].forEach((s, i) => txt((i === sel ? '> ' : '  ') + s, CX, 126 + i * 16, i === sel ? '#ffcf6a' : '#ddd', 'center'));
+export function drawPause(sel, items = ['RESUME', 'MOVES & BOONS', 'CONTROLS', 'QUIT TO TITLE']) {
+  R(0, 0, W, H, 'rgba(0,0,0,.6)'); covered();
+  txt('PAUSED', CX, 80, '#fff', 'center', 16);
+  items.forEach((s, i) => txt((i === sel ? '> ' : '  ') + s, CX, 114 + i * 16, i === sel ? '#ffcf6a' : '#ddd', 'center'));
+}
+
+// ---------- Controls screen: remap keys and pad buttons ----------
+const REMAP_LABEL = { up: 'MOVE UP', down: 'MOVE DOWN', left: 'MOVE LEFT', right: 'MOVE RIGHT', a1: 'ATTACK 1', a2: 'ATTACK 2 (CLOSE)', block: 'BLOCK', s1: 'SPECIAL 1', s2: 'SPECIAL 2', s3: 'SPECIAL 3' };
+export function drawRemap(now, c, pads = 0) {
+  R(0, 0, W, H, 'rgba(8,6,14,.94)'); covered();
+  txt('CONTROLS', CX, 8, '#ffcf6a', 'center', 16);
+  const COLS = [236, 316, 396], CW = 70, y0 = 46, rh = 13;
+  ['P1 KEYS', 'P2 KEYS', 'PAD'].forEach((t, i) => txt(t, COLS[i] + CW / 2, 32, i === c.col ? '#ffcf6a' : '#9aa', 'center', 6));
+  REMAP.forEach((a, r) => {
+    const y = y0 + r * rh, on = r === c.row;
+    if (r % 2 === 0) R(40, y - 3, 430, rh, 'rgba(255,255,255,.04)');
+    txt(REMAP_LABEL[a], 50, y, on ? '#ffcf6a' : '#ddd', 'left', 6);
+    const vals = [KEY_NAME(KEYS[0][a][0]), KEY_NAME(KEYS[1][a][0]), ACTIONS.includes(a) ? PAD_NAMES[PAD[a]] || `#${PAD[a]}` : 'STICK'];
+    vals.forEach((v, i) => {
+      const sel = on && i === c.col, wait = sel && c.listen;
+      if (sel) box(COLS[i], y - 3, CW, rh - 1, 3, wait ? 'rgba(255,207,106,.35)' : 'rgba(255,207,106,.15)', '#ffcf6a');
+      const show = wait ? (Math.floor(now * 3) % 2 ? (i === 2 ? 'BUTTON?' : 'KEY?') : '') : v;
+      txt(show, COLS[i] + CW / 2, y, wait ? '#fff2b0' : i === 2 && !ACTIONS.includes(a) ? '#777' : '#fff', 'center', 6);
+    });
+  });
+  const yr = y0 + REMAP.length * rh + 6;
+  ['RESET TO DEFAULTS', 'BACK'].forEach((s, i) => {
+    const on = c.row === REMAP.length + i, y = yr + i * 14;
+    if (on) box(CX - 80, y - 3, 160, 12, 3, 'rgba(255,207,106,.15)', '#ffcf6a');
+    txt(s, CX, y, on ? '#ffcf6a' : '#ddd', 'center', 6);
+  });
+  const my = yr + 32;
+  if (c.listen) txt(c.col === 2 ? 'PRESS A BUTTON ON THE PAD    ESC: CANCEL' : `PRESS A KEY FOR P${c.col + 1} ${REMAP_LABEL[REMAP[c.row]]}    ESC: CANCEL`, CX, my, '#fff2b0', 'center', 6);
+  else if (c.msg && now - c.msg.t0 < 4) txtFit(c.msg.text, CX, my, c.msg.good ? '#9fe07a' : '#ffb4a8', 'center', 6, 460);
+  txt('ARROWS: PICK   ENTER: CHANGE   ESC: BACK', CX, H - 12, '#ddd', 'center', 5);
+  txt('A KEY THAT IS ALREADY USED SWAPS WITH THE OLD ONE.  SAVED IN THIS BROWSER.', CX, H - 22, '#9aa', 'center', 5);
+}
+
+// ---------- tutorial lesson card ----------
+// Explaining lessons: a big card in the middle (the fight waits). Doing lessons: a slim card under the HUD.
+export function drawTutorial(v, now) {
+  if (v.info) {
+    R(0, 0, W, H, 'rgba(6,4,12,.55)');
+    if (v.id === 'hud') { // point at the parts of the screen being explained
+      const a = 0.55 + 0.45 * Math.sin(now * 5);
+      G.save(); G.strokeStyle = `rgba(255,231,160,${a})`; G.lineWidth = 1.5;
+      for (const [x, y, w, h] of [[43, 13, 120, 14], [43, 26, 120, 9], [43, 34, 150, 9], [CX - 36, 1, 72, 36]]) { G.beginPath(); G.roundRect(x, y, w, h, 3); G.stroke(); }
+      G.restore();
+    }
+    const w = 380, lines = v.lines.flatMap((l) => wrap(l.toUpperCase(), 58)), h = 54 + lines.length * 10, x = CX - w / 2, y = Math.max(64, 150 - h / 2);
+    const g = G.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(40,24,52,.96)'); g.addColorStop(1, 'rgba(18,10,26,.96)');
+    box(x, y, w, h, 7, g, '#e8c060');
+    txt(`LESSON ${v.n}/${v.of}`, x + 10, y + 8, '#a898c0', 'left', 5);
+    txt('TUTORIAL', x + w - 10, y + 8, '#a898c0', 'right', 5);
+    txt(v.title, CX, y + 16, '#ffcf6a', 'center', 10);
+    lines.forEach((l, i) => txt(l, CX, y + 34 + i * 10, '#f0e6d0', 'center', 6));
+    G.save(); G.globalAlpha = 0.6 + 0.4 * Math.sin(now * 5);
+    txt(`PRESS ${v.confirm} TO CONTINUE`, CX, y + h - 12, '#9fe07a', 'center', 5);
+    G.restore();
+    return;
+  }
+  // a doing lesson: "PRESS [F] TO ATTACK", the keys drawn as gold key caps
+  const w = 400, x = CX - w / 2, y = 62, h = v.lines[1] ? 46 : 36;
+  box(x, y, w, h, 6, 'rgba(18,10,26,.86)', v.done ? '#9fe07a' : 'rgba(232,192,96,.8)');
+  txt(`${v.n}/${v.of}  ${v.title}`, x + 8, y + 5, '#a898c0', 'left', 5);
+  if (v.done) txt('WELL DONE!', x + w - 8, y + 5, '#9fe07a', 'right', 6);
+  else if (v.progress) txt(v.progress, x + w - 8, y + 5, '#fff2b0', 'right', 5);
+  const parts = v.lines[0].toUpperCase().split(/(\[[^\]]+\])/).filter(Boolean), SZ = 10;
+  G.font = `${SZ}px ${FONT}`;
+  const widths = parts.map((t) => (t.startsWith('[') ? G.measureText(t.slice(1, -1)).width + 8 : G.measureText(t).width));
+  let px = CX - widths.reduce((a, b) => a + b, 0) / 2;
+  const pulse = 0.7 + 0.3 * Math.sin(now * 6);
+  parts.forEach((t, i) => {
+    if (t.startsWith('[')) {
+      box(px, y + 14, widths[i], SZ + 6, 3, `rgba(255,207,106,${0.25 * pulse})`, '#ffcf6a');
+      txt(t.slice(1, -1), px + widths[i] / 2, y + 17, '#fff2b0', 'center', SZ);
+    } else txt(t, px, y + 17, '#fff', 'left', SZ);
+    px += widths[i];
+  });
+  if (v.lines[1]) txt(v.lines[1].toUpperCase(), CX, y + 35, '#c8bcd8', 'center', 5);
 }
 
 // t = seconds since the match ended: first the call (K.O. / TIME!) over the knockout, then the result fades in.

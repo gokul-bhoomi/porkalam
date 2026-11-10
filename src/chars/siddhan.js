@@ -19,10 +19,10 @@ export default {
     a2: { name: 'Palm push', short: 'Shove, big knockback', desc: 'A close-range shove: little damage, but throws the opponent far back.', kind: 'melee', range: 'close', cost: { power: 2 }, req: {}, cast: 0.15, damage: 3, knockback: 240, reach: 46 },
     s1: { name: 'Spinning chakra', short: 'Homing disc', desc: 'A disc that flies in three legs, turning toward the opponent between them.', kind: 'projectile', special: true, range: 'anywhere', cost: { power: 30 }, req: {}, cast: 0.6, damage: 12, knockback: 90,
       speed: 120, radius: 6, life: 3, legs: 3, legTime: 0.9, shape: 'chakra' },
-    s2: { name: 'Binding chant', short: 'Holds the foe for 3 s', desc: 'A 2 s chant, then a slow wave: whoever it touches is held still for 3 s.', kind: 'projectile', special: true, range: 'mid', cost: { power: 18 }, req: {}, cast: 2, damage: 2, knockback: 0,
-      speed: 90, radius: 12, life: 2, effect: { kind: 'hold', time: 3 }, shape: 'wave' },
+    s2: { name: 'Binding chant', short: 'Holds the foe for 3 s', desc: 'A 1 s chant, then a slow wave: whoever it touches is held still for 3 s.', kind: 'projectile', special: true, range: 'mid', cost: { power: 18 }, req: {}, cast: 1, damage: 2, knockback: 0,
+      speed: 90, radius: 12, life: 2, effect: { kind: 'hold', time: 3 }, shape: 'wave' }, // chant 2 -> 1 s (owner, 2026-11-09: too long)
     s3: { name: 'Blink', short: 'Short teleport', desc: 'Teleport a short way in the direction you hold (away from the opponent if none).', kind: 'blink', special: true, range: 'anywhere', cost: { power: 8 }, req: {}, cast: 0, damage: 0, knockback: 0, distance: 45 },
-    sig: { name: 'Thousand-Arm Form', short: 'Whole arena, 35%', desc: 'A 4 s cast, then spectral arms strike across the whole arena: 35%. Costs 10% health.', kind: 'global', special: true, signature: true, scene: true, range: 'anywhere', cost: { power: 60, health: 10 }, req: {}, cast: 4,
+    sig: { name: 'Thousand-Arm Form', short: 'Whole arena, 35%', desc: 'A 2 s cast, then spectral arms strike across the whole arena: 35%. Costs 10% health.', kind: 'global', special: true, signature: true, scene: true, range: 'anywhere', cost: { power: 60, health: 10 }, req: {}, cast: 2, // 4 -> 2 s (owner, 2026-11-09)
       damage: 35, knockback: 60, strikeDelay: 0.4 }, // the arms take 0.4 s to reach
     cls: { name: 'Meditation', short: 'Earn devotion for boons', desc: 'Sit behind a barrier and fill devotion, one segment at a time.', kind: 'meditate', range: 'anywhere', cost: { power: 2 }, req: {}, cast: 0, damage: 0, knockback: 0 },
   },
