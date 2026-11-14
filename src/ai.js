@@ -3,7 +3,7 @@
 // It has its own random numbers, so it never changes the match's random draws.
 import { ARENA, TUNE, RANGES } from './config.js';
 import { rng, dist } from './util.js';
-import { whyNot, opponent } from './sim.js';
+import { whyNot, opponent, airborne } from './sim.js';
 
 // How a computer fighter plays, from a beginner (skill 0) to an expert (skill 1). Every value is blended
 // between these two ends, so a higher skill is always a stronger player.
@@ -27,14 +27,16 @@ export const LEVELS = {
 // about equally strong (CPU vs CPU near 50/50). Without it the Warrior's computer is much stronger at low skill
 // and the Mage's at high skill. Re-measure with tests/ai.test.js if moves change.
 export const SKILL_ADJUST = {
-  siddhan: { easy: 0.39, normal: -0.04, hard: -0.22 }, // skill 0.54 / 0.56 / 0.68
+  siddhan: { easy: 0.05, normal: 0.1, hard: -0.1 }, // skill 0.20 / 0.70 / 0.80 (re-measured 2026-11-14 after quick shots stopped clashing)
   veeran: { easy: -0.15, normal: 0, hard: 0.1 },      // skill 0.00 / 0.60 / 1.00
 };
 export const LEVEL_IDS = Object.keys(LEVELS);
 
-export function createCpu(pid, level = 'normal', seed = 1) {
+// skill: a fixed skill (0-1) for both fighters, without SKILL_ADJUST. The balance tests use it to compare the
+// characters themselves at equal skill (ground rule 16).
+export function createCpu(pid, level = 'normal', seed = 1, skill = null) {
   return {
-    pid, level: LEVELS[level] ? level : 'normal', L: null, r: rng((seed * 7919 + pid * 104729) | 0),
+    pid, level: LEVELS[level] ? level : 'normal', skill, L: null, r: rng((seed * 7919 + pid * 104729) | 0),
     think: 0, rest: 1, hold: {}, holdT: 0, gap: 0, strafe: 1, strafeT: 0, dodge: null, dodgeT: 0, medWait: 0, wasMed: false, medProg: null, medStuck: 0,
   };
 }
@@ -44,16 +46,33 @@ const COMBO = { sig: { s1: true, s2: true, s3: true }, boon: { s1: true, s2: tru
 export function cpuInput(m, cpu, dt) {
   const p = m.players[cpu.pid], o = opponent(m, p), R = cpu.r;
   if (!cpu.L) { // settle the skill once we know which fighter it plays
-    const k = LEVELS[cpu.level].skill + (SKILL_ADJUST[p.ch.id]?.[cpu.level] || 0);
+    const k = cpu.skill ?? LEVELS[cpu.level].skill + (SKILL_ADJUST[p.ch.id]?.[cpu.level] || 0);
     cpu.L = skillParams(Math.max(0, Math.min(1, k)));
   }
   const L = cpu.L;
   const out = { mx: 0, my: 0 };
   if (m.phase !== 'fight' || m.scene) return out;
   const d = dist(p, o);
+  // notice my shots dying in mid-air (cancelled by the opponent's in a clash, rule 6): a fast fighter whose arrows
+  // keep losing to a stream of shots stops trading and uses his speed to close in (the slow fighter is weak up close)
+  if (p.ch.speed > o.ch.speed * 1.3) {
+    const mine = new Map(m.projectiles.filter((pr) => pr.owner === p.id).map((pr) => [pr.id, pr]));
+    for (const [id, pr] of cpu.shots || []) if (!mine.has(id) && Math.hypot(pr.x - o.x, pr.y - o.y) > TUNE.fighterR + 25) cpu.lost = (cpu.lost || 0) + 1;
+    cpu.shots = new Map([...mine].map(([id, pr]) => [id, { x: pr.x, y: pr.y }]));
+    cpu.lost = Math.max(0, (cpu.lost || 0) - dt * 0.4);
+    if (cpu.lost >= 3 && R() < L.plan) { cpu.rushT = 4 + 2 * R(); cpu.lost = 0; }
+  }
+  cpu.rushT = Math.max(0, (cpu.rushT || 0) - dt);
 
   // keep holding whatever an earlier decision pressed (block, a charged shot, a combo)
   if (cpu.holdT > 0) {
+    // charging a shot roots you: a good player lets it fly early and sidesteps when a shot is coming
+    if (cpu.hold.a1 && p.cast && p.cast.t >= p.cast.move.cast && cpu.L.dodge > 0.5) {
+      const th = incoming(m, p);
+      if (th && cpu.r() < cpu.L.dodge) { cpu.hold = {}; cpu.holdT = 0; cpu.gap = 3 * dt; cpu.dodge = dodgeDir(p, th, cpu.r, cpu.L); cpu.dodgeT = 0.45; return Object.assign(out, steer(m, cpu, p, o, d, dt)); }
+    }
+    // a wall is no use against a move that goes through any block: stop building it and deal with the draw instead
+    if (cpu.hold.block && o.cast && !o.cast.done && o.cast.move.pierceBlock && cpu.r() < 0.3 + 0.7 * cpu.L.plan) { cpu.hold = {}; cpu.holdT = 0; cpu.think = 0; return Object.assign(out, steer(m, cpu, p, o, d, dt)); }
     cpu.holdT -= dt;
     Object.assign(out, cpu.hold);
     if (cpu.holdT <= 0) { cpu.hold = {}; cpu.gap = 3 * dt; } // let go for a moment so the next press counts
@@ -62,7 +81,7 @@ export function cpuInput(m, cpu, dt) {
   }
   if (cpu.gap > 0) { cpu.gap -= dt; return Object.assign(out, steer(m, cpu, p, o, d, dt)); }
 
-  cpu.think -= dt; cpu.rest -= dt; cpu.medWait -= dt;
+  cpu.think -= dt; cpu.rest -= dt; cpu.medWait -= dt; cpu.wallMedT = (cpu.wallMedT || 0) - dt;
   if (cpu.wasMed && !p.med && p.devotion < TUNE.meditate.segments) cpu.medWait = 8; // meditation was broken off: don't try again straight away
   cpu.wasMed = !!p.med;
   if (cpu.think <= 0) {
@@ -93,23 +112,73 @@ function decide(m, cpu, p, o, d) {
     else cpu.medStuck += L.react;
     const stop = { buttons: { block: true }, time: 0.05 };
     if (p.med.barrier < 8 && incoming(m, p) && R() < L.block) return { buttons: { block: true }, time: 0.7 };
-    if (cpu.medStuck > 1.2 || (o.med && R() < 0.5 + L.plan * 0.5)) { cpu.medProg = null; return stop; }
+    if (cpu.medHp == null) cpu.medHp = p.hp;
+    // some of every hit leaks through the barrier (rule 11): sitting under fire costs health, so get up and fight
+    if (p.hp < cpu.medHp - 3 - 4 * (1 - L.plan)) { cpu.medProg = cpu.medHp = null; cpu.medWait = 4; return stop; }
+    if (cpu.medStuck > 1.2 || (o.med && R() < 0.5 + L.plan * 0.5)) { cpu.medProg = cpu.medHp = null; return stop; }
+    // a big draw that goes through any block (the Gaja Arrow) only half-hits the barrier: get up and break it, or move
+    if (o.cast && !o.cast.done && o.cast.move.pierceBlock && o.cast.move.cast >= 0.5 && R() < 0.3 + 0.7 * L.plan) {
+      cpu.medProg = cpu.medHp = null; cpu.medWait = 3;
+      const homing = ['s1', 's2', 's3'].find((sl) => mv[sl]?.legs && can(mv[sl]));
+      if (homing) return { buttons: { [homing]: true }, time: 0.05 }; // a move gets up and goes off at once
+      if (can(mv.a1)) return { buttons: { a1: true }, time: 0.05 };
+      return stop;
+    }
     return null;
   }
-  cpu.medProg = null;
+  cpu.medProg = cpu.medHp = null;
 
   // defence: an attack is on its way
   // the slow Mage can't sidestep well, so he raises his earth wall against any shot
   const threat = incoming(m, p), big = threat && (threat.dmg >= 6 || threat.r >= 6 || p.ch.id === 'siddhan');
+  // ground rule 17: the moves that leave the ground (Fly, Jump), wherever a fighter has them
+  const slotOf = (kind) => ['s1', 's2', 's3'].find((sl) => mv[sl]?.kind === kind), flyS = slotOf('fly'), jumpS = slotOf('jump');
+  const oReach = o.ch.moves.a2.reach || 46;
+  if (flyS && p.air?.kind === 'fly' && airborne(p)) { // flying: come down when it's safe again, or the power runs low
+    if (p.power < 10 || (d > oReach + 70 && R() < 0.3)) return { buttons: { [flyS]: true }, time: 0.05 };
+  }
+  // Shiva's Tandava: standing in the lava on the sunk half hurts, so jump or fly across (the only way over)
+  const ch = m.arenaChange;
+  const sunk = ch?.kind === 'chasm' && ch.lava && !p.air ? (p.x - ch.x) * ch.nx + (p.y - ch.y) * ch.ny : 0;
+  if (sunk > 0 && R() < 0.3 + 0.7 * L.plan) {
+    const across = { mx: -ch.nx, my: -ch.ny };
+    if (jumpS && sunk > ch.w / 2 + TUNE.fighterR + 30) return { buttons: across, time: 0.3 }; // walk to the edge first
+    if (jumpS && can(mv[jumpS])) { cpu.dodge = { x: -ch.nx, y: -ch.ny }; cpu.dodgeT = 0.6; return { buttons: { [jumpS]: true, ...across }, time: 0.05 }; }
+    if (flyS && can(mv[flyS])) return { buttons: { [flyS]: true }, time: 0.05 };
+  }
   const bigCast = o.cast && !o.cast.done && o.cast.move.cast >= 0.5 && o.cast.t < o.cast.move.cast;
-  if ((threat || bigCast) && p.power >= p.ch.defence.cost) {
-    if (R() < (big || bigCast ? L.block : L.block * 0.25)) { // small pokes aren't worth stopping for
+  // a move that goes through any block (the Gaja Arrow): a wall is no use. Break the draw with a hit if one can
+  // land in time (ground rule 7), otherwise get out of its line as it leaves: blink, jump or sidestep
+  const pierceCast = bigCast && o.cast.move.pierceBlock, pierceShot = threat && threat.pierceBlock;
+  if (pierceCast || pierceShot) {
+    const left = pierceCast ? o.cast.move.cast - o.cast.t : 0;
+    if (pierceCast && R() < 0.3 + 0.7 * L.plan) {
+      const homing = ['s1', 's2', 's3'].find((sl) => mv[sl]?.legs && can(mv[sl]));
+      if (homing && mv[homing].cast + d / mv[homing].speed < left - 0.1) return { buttons: { [homing]: true }, time: 0.05 };
+      if (can(mv.a1) && d < (RANGES[mv.a1.range]?.[1] ?? 150) - 5 && mv.a1.cast + d / (mv.a1.speed || 1e9) < left - 0.1) return { buttons: { a1: true }, time: 0.05 };
+      if (d < (mv.a2.reach || 46) - 2 && can(mv.a2)) return { buttons: { a2: true }, time: 0.05 };
+    }
+    if (pierceShot || left < 0.35) {
+      const l0 = Math.hypot(o.x - p.x, o.y - p.y) || 1, u = { x: (o.x - p.x) / l0, y: (o.y - p.y) / l0 }, side = R() < 0.5 ? 1 : -1, away = { x: -u.y * side, y: u.x * side };
+      cpu.dodge = away; cpu.dodgeT = 0.6;
+      const blinkS = ['s1', 's2', 's3'].find((sl) => mv[sl]?.kind === 'blink');
+      if (R() < 0.35 + 0.6 * L.dodge) {
+        if (blinkS && can(mv[blinkS])) return { buttons: { [blinkS]: true, mx: away.x, my: away.y }, time: 0.05 };
+        if (jumpS && can(mv[jumpS])) return { buttons: { [jumpS]: true, mx: away.x, my: away.y }, time: 0.05 };
+      }
+      return null;
+    }
+  }
+  if ((threat || bigCast) && p.power >= p.ch.defence.cost && !pierceCast && !pierceShot) {
+    if (!p.air && R() < (big || bigCast ? L.block : L.block * 0.25)) { // small pokes aren't worth stopping for (no block in the air)
       const left = bigCast ? o.cast.move.cast - o.cast.t + 0.3 : 0.5;
       return { buttons: { block: true }, time: Math.min(TUNE.block.buildTime - 0.1, Math.max(0.35, left)) };
     }
     if (threat && R() < L.dodge) { // sidestep across the shot's path
-      const l = Math.hypot(threat.vx, threat.vy) || 1, side = R() < 0.5 ? 1 : -1;
-      cpu.dodge = { x: (-threat.vy / l) * side, y: (threat.vx / l) * side }; cpu.dodgeT = 0.45;
+      cpu.dodge = dodgeDir(p, threat, R, L); cpu.dodgeT = 0.45;
+      // hop over it only when a sidestep won't make it in time, or it's a big hit (a jump costs power and a landing pause)
+      const tHit = Math.hypot(threat.x - p.x, threat.y - p.y) / (Math.hypot(threat.vx, threat.vy) || 1);
+      if (jumpS && can(mv[jumpS]) && (tHit < 0.3 || threat.dmg >= 8) && R() < L.dodge) return { buttons: { [jumpS]: true, mx: cpu.dodge.x, my: cpu.dodge.y }, time: 0.05 };
       if (p.ch.id === 'siddhan' && can(mv.s3) && R() < 0.5) return { buttons: { s3: true, mx: cpu.dodge.x, my: cpu.dodge.y }, time: 0.05 }; // blink away
       return null;
     }
@@ -121,15 +190,33 @@ function decide(m, cpu, p, o, d) {
     const bm = { ...p.boon.move, range: 'anywhere' }, ready = can(bm) && !m.projectiles.some((pr) => pr.owner !== p.id);
     if (ready && R() < 0.6) return { buttons: COMBO.boon, time: 0.05 };
   } else if (dv >= M.tiers[0]) {
-    const want = L.plan > 0.7 ? M.tiers[2] : L.plan > 0.4 ? M.tiers[1] : M.tiers[0];
+    const want = L.plan > 0.85 ? M.tiers[1] : M.tiers[0];
     if ((dv >= want || (o.hp < 20 && R() < 0.5)) && R() < 0.7) return { buttons: COMBO.boon, time: 0.05 };
   }
-  // meditate when the opponent is far and nothing is on its way (both classes)
-  if (dv < M.segments && can(mv.cls) && cpu.medWait <= 0 && !o.med && !o.chord && d > M.dist + 30 && !o.cast && !threat && R() < 0.5) {
+  // meditate when the opponent is far and nothing is on its way (both classes).
+  // Against a faster opponent who keeps poking from range, the barrier is the answer: meditate at mid range too
+  // (shots then hit the barrier instead of health, and the boons that come out always find their target).
+  const kited = o.ch.speed > p.ch.speed * 1.3 && d > (o.ch.moves.a2.reach || 46) + 40 && R() < L.plan;
+  if (dv < M.segments && can(mv.cls) && cpu.medWait <= 0 && !o.med && !o.chord && (d > M.dist + 30 || kited || cpu.wallMedT > 0) && !o.cast && !threat && (cpu.wallMedT > 0 || R() < 0.5)) {
+    // a wall stands for as long as its builder meditates (rule 11): put one up between you first
+    const walled = m.walls.some((w) => w.owner === p.id && w.standing && (w.x - p.x) * (o.x - p.x) + (w.y - p.y) * (o.y - p.y) > 0 && w.cap > 6);
+    if (!walled && !(cpu.wallMedT > 0) && p.power >= p.ch.defence.cost + mv.cls.cost.power && R() < 0.3 + 0.7 * L.plan) {
+      cpu.wallMedT = 2.5;
+      return { buttons: { block: true }, time: 0.9 + 0.8 * L.plan };
+    }
+    cpu.wallMedT = 0;
     return { buttons: COMBO.cls, time: 0.05 };
   }
 
   const done = (b) => { cpu.rest = L.rest[0] + R() * (L.rest[1] - L.rest[0]); return b; };
+  // a meditating opponent can't hit back: break the barrier as fast as possible (ground rule 11 counter-play).
+  // Specials first, then shoves/slashes up close, then fully charged shots (nothing can interrupt them).
+  if (o.med && !threat && R() < 0.4 + 0.6 * L.plan) {
+    const big = ['s1', 's2', 's3'].filter((s) => mv[s] && mv[s].damage >= 8 && can(mv[s]) && (mv[s].cost?.power || 0) <= p.power - 3);
+    if (big.length) return done({ buttons: { [big[0]]: true }, time: 0.05 });
+    if (d < (mv.a2.reach || 46) - 2 && can(mv.a2) && !airborne(o)) return done({ buttons: { a2: true }, time: 0.05 });
+    if (can(mv.a1) && d < (RANGES[mv.a1.range]?.[1] ?? 150)) return done({ buttons: { a1: true }, time: mv.a1.charge ? mv.a1.charge.max + 0.05 : 0.05 });
+  }
   const plan = tactics(m, cpu, p, o, d, can, threat);
   if (plan) return done(plan);
   if (cpu.rest > 0 && !(o.med && R() < L.plan)) return null; // a meditating opponent is an open target: press it
@@ -137,22 +224,29 @@ function decide(m, cpu, p, o, d) {
   // signature move when there's power to spare
   if (can(mv.sig) && p.hp > 20 && R() < L.sig * 0.5) return done({ buttons: COMBO.sig, time: 0.05 });
 
-  // too close: shove them away
-  if (d < 38 && can(mv.a2)) {
-    if (p.ch.id === 'siddhan' && can(mv.s3) && R() < 0.25) { // or blink away
-      const l = d || 1;
-      return done({ buttons: { s3: true, mx: (p.x - o.x) / l, my: (p.y - o.y) / l }, time: 0.05 });
+  // rushed up close (ground rule 16: every fighter has an answer). Within the opponent's melee reach:
+  // a good player blinks out toward the middle, walls up against a swing that's coming, or shoves first.
+  const rushed = d < oReach + 6 && !airborne(p);
+  if (rushed && p.recover <= 0) {
+    if (flyS && !p.air && can(mv[flyS]) && p.power > 20 && R() < 0.3 + 0.5 * L.plan) return done({ buttons: { [flyS]: true }, time: 0.05 }); // take off: the knife can't follow
+    if (p.ch.id === 'siddhan' && can(mv.s3) && R() < 0.25 + 0.5 * L.plan) { // blink away, toward the middle of the arena
+      const l = d || 1, ax = (p.x - o.x) / l - p.x / ARENA.r, ay = (p.y - o.y) / l - p.y / ARENA.r, al = Math.hypot(ax, ay) || 1;
+      return done({ buttons: { s3: true, mx: ax / al, my: ay / al }, time: 0.05 });
     }
-    return done({ buttons: { a2: true }, time: 0.05 });
+    const swing = o.cast && !o.cast.done && o.cast.move.kind === 'melee';
+    if ((swing || o.recover <= 0) && p.ch.id === 'siddhan' && p.power >= p.ch.defence.cost && R() < L.block * 0.6) {
+      return { buttons: { block: true }, time: 0.35 + R() * 0.3 }; // the earth wall stops the knife
+    }
+    if (d < (mv.a2.reach || 46) && can(mv.a2) && !airborne(o)) return done({ buttons: { a2: true }, time: 0.05 });
   }
 
   if (R() > L.aggr) return null;
   // a special, if the power is there and the move fits the distance
   const spare = p.power - L.reserve;
-  const specials = ['s1', 's2', 's3'].filter((s) => mv[s] && mv[s].kind !== 'blink' && can(mv[s]) && (mv[s].cost?.power || 0) <= spare);
+  const specials = ['s1', 's2', 's3'].filter((s) => mv[s] && !['blink', 'fly', 'jump'].includes(mv[s].kind) && can(mv[s]) && (mv[s].cost?.power || 0) <= spare);
   if (specials.length && R() < 0.45) {
     const s = specials[Math.floor(R() * specials.length)];
-    if (!(s === 's2' && p.ch.id === 'siddhan' && d < 60)) return done({ buttons: { [s]: true }, time: 0.05 }); // the binding chant is slow: not up close
+    return done({ buttons: { [s]: true }, time: 0.05 });
   }
   // the Mage holds back mantra bolts while he isn't saving up for the chakra
   if (p.ch.id === 'siddhan' && p.power - (mv.a1.cost?.power || 0) < mv.s1.cost.power && R() < L.plan * 0.5) return null;
@@ -161,6 +255,18 @@ function decide(m, cpu, p, o, d) {
     const safe = !m.projectiles.some((pr) => pr.owner !== p.id) && d > 70; // charging can be interrupted: only when nothing is coming
     // the slow Mage only charges when the Warrior can't punish it (busy meditating, held, stunned or casting)
     const busy = !!(o.med || o.effects.hold || o.effects.stun || (o.cast && !o.cast.done && !o.cast.move.charge && o.cast.move.cast - o.cast.t > 0.8)); // a long cast, not a quick shot
+    // a stream of weak shots coming straight back would cancel every quick arrow (rule 6): charge just enough to beat
+    // the next one in the clash, if there's time before it arrives (the counter to a bolt wall)
+    if (mv.a1.charge && p.ch.weapon === 'bow' && R() < L.plan) {
+      const C = mv.a1.charge, pr = m.projectiles.find((q) => q.owner !== p.id && !q.seek && (q.vx * (p.x - q.x) + q.vy * (p.y - q.y)) > 0);
+      if (pr) {
+        const v = Math.hypot(pr.vx, pr.vy) || 1, tHit = Math.hypot(p.x - pr.x, p.y - pr.y) / v;
+        const k = Math.max(0, Math.min(1, (pr.dmg + 1.5 - mv.a1.damage) / (C.damage - mv.a1.damage)));
+        const tNeed = mv.a1.cast + k * C.max;
+        if (tHit > tNeed + 0.08) return done({ buttons: { a1: true }, time: tNeed + 0.02 });
+        if (k > 0) return null; // too close to out-charge it: a quick arrow would only die in the clash, so wait for a gap
+      }
+    }
     const canCharge = p.ch.weapon === 'bow' ? safe : safe && busy;
     const charge = mv.a1.charge ? mv.a1.cast + (canCharge ? L.minCharge + R() * mv.a1.charge.max * L.charge : 0) : 0.05; // hold a bow shot to charge it
     return done({ buttons: { a1: true }, time: charge });
@@ -170,7 +276,7 @@ function decide(m, cpu, p, o, d) {
 
 // Each fighter's own game plan, on top of the shared basics. Returns a press or null.
 //  - Both: break the opponent's slow casts with a quick hit (ground rule 7), and cash in when they're held.
-//  - Mage (slow, strong magic): the chakra reaches anywhere, the binding chant and Thousand-Arm Form when the Warrior
+//  - Mage (slow, strong magic): the chakra reaches anywhere, Thousand-Arm Form when the Warrior
 //    is busy, blink in when the Warrior is out of bolt range.
 //  - Warrior (fast, bow): pin then charge a full shot, rain arrows on a fighter standing still, Gaja Arrow from afar.
 function tactics(m, cpu, p, o, d, can, threat) {
@@ -192,7 +298,6 @@ function tactics(m, cpu, p, o, d, can, threat) {
 
   if (K) {
     if (can(mv.sig) && p.hp > 20 && (o.med || o.effects.stun || (o.effects.hold && o.effects.hold.t > 2))) return { buttons: { s1: true, s2: true, s3: true }, time: 0.05 };
-    if (can(mv.s2) && d > 55 && d < 135 && busy && !o.effects.hold) return tap('s2'); // binding chant
     if (can(mv.s1) && (busy || d > 150 || R() < 0.15)) return tap('s1');             // chakra
     if (d > 150 && can(mv.s3) && p.power > mv.s3.cost.power + mv.s1.cost.power * 0.5 && R() < 0.4) {
       return tap('s3', { mx: (o.x - p.x) / d, my: (o.y - p.y) / d });                  // blink in
@@ -204,9 +309,9 @@ function tactics(m, cpu, p, o, d, can, threat) {
     return { buttons: { a1: true }, time: mv.a1.cast + mv.a1.charge.max };            // free full charge
   }
   if (can(mv.s3) && busy && p.power > mv.s3.cost.power + L.reserve) return tap('s3'); // arrow rain on a sitting target
-  if (can(mv.s2) && !o.effects.hold && p.power > mv.s2.cost.power + mv.a1.cost.power * 3 && R() < 0.3) return tap('s2'); // pin
+  const pin = ['s1', 's2', 's3'].find((sl) => mv[sl]?.effect?.kind === 'hold');
+  if (pin && can(mv[pin]) && !o.effects.hold && p.power > mv[pin].cost.power + mv.a1.cost.power * 3 && R() < 0.3) return tap(pin); // pin
   if (can(mv.sig) && p.hp > 25 && d > 150 && !threat && (!oc && o.power < 30)) return { buttons: { s1: true, s2: true, s3: true }, time: 0.05 };
-  if (can(mv.s1) && d < 110 && R() < 0.3) return tap('s1');                         // split shot up close
   return null;
 }
 
@@ -236,17 +341,29 @@ function incoming(m, p) {
   return best;
 }
 
+// Which way to sidestep a shot: across its path, toward the middle of the arena (a good player doesn't dodge into
+// the edge, where the invisible wall stops them); a beginner picks a side at random.
+function dodgeDir(p, threat, R, L) {
+  const l = Math.hypot(threat.vx, threat.vy) || 1, sx = -threat.vy / l, sy = threat.vx / l;
+  const inward = sx * -p.x + sy * -p.y >= 0 ? 1 : -1;
+  const side = R() < L.plan ? inward : R() < 0.5 ? 1 : -1;
+  return { x: sx * side, y: sy * side };
+}
+
 // Movement: keep a good fighting distance, circle the opponent, stay off the edge and out of danger.
 function steer(m, cpu, p, o, d, dt) {
   const R = cpu.r;
   let x = 0, y = 0;
-  if (cpu.dodgeT > 0) { cpu.dodgeT -= dt; x += cpu.dodge.x * 2; y += cpu.dodge.y * 2; }
+  if (cpu.dodgeT > 0) { cpu.dodgeT -= dt; x += cpu.dodge.x * 3.5; y += cpu.dodge.y * 3.5; } // dodging outweighs everything else
   // the Warrior uses his speed to stay out of bolt range (kite); the Mage wants to close in.
   // Against a meditating opponent, close in: meditation only fills while you keep away, and the barrier has to be broken.
   // (a Warrior against a short-range basic attack stays just beyond its reach)
   const outReach = RANGES[o.ch.moves.a1.range]?.[1] ?? Infinity;
-  const kiteTo = Number.isFinite(outReach) ? outReach + 12 : 95 + cpu.L.kite * 65; // even a beginner backs off out of reach
-  const want = o.med ? 30 + 40 * (1 - cpu.L.plan) : p.ch.id === 'siddhan' ? 80 : kiteTo;
+  let kiteTo = Number.isFinite(outReach) ? outReach + 12 : 95 + cpu.L.kite * 65; // even a beginner backs off out of reach
+  // shots weaken past their full-strength distance (rule 4): a good player fights from inside it, even if that is in reach
+  const full = p.ch.moves.a1.falloff?.full;
+  if (full && kiteTo > full + 15) kiteTo += (full + 10 - kiteTo) * cpu.L.plan;
+  const want = o.med ? 30 + 40 * (1 - cpu.L.plan) : cpu.rushT > 0 ? (p.ch.moves.a2.reach || 46) - 12 : p.ch.id === 'siddhan' ? 80 : kiteTo;
   const ux = d ? (o.x - p.x) / d : 1, uy = d ? (o.y - p.y) / d : 0;
   const push = Math.max(-1, Math.min(1, (d - want) / 30));
   x += ux * push; y += uy * push;
@@ -254,7 +371,7 @@ function steer(m, cpu, p, o, d, dt) {
   if (cpu.strafeT <= 0) { cpu.strafe = R() < 0.5 ? -1 : 1; cpu.strafeT = 1 + R() * 2; }
   x += -uy * cpu.strafe * 0.6; y += ux * cpu.strafe * 0.6;
   // a Warrior hoping to meditate keeps away (meditation only fills while the opponent is far)
-  if (p.ch.cls === 'warrior' && p.devotion < TUNE.meditate.segments && d < TUNE.meditate.dist + 30 && p.power > 10) { x -= ux * 0.8; y -= uy * 0.8; }
+  if (p.ch.cls === 'warrior' && !o.med && !(cpu.rushT > 0) && p.devotion < TUNE.meditate.segments && d < TUNE.meditate.dist + 30 && p.power > 10) { x -= ux * 0.8; y -= uy * 0.8; }
   // a wall in the way: run round its nearer end to shoot past it (the fast Warrior does this best)
   const wb = cpu.L.plan > 0.4 ? wallBetween(m, p, o) : null;
   if (wb) {

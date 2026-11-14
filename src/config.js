@@ -33,14 +33,23 @@ export const TUNE = {
   // opponent prepares an attack), for at most buildTime s. When block is let go, the wall stays where it is,
   // at the size it reached, for standTime s.
   block: { prepMult: 2, buildTime: 3, standTime: 3, gap: 14, halfWidth: [8, 20], maxWalls: 3 }, // up to 3 walls standing at once
+  quickShot: 0.5,       // a basic shot charged less than this (0-1) is 'quick': two quick shots pass each other (rule 6)
   chord: 0.08,          // special buttons pressed within this time count as one combo (boon / signature)
   // Meditation (ground rule 11, owner 2026-11-08): fills a devotion bar of `segments` parts, segTime s each,
   // wherever the opponent is (`dist` is only how far the computer likes to be before it starts). Only full segments count. A barrier of `barrier` strength
-  // goes up around the meditating fighter. Boons cost `tiers` segments: small, medium, divine weapon.
-  meditate: { dist: 90, cost: 2, segments: 10, segTime: 2.5, barrier: 25, tiers: [3, 6, 10] },
+  // goes up around the meditating fighter each sitting. It soaks only part of each hit: `leak` of it still reaches health
+  // (owner, 2026-11-14: the barrier worked as extra health, so sitting far away won). Boons cost `tiers` segments: small, divine weapon (owner, 2026-11-14: two levels, 8 segments).
+  meditate: { dist: 90, cost: 2, segments: 8, segTime: 2.5, barrier: 25, leak: 0.5, tiers: [4, 8] },
   // Brahmastra (a draw) is rare unless the caster is near the end of their health (owner, 2026-11-08):
   // its weight against the other divine weapons (weight 1 each) by the caster's health.
   // (weights against 3 other divine weapons: about 5% above 35% health, 20% at 15-35%, 50% at 15% or less)
   brahmastraOdds: [{ hp: 15, w: 3 }, { hp: 35, w: 0.75 }, { hp: 100, w: 0.16 }],
+  // Recovery (ground rule 16, owner 2026-11-13: no spamming): after an attack goes off, its user can't start
+  // another move for this many seconds. Not a cooldown: no move is locked, the fighter is briefly busy.
+  // They can still walk and block. Blink and meditation are not attacks and have none.
+  recover: { basic: 0.35, special: 0.6 },
+  // Height (ground rule 17, owner 2026-11-14): jumping is a short low hop, flying is held until landing.
+  // land: the pause after touching down; jump/fly specifics live on the moves themselves.
+  air: { land: 0.2, chasmPush: 120 },
   scene: 2.5,           // dramatic scene length for power moves; the whole game pauses
 };

@@ -102,6 +102,7 @@ function onEvent(e, m) {
   if (e.type === 'barrier') add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'medStop' && m.players[e.pid].msg?.text === 'BARRIER BROKEN') add({ kind: 'boom', x: m.players[e.pid].x, y: m.players[e.pid].y, life: 0.5, ground: true });
   if (e.type === 'rain') add({ kind: 'rain', x: e.x, y: e.y, r: e.r, life: 0.35 });
+  if (e.type === 'tandava') { add({ kind: 'shake', x: 0, y: 0, amp: 5, life: 1.4 }); sound.play('shatter2'); } // the island tears in two
   if (e.type === 'blink') add({ kind: 'trail', x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'release') { // power moves land with a bang in the arena, right after their scene
     const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
@@ -215,7 +216,7 @@ function update(dt) {
     if (any('down')) { S.titleSel = (S.titleSel + 1) % 3; sound.play('tick'); }
     if (any('confirm') || any('pause')) {
       if (S.titleSel === 0) { S.tutorial = false; go('setup'); }
-      else if (S.titleSel === 1) { S.tutorial = true; S.mode = '1p'; go('select'); S.cursor = [0, CHAR_IDS.length > 1 ? 1 : 0]; S.locked = [false, false]; S.focus = 0; S.boonsPage = S.controlsPage = false; }
+      else if (S.titleSel === 1) { S.tutorial = true; S.mode = '1p'; go('select'); S.cursor = [0, CHAR_IDS.length > 1 ? 1 : 0]; S.locked = [false, false]; S.focus = 0; S.boonsPage = S.movesPage = false; }
       else openControls('title');
     }
   } else if (S.screen === 'controls') {
@@ -227,12 +228,12 @@ function update(dt) {
     if (any('down')) S.row = (S.row + 1) % n;
     if (any('left')) changeRow(-1);
     if (any('right')) changeRow(1);
-    if (any('confirm')) { go('select'); S.sel = 0; S.cursor = [0, CHAR_IDS.length > 1 ? 1 : 0]; S.locked = [false, false]; S.focus = 0; S.boonsPage = S.controlsPage = false; }
+    if (any('confirm')) { go('select'); S.sel = 0; S.cursor = [0, CHAR_IDS.length > 1 ? 1 : 0]; S.locked = [false, false]; S.focus = 0; S.boonsPage = S.movesPage = false; }
     else if (any('back')) go('title');
   } else if (S.screen === 'select') { // character select: each player picks a card; in 1 player mode the computer takes the other one
-    if (S.boonsPage || S.controlsPage) { if (any('up') || any('back') || any('confirm') || any('down')) S.boonsPage = S.controlsPage = false; return; }
+    if (S.boonsPage || S.movesPage) { if (any('up') || any('back') || any('confirm') || any('down')) S.boonsPage = S.movesPage = false; return; }
     if (any('down')) { S.boonsPage = true; return; }
-    if (any('up')) { S.controlsPage = true; return; }
+    if (any('up')) { S.movesPage = true; return; }
     const humans = S.mode === '1p' ? [0] : [0, 1], menu = (pid) => (S.mode === '1p' ? { ...m[1], ...Object.fromEntries(Object.entries(m[0]).filter(([, v]) => v)) } : m[pid]);
     for (const pid of humans) {
       const mm = menu(pid), n = CHAR_IDS.length;

@@ -6,7 +6,7 @@ import { RES } from './config.js';
 
 export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, gods: {}, cards: {}, title: null, arms: null, ready: false };
 // Dramatic scene paintings (art/scene_<key>.png), drawn by drawScene in render.js.
-const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel', 'vishwaroopam'];
+const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel', 'vishwaroopam', 'tandava'];
 // The boon gods, painted blessing (art/god_<name>.png, and the figure alone on magenta in god_<name>_fg.png).
 const GOD_ART = ['shiva', 'murugan', 'brahma', 'krishna'];
 
@@ -22,9 +22,12 @@ const FX_NAMES = [
 const DEFAULT_FIT = { cx: 0.5, cy: 0.58, rx: 0.23, ry: 0.115 };
 // Per fighter: walk = 1-4 idle, 5-8 walk; act = the 8 action poses (see POSES).
 const SHEETS = {
-  siddhan: { walk: 'art/siddhan_sheet.png', act: 'art/siddhan_actions.png' },
-  veeran: { walk: 'art/veeran_sheet.png', act: 'art/veeran_actions.png' },
+  siddhan: { walk: 'art/siddhan_sheet.png', act: 'art/siddhan_actions.png', air: 'art/siddhan_fly.png', airBody: 1.15 }, // the fly art's body is ~87% of its height (a glow under the feet)
+  veeran: { walk: 'art/veeran_sheet.png', act: 'art/veeran_actions.png', air: 'art/veeran_jump.png' },
 };
+// Off-the-ground poses (ground rule 17), 3 frames each (Codex, 2026-11-14):
+// Siddhan's fly: lift-off, flying, casting in the air. Veeran's jump: crouch, mid-air, landing.
+export const AIR_POSES = { lift: 0, up: 1, cast: 2, crouch: 0, land: 2 };
 // Frame numbers in each action sheet (0-based).
 export const POSES = {
   siddhan: { shootWind: 0, shoot: 1, meleeWind: 2, melee: 3, block: 4, cast: 5, hit: 6, meditate: 7 },
@@ -65,6 +68,18 @@ function frames(c, d, expect = 8) {
   return { cells: cells.map(([a, b]) => ({ x: a, w: b - a, cx: (a + b) / 2 })), top, bottom };
 }
 
+// Height of the tallest drawn figure among n equal cells.
+function tallestCell(c, d, n) {
+  const W = c.width, Hh = c.height, px = d.data, cw = W / n;
+  let best = 1;
+  for (let i = 0; i < n; i++) {
+    let t = Hh, b = 0;
+    for (let y = 0; y < Hh; y++) for (let x = Math.round(i * cw); x < Math.round((i + 1) * cw); x++) if (px[(y * W + x) * 4 + 3] > 40) { if (y < t) t = y; if (y > b) b = y; }
+    best = Math.max(best, b - t + 1);
+  }
+  return best;
+}
+
 // Shrink the whole sheet once, with smoothing (halving steps), so frames draw 1:1 and stay crisp.
 function prescale(c, f, k) {
   let src = c, w = c.width, h = c.height;
@@ -90,7 +105,7 @@ export async function loadArt(base = '') {
   ART.arena = arena;
   ART.fit = { ...DEFAULT_FIT, ...(fitJson || {}) };
   for (const [id, src] of Object.entries(SHEETS)) {
-    const [walkImg, actImg] = await Promise.all([loadImg(base + src.walk), loadImg(base + src.act)]);
+    const [walkImg, actImg, airImg] = await Promise.all([loadImg(base + src.walk), loadImg(base + src.act), src.air ? loadImg(base + src.air) : null]);
     if (!walkImg) continue;
     const w = keyOut(walkImg), wf = frames(w.c, w.d);
     const k = (SPRITE_H * RES) / Math.max(1, wf.bottom - wf.top + 1); // the walk sheet sets the size...
@@ -98,6 +113,13 @@ export async function loadArt(base = '') {
     if (actImg && actImg.width === walkImg.width && actImg.height === walkImg.height) {
       const a = keyOut(actImg), af = frames(a.c, a.d);
       ART.sheets[id].act = prescale(a.c, { ...af, base: wf.bottom }, k); // ...and the feet line for both sheets
+    }
+    if (airImg && airImg.height === walkImg.height) { // same cell size and feet line as the walk sheet
+      const a = keyOut(airImg), af = frames(a.c, a.d, 3);
+      // the air art draws the fighter smaller in its cell than the walk art does: scale it so its tallest frame is
+      // as tall as a standing fighter (a tucked jump would otherwise read as the fighter shrinking)
+      const ka = k * Math.max(1, (wf.bottom - wf.top + 1) / tallestCell(a.c, a.d, 3)) * (src.airBody || 1);
+      ART.sheets[id].air = prescale(a.c, { ...af, base: wf.bottom }, ka);
     }
   }
   const sceneImgs = await Promise.all(SCENES.map((k) => loadImg(`${base}art/scene_${k}.png`)));
@@ -124,6 +146,8 @@ export async function loadArt(base = '') {
   if (haloHands) Object.assign(ART.fx, cutFx(haloHands, ['haloArm', 'haloPalm']));
   const divineHalo = await loadImg(base + 'art/fx_divine_halo.png');
   if (divineHalo) Object.assign(ART.fx, cutFx(divineHalo, ['divineHalo'], 80));
+  const crack = await loadImg(base + 'art/fx_tandava_crack.png'); // Shiva's Tandava: the glowing chasm (Codex, 2026-11-14)
+  if (crack) Object.assign(ART.fx, cutFx(crack, ['tandavaCrack']));
   const ele = await loadImg(base + 'art/fx_elephant.png'); // single sprite: the Gaja Arrow's war elephant
   if (ele) Object.assign(ART.fx, cutFx(ele, ['elephant']));
   ART.ready = true;
@@ -131,13 +155,14 @@ export async function loadArt(base = '') {
 }
 
 // Draw frame `i` of a fighter's walk or act sheet with its feet at (x, y). flip = facing left.
-export function drawSprite(g, id, set, i, x, y, flip) {
+export function drawSprite(g, id, set, i, x, y, flip, scale = 1) {
   const s = ART.sheets[id]?.[set];
   if (!s) return false;
   const f = s.cells[i % s.cells.length], h = s.bottom - s.top + 1, up = s.base - s.top + 1;
   g.save();
   g.translate(Math.round(x * RES) / RES, Math.round(y * RES) / RES);
   if (flip) g.scale(-1, 1);
+  if (scale !== 1) g.scale(scale, scale);
   g.imageSmoothingEnabled = true;
   g.drawImage(s.canvas, f.x, s.top, f.w, h, -(f.cx - f.x) / RES, -up / RES, f.w / RES, h / RES); // 1 sheet pixel = 1 screen pixel
   g.restore();

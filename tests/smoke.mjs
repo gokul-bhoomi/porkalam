@@ -125,14 +125,14 @@ await check('meditation fills devotion behind a barrier, and spending it shows t
   const s = await game(() => {
     const d = window.__game.debug; d.start({ minutes: 5 });
     d.set(0, { x: -100, y: 0 }); d.set(1, { x: 100, y: 0 });
-    d.setInput(1, { s1: true, my: 1 }); d.step(1); d.setInput(1, {}); d.step(60 * 8);
+    d.setInput(1, { s1: true, my: 1 }); d.step(1); d.setInput(1, {}); d.step(60 * 10.5);
     const med = d.snapshot();
     d.setInput(1, { block: true }); d.step(2); d.setInput(1, {}); d.step(5); // stop meditating
     d.setInput(1, { s1: true, s2: true }); d.step(1); d.setInput(1, {}); d.step(10); // spend
     return { med, after: d.snapshot() };
   });
   const p = s.med.match.players[1];
-  expect(p.med && p.barrier > 0 && p.devotion === 3, `meditating with a barrier, 3 segments: ${JSON.stringify(p)}`);
+  expect(p.med && p.barrier > 0 && p.devotion === 4, `meditating with a barrier, 4 segments: ${JSON.stringify(p)}`);
   expect(s.after.match.players[1].devotion === 0, `devotion not spent: ${s.after.match.players[1].devotion}`);
   expect(s.after.match.players[1].boon, `no held boon: ${JSON.stringify(s.after.match.players[1])}`);
   const snd = await game(() => window.__game.sounds);
@@ -223,7 +223,7 @@ await check('the Codex art loads: arena plus 8 frames for each fighter, and ?gre
   const a = await game(() => window.__game.art);
   expect(a.arena, 'arena.png did not load');
   expect(a.frames.siddhan === 8 && a.frames.veeran === 8 && a.actions.siddhan === 8 && a.actions.veeran === 8, `frames: ${JSON.stringify(a)}`);
-  expect(a.fx === 30, `expected 30 effect sprites (two sheets of 8, the war elephant, 8 legacy hands, 2 circle hands, 2 halo hands, 1 divine halo), got ${a.fx}`);
+  expect(a.fx === 31, `expected 31 effect sprites (two sheets of 8, the war elephant, 8 legacy hands, 2 circle hands, 2 halo hands, 1 divine halo, the Tandava crack), got ${a.fx}`);
   expect(a.scenes >= 5, `expected the power-up sky paintings, got ${a.scenes}`);
   expect(a.gods === 4, `expected the 4 boon gods, got ${a.gods}`);
   expect(a.sceneLayers >= 2, `expected the spirit-form layers for both signatures, got ${a.sceneLayers}`);
@@ -355,7 +355,7 @@ await check('no text overlaps or runs off screen on any menu page', async () => 
     d.press('up'); d.step(1); shot('controls page'); d.press('up'); d.step(1);
     d.press('confirm'); d.step(1); // into the fight (Veeran vs CPU Siddhan)
     d.step(30); shot('fight HUD');
-    const m = d.match(); m.players[0].devotion = 10; d.setInput(0, { s1: true, s2: true }); d.step(1); d.setInput(0, {}); d.step(40); shot('boon card + held boon tag');
+    const m = d.match(); m.players[0].devotion = 8; d.setInput(0, { s1: true, s2: true }); d.step(1); d.setInput(0, {}); d.step(40); shot('boon card + held boon tag');
     d.press('pause'); d.step(1); shot('pause menu');
     d.press('down'); d.step(1); d.press('confirm'); d.step(1);
     for (const pg of ['P1 page', 'P2 page', 'boons page (pause)', 'controls page (pause)']) { shot(pg); d.press('right'); d.step(1); }
