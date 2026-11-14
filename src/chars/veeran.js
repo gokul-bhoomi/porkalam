@@ -1,9 +1,9 @@
-// Veeran (Warrior, bow): a South Indian archer-warrior. An original character; the game is inspired by Indian mythology.
+// Kanalan (Warrior, bow): a South Indian archer-warrior. An original character; the game is inspired by Indian mythology.
 // Numbers are first guesses, to be tuned in play with the owner.
 import { POWER } from '../config.js';
 
 export default {
-  id: 'veeran', name: 'Veeran', cls: 'warrior', color: '#e0653a',
+  id: 'veeran', name: 'Kanalan', cls: 'warrior', color: '#e0653a',
   health: 100,
   power: POWER,
   speed: 80,

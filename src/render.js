@@ -1157,7 +1157,6 @@ export function drawSetup(now, o) {
   drawBackdrop(now); drawArena();
   R(0, 0, W, H, 'rgba(10,12,20,.65)');
   txt('MATCH SETUP', CX, 40, '#ffcf6a', 'center', 16);
-  const names = ['SIDDHAN (MAGE)', 'VEERAN (WARRIOR)'];
   const show = {
     mode: ['PLAYERS', o.mode === '1p' ? '1 PLAYER VS CPU' : '2 PLAYERS'],
     level: ['CPU LEVEL', o.levelName],

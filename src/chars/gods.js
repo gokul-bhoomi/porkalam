@@ -31,7 +31,7 @@ export const GODS = {
   krishna: {
     name: 'Krishna',
     tiers: [
-      [], // Flute charm (2026-11-08) and Sudarshana Chakra (2026-11-14: Siddhan already has a chakra) removed
+      [], // Flute charm (2026-11-08) and Sudarshana Chakra (2026-11-14: Mangulan already has a chakra) removed
       [{ id: 'vishwaroopam', name: 'Vishwaroopam', desc: '40% DAMAGE ACROSS THE WHOLE ARENA', kind: 'global', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 40, knockback: 60, strikeDelay: 0.4 }],
     ],
   },
