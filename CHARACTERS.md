@@ -2,7 +2,7 @@
 
 These follow [GROUND-RULES.md](GROUND-RULES.md) and [CLASS-RULES.md](CLASS-RULES.md). Strength is shown as small, medium or large, and exact numbers get tuned in play. Both fighters have the same power bar size and refill speed.
 
-Both fighters are **original characters**. The game is inspired by Indian mythology: it shows in their dress and the arena, and the real gods appear only as givers of boons. (They replaced Krishna and Raja Raja Chola on 2026-11-08.)
+Both fighters are **original characters**. The game is inspired by Indian mythology: it shows in their dress and the arena, and the real gods appear only as givers of boons.
 
 **Signature moves have a 2 s cast** (was ~4 s; owner, 2026-11-09), and both signatures do the same damage (35%). The fighter stands still and can't move or block. Any hit breaks it, and the cost is still spent. When the cast completes, a power-up plays in the arena itself: the camera closes in, the world around the sand island becomes the power, and the move goes off.
 
@@ -52,4 +52,4 @@ Owner, 2026-11-14: the medium level was removed, along with Third-eye spark, Sud
 
 Owner, 2026-11-08: Flute charm and Peacock dash were removed. A boon's attack always finds the opponent: it homes in, works from any distance and passes walls; only another attack or boon meeting it can weaken or cancel it. When a god grants a boon, a card shows its name, what it does and the keys to use it.
 
-When a boon is invoked, the fight slows down for about 1.5 s, the god's light comes down on the caster and, for small boons, the god appears as a vast vision over the arena, blessing. Boon attacks fly larger, with a glowing trail. The god rises in the sky behind the island, never over the sand, so attacks stay visible. Bells and a choir sound when a god answers; a divine weapon adds a conch. Damage raised by the owner on 2026-11-08: divine weapons 45 / 35 / 40, signatures 35. Where they land, the arena shatters. Divine weapons go through a meditation barrier and play a power-up with the god's painting. Strong hits crack the sand, and power moves throw the river up round the island. Brahmastra is rare unless the caster's health is low (about 5% above 35% health, 20% at 15-35%, 50% at 15% or less).
+When a boon is invoked, the fight slows down for about 1.5 s, the god's light comes down on the caster and, for small boons, the god appears as a vast vision over the arena, blessing. Boon attacks fly larger, with a glowing trail. The god rises in the sky behind the island, never over the sand, so attacks stay visible. Bells and a choir sound when a god answers; a divine weapon adds a conch. Where they land, the arena shatters. Divine weapons go through a meditation barrier and play a power-up with the god's painting. Strong hits crack the sand, and power moves throw the river up round the island. Brahmastra is rare unless the caster's health is low (about 5% above 35% health, 20% at 15-35%, 50% at 15% or less).
