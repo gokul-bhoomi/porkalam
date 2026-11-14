@@ -6,6 +6,8 @@
     "test": "node --test tests/*.test.js",
     "smoke": "node tests/smoke.mjs",
     "verify": "npm test && npm run smoke",
+    "balance": "node tests/balance-report.mjs",
+    "hunt": "node tests/hunt/hunt.mjs",
     "serve": "node serve.mjs"
   },
   "devDependencies": {

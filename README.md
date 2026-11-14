@@ -25,7 +25,7 @@ On the setup screen pick **1 player vs CPU** (and the CPU level) or **2 players*
 | Special 1 / 2 / 3 | R / T / Y | I / O / P | B / Y / LB |
 | Signature (all three specials together) | R+T+Y | I+O+P | B+Y+LB |
 | Meditate (down + special 1): fills devotion behind a barrier | S+R | ↓+I | Stick down + B |
-| Two specials together: ask a god for a boon with devotion (3 = small, 6 = medium, 10 = divine); it's revealed and held. Two specials again use the held boon | R+T (any two of R/T/Y) | I+O (any two of I/O/P) | B+Y (any two of B/Y/LB) |
+| Two specials together: ask a god for a boon with devotion (4 = small, 8 = divine); it's revealed and held. Two specials again use the held boon | R+T (any two of R/T/Y) | I+O (any two of I/O/P) | B+Y (any two of B/Y/LB) |
 | Pause | Esc | Esc | Start |
 | Sound on/off | M | M | |
 

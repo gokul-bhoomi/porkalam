@@ -24,9 +24,10 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
   - a cast time.
   - damage. Damage is also the move's strength in a clash.
   - knockback.
-- No cooldowns.
+- No cooldowns. (The short recovery after an attack, rule 16, is not a cooldown: no move is locked, the fighter is briefly busy.)
 - A move can bring its own user to 0 health only if that move explicitly says so.
 - Attacks automatically turn toward the opponent. Projectiles fly in a straight line and can be dodged by moving. Exception (owner, 2026-11-08): a boon's attack always finds the opponent. It homes in, can be used from any distance, and walls don't stop it; only another attack or boon meeting it can weaken or cancel it (rule 6).
+- Every shot has a full-strength distance and does its full damage within it. Past that distance it weakens, down to half (it keeps its own reach and life). Boons always hit at full strength. (Owner, 2026-11-14: arrows from the far edge hit as hard as from close up, so a fast fighter could win by poking from far away. Owner, 2026-11-14: the mantra bolt weakens too, past 80 to half by 150; at full damage to its reach it out-traded the arrow at long range.)
 - Power moves get a short dramatic scene. The game pauses for both players while it plays.
 
 ## 5. Defence
@@ -37,6 +38,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 
 ## 6. Clashes
 - Moves collide only when they touch on screen.
+- Two **quick basic shots** (tapped, or charged less than halfway) fly past each other. A charged shot, a special or a boon still meets whatever it touches. (Owner, 2026-11-14: otherwise a stream of quick shots cancelled every shot coming the other way, so whoever fired more often won a shooting duel, which rewards spamming, rule 16.)
 - Higher damage wins and still hits, reduced by the weaker move's damage.
 - Equal damage: both moves are cancelled.
 - Both fighters always pay their full cost.
@@ -61,10 +63,11 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 
 ## 11. Meditation, devotion and boons (owner, 2026-11-08)
 - Every fighter, of any class, can meditate (down + special 1). They can't move while meditating.
-- Meditation fills a **devotion bar of 10 segments**, wherever the opponent is (owner, 2026-11-08: a nearby opponent can't stall it; they have to break the barrier). **Only full segments count**: stopping, or having the barrier broken, loses the part-filled segment. Full segments are kept.
-- While meditating, a **barrier** goes up around the fighter automatically. Ordinary hits drain the barrier instead of health and don't interrupt. If the barrier breaks, meditation ends, and what the barrier couldn't hold gets through.
+- Meditation fills a **devotion bar of 8 segments** (10 until owner, 2026-11-14), wherever the opponent is (owner, 2026-11-08: a nearby opponent can't stall it; they have to break the barrier). **Only full segments count**: stopping, or having the barrier broken, loses the part-filled segment. Full segments are kept.
+- While meditating, a **barrier** goes up around the fighter automatically, fresh each sitting. Ordinary hits drain the barrier and don't interrupt, but the barrier only soaks **half** of each hit: the other half still reaches health. (Owner, 2026-11-14: a barrier that soaked whole hits worked as extra health, so sitting far away and meditating won; the earlier carry-over between sittings is no longer needed, because sitting again under fire now costs health.) If the barrier breaks, meditation ends, and what the barrier couldn't hold gets through.
+- A wall the fighter built stays standing for as long as they meditate (owner, 2026-11-14); hits still wear it down. Sitting behind a wall is how to meditate against a fast opponent; ground attacks, going round the wall and piercing moves are the answers.
 - **Divine weapons** (the top boons, such as Pashupatastra) go straight through a barrier and break the meditation.
-- Devotion is spent by pressing **two special move buttons together**. There is no separate boon button. It asks for the biggest boon it pays for: **3 segments = a small boon, 6 = a medium boon, 10 = a divine weapon**, from a **random god**. The god appears and **reveals the boon, which is then held**. Two specials again **use it, now or any time later**. A fighter holds **one boon at a time**; while holding one, two specials use it rather than asking for another, and devotion keeps banking. (Owner, 2026-11-08.) Brahmastra (which ends the match in a draw) is rare at good health and much more likely when the caster's health is near the end.
+- Devotion is spent by pressing **two special move buttons together**. There is no separate boon button. It asks for the biggest boon it pays for: **4 segments = a small boon, 8 = a divine weapon** (owner, 2026-11-14: two levels, each worth the health lost sitting for it; there was a medium level), from a **random god**. The god appears and **reveals the boon, which is then held**. Two specials again **use it, now or any time later**. A fighter holds **one boon at a time**; while holding one, two specials use it rather than asking for another, and devotion keeps banking. (Owner, 2026-11-08.) Brahmastra (which ends the match in a draw) is rare at good health and much more likely when the caster's health is near the end.
 - When a boon is offered, and again when it is used, both players see which one it is and which god gave it.
 
 ## 12. Extra units and arena changes
@@ -90,3 +93,29 @@ Every fighter is defined by:
 - defence type
 - basic moves, each with a range
 - special moves, a signature move, and a class ability
+
+## 16. Balance (owner, 2026-11-13)
+Every fighter is about equally strong. There are no weak characters. You win with anyone by using the opponent's weakness, with the right combination of moves and timing. This holds however big powers get later (splitting or lifting the arena included).
+- **Same budget.** Every fighter spends the same budget across the same traits: range, speed, defence, control and burst damage. A strength in one is paid for in another. A slow fighter blocks better, and a fast fighter hits lighter.
+- **No spamming.** After an attack goes off, its user recovers before they can start another move: 0.35 s after a basic attack, 0.6 s after a special. They can still walk and block. Blink and meditation are not attacks and have no recovery.
+- **No one-button win.** Pressing one move over and over must lose to a player who uses the whole move set.
+- **The harder a move is to avoid, the weaker it is.** A slow, dodgeable shot can hit hard; a close hit you can't escape once caught should be a "get off me" tool.
+- **Survival checklist.** Every fighter has at least one answer to: being rushed up close, being shot at from range, a slow cast or hold coming, the opponent meditating, and a big power coming at them.
+- **Measured, not guessed.** Computer players play every pair of fighters at equal skill. Outside 45–55% wins the pair fails; outside 47–53% it gets a warning. Final tuning comes from real players.
+
+## 17. Height (owner, 2026-11-14)
+A fighter is on the ground, **jumping** (a short, low hop) or **flying** (high, until they land). What reaches them:
+
+| Attack | On the ground | Jumping | Flying |
+|---|---|---|---|
+| Melee | hits | misses | misses |
+| Ground attacks (arrow rain) | hit | miss | miss |
+| Shots | hit | miss (they pass under) | hit, weakening with distance as usual (rule 4) |
+| Homing moves and boons | hit | hit (a homing shot turns and finds you after you land) | hit |
+| Whole-arena moves | hit | hit | hit |
+
+- Nobody can block or meditate off the ground.
+- Touching down after a jump or a flight gives a short landing pause, like the recovery after an attack (rule 16).
+- Flying costs power every second it lasts; with no power left, the fighter lands.
+- A chasm or other ground-only arena change (rule 12) stops fighters on the ground; jumping or flying crosses it.
+

@@ -39,11 +39,12 @@ export const LESSONS = [
     event: (e, m, ch) => e.type === 'release' && e.pid === YOU && e.name === ch.moves.sig.name },
   { id: 'meditate', title: () => 'MEDITATE',
     lines: () => [`HOLD [${key('down')}] + PRESS [${key('s1')}] TO MEDITATE`, `FILL ${TUNE.meditate.tiers[0]} DEVOTION   PAD: DOWN+${pad('s1')}`],
+    enter: (T, m) => { m.players[YOU].air = null; }, // brought back down if still flying from the specials lesson (nobody meditates in the air)
     poll: (m) => m.players[YOU].devotion >= TUNE.meditate.tiers[0],
     progress: (m) => `${Math.min(m.players[YOU].devotion, TUNE.meditate.tiers[0])}/${TUNE.meditate.tiers[0]}` },
   { id: 'boons', info: true, title: () => 'BOONS',
     lines: () => [`Spend devotion to get a gift from a god.`,
-      `${TUNE.meditate.tiers[0]} devotion = small boon.  ${TUNE.meditate.tiers[1]} = medium.  ${TUNE.meditate.tiers[2]} = divine weapon.`,
+      `${TUNE.meditate.tiers[0]} devotion = small boon.  ${TUNE.meditate.tiers[1]} = divine weapon.`,
       'Risk: a divine weapon can be the BRAHMASTRA.', 'It ends the match for BOTH of you: a draw.'] },
   { id: 'boon', title: () => 'ASK THE GODS FOR A BOON',
     lines: () => [`PRESS [${key('s1')}]+[${key('s2')}] FOR A BOON`, `PRESS AGAIN TO USE IT   PAD: ${pad('s1')}+${pad('s2')}`],

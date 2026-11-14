@@ -2,8 +2,8 @@
 // Only reads the match state.
 import { W, H, RES, ARENA, TUNE } from './config.js';
 import { ACTIONS, LABELS, KEYS, KEY_NAME, PAD, PAD_NAMES, REMAP } from './input.js';
-import { opponent, chargeOf } from './sim.js';
-import { ART, drawSprite, drawFx as fxSprite, drawPortrait, POSES } from './art.js';
+import { opponent, chargeOf, airborne } from './sim.js';
+import { ART, drawSprite, drawFx as fxSprite, drawPortrait, POSES, AIR_POSES } from './art.js';
 import { GODS as GODS_LIST } from './chars/gods.js';
 const fxArt = (name) => useArt && ART.fx[name];
 
@@ -58,7 +58,7 @@ function txtFit(s, x, y, c, al, sz, maxW) {
   for (; z > 4; z -= 0.5) { G.font = `${z}px ${FONT}`; if (G.measureText(s).width <= maxW) break; }
   txt(s, x, y, c, al, z);
 }
-const short = (s) => s.toUpperCase().replace('SUDARSHANA ', '').replace('PINNING ARROW', 'PIN ARROW').replace('THIRD-EYE ', '');
+const short = (s) => s.toUpperCase().replace('PINNING ARROW', 'PIN ARROW');
 export const clock = (s) => { const t = Math.ceil(s); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 
 // ---------- arena ----------
@@ -128,6 +128,143 @@ function drawArena() {
 }
 
 
+// Shiva's Tandava: a glowing chasm across the island along a line (an arena change, ground rule 12).
+// How far (screen px, up is negative) the ground at a world point has moved: the caster's half (behind the line,
+// against n) rises, the other half sinks. Only a picture: the halves are still the same height in the game.
+const SPLIT = { lift: 14, sink: 10 };
+let chasm = null;
+// The split plays in beats: a crack races along the line (CRACK s), then the halves lurch apart with a small
+// bounce, sit there with the lava bubbling, and grind back together over the last 0.8 s.
+const CRACK = 0.3;
+const hash01 = (i) => { const v = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return v - Math.floor(v); };
+function splitK(c) { return clamp01((c.time - c.t - CRACK) / 0.7) * clamp01(c.t / 0.8); }
+function splitE(c) { // eased: the opening overshoots a little and settles, the closing is smooth
+  const o = clamp01((c.time - c.t - CRACK) / 0.7), cl = clamp01(c.t / 0.8), b = 1.7;
+  return (1 + (b + 1) * Math.pow(o - 1, 3) + b * Math.pow(o - 1, 2)) * cl * cl * (3 - 2 * cl);
+}
+function liftAt(x, y) {
+  const c = chasm;
+  if (!c) return 0;
+  const s = (x - c.x) * c.nx + (y - c.y) * c.ny, e = splitE(c);
+  return (s < 0 ? -SPLIT.lift : SPLIT.sink) * e;
+}
+// Draw the two halves of the island moved apart in height: under the sunk half a dark gap, under the raised half its
+// rock face. The picture is redrawn into each half, clipped to the floor's ellipse.
+function drawSplit(c, now) {
+  if (!useArt || !arenaDraw) return;
+  const k = splitE(c), rx = ARENA.r * SC * 1.07, ry = rx * SQ + 4;
+  const tx = -c.ny, ty = c.nx, B = 2000;
+  const half = (side) => { // the half-plane on one side of the line, as a screen polygon (sx/sy are linear)
+    const a = { x: c.x - tx * B, y: c.y - ty * B }, b = { x: c.x + tx * B, y: c.y + ty * B };
+    return [a, b, { x: b.x + c.nx * side * B, y: b.y + c.ny * side * B }, { x: a.x + c.nx * side * B, y: a.y + c.ny * side * B }].map((q) => [sx(q.x), sy(q.y)]);
+  };
+  const clip = (side) => {
+    G.beginPath(); G.ellipse(CX, CY, rx, ry, 0, 0, Math.PI * 2); G.clip();
+    G.beginPath(); half(side).forEach(([x, y], i) => (i ? G.lineTo(x, y) : G.moveTo(x, y))); G.closePath(); G.clip();
+  };
+  for (const side of [1, -1]) { // the sinking half first, then the raised half over it
+    const dy = (side < 0 ? -SPLIT.lift : SPLIT.sink) * k;
+    G.save(); clip(side); // what the moved half uncovers: darkness below the sunk half, rock under the raised one
+    const g = G.createLinearGradient(0, CY - ry, 0, CY + ry + 12);
+    if (side < 0) { g.addColorStop(0, '#a07a52'); g.addColorStop(0.5, '#6b4a2e'); g.addColorStop(1, '#3a2414'); } else { g.addColorStop(0, '#0a0302'); g.addColorStop(1, '#2a0e06'); }
+    G.fillStyle = g; G.fillRect(0, 0, W, H);
+    if (side < 0) for (let i = 0; i < 14; i++) { const x = CX - rx + (i / 13) * rx * 2; line(x, CY - ry, x + 3, CY + ry, 'rgba(0,0,0,.18)', 1); } // rock strata
+    else { G.fillStyle = `rgba(255,120,40,${0.25 * k * (0.7 + 0.3 * Math.sin(now * 5))})`; G.fillRect(0, 0, W, H); } // lava glow far below
+    G.restore();
+    G.save(); G.translate(0, dy); clip(side);
+    G.imageSmoothingEnabled = true; G.drawImage(ART.arena, arenaDraw.x, arenaDraw.y, arenaDraw.w, arenaDraw.h); G.imageSmoothingEnabled = false;
+    if (side > 0) { G.fillStyle = `rgba(20,6,0,${0.22 * k})`; G.fillRect(0, 0, W, H); drawLava(c, k, now); } // the sunk half sits in shadow, and burns
+    G.restore();
+  }
+}
+
+// The sunk half is lava (it burns anyone standing there): a red cast, glowing cracks that pulse, and bubbles that
+// swell and pop. Drawn in world positions so it stays put on the floor.
+function drawLava(c, k, now) {
+  if (k <= 0.01) return;
+  const tx = -c.ny, ty = c.nx, at = (s, u) => [sx(c.x + c.nx * s + tx * u), sy(c.y + c.ny * s + ty * u)];
+  const pulse = 0.75 + 0.25 * Math.sin(now * 4);
+  G.fillStyle = `rgba(190,40,0,${0.3 * k * pulse})`; G.fillRect(0, 0, W, H);
+  const ga = at(6, 0), gb = at(ARENA.r * 0.9, 0), grd = G.createLinearGradient(ga[0], ga[1], gb[0], gb[1]); // hottest along the chasm
+  grd.addColorStop(0, `rgba(255,150,40,${0.45 * k * pulse})`); grd.addColorStop(1, 'rgba(255,90,20,0)');
+  G.fillStyle = grd; G.fillRect(0, 0, W, H);
+  G.lineCap = 'round';
+  for (let i = 0; i < 34; i++) { // cracks: short jagged lines, brighter near the chasm
+    const s0 = 10 + hash01(i) * ARENA.r * 1.8, u0 = (hash01(i + 50) - 0.5) * ARENA.r * 2.2, near = 1 - clamp01(s0 / (ARENA.r * 1.6));
+    let [x, y] = at(s0, u0);
+    G.strokeStyle = `rgba(255,${130 + 80 * near},40,${(0.35 + 0.5 * near) * k * (0.6 + 0.4 * Math.sin(now * 3 + i))})`;
+    const pts = [[x, y]];
+    for (let j = 1; j <= 4; j++) { x += (hash01(i * 7 + j) - 0.5) * 26; y += (hash01(i * 9 + j) - 0.5) * 10; pts.push([x, y]); }
+    const path = () => { G.beginPath(); pts.forEach(([a, b], j) => (j ? G.lineTo(a, b) : G.moveTo(a, b))); };
+    const st = G.strokeStyle;
+    G.strokeStyle = `rgba(255,90,10,${0.35 * k})`; G.lineWidth = 4 + 2 * near; path(); G.stroke(); // glow
+    G.strokeStyle = st; G.lineWidth = 1.5 + near; path(); G.stroke();
+  }
+  for (let i = 0; i < 14; i++) { // bubbles: each one swells and pops on its own clock
+    const per = 1.4 + hash01(i + 200) * 1.2, ph = ((now + hash01(i + 300) * per) % per) / per;
+    const [x, y] = at(14 + hash01(i + 100) * ARENA.r * 1.3, (hash01(i + 150) - 0.5) * ARENA.r * 1.8), r = 1.5 + ph * 4.5;
+    G.fillStyle = `rgba(255,${180 + 60 * ph},80,${(ph < 0.85 ? 0.7 : (1 - ph) * 4.6) * k})`;
+    G.beginPath(); G.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2); G.fill();
+  }
+}
+
+// Beats on top of the halves: the racing crack, rocks breaking off the cliff edge into the gap, dust as it closes.
+function drawSplitBeats(c, ends, now) {
+  const age = c.time - c.t, e = splitE(c), k = splitK(c), dir = [sx(ends[1].x) - sx(ends[0].x), sy(ends[1].y) - sy(ends[0].y)];
+  const p0 = [sx(ends[0].x), sy(ends[0].y)];
+  if (age < CRACK + 0.25) { // the crack runs from one end to the other, white-hot, before anything moves
+    const f = clamp01(age / CRACK), a = 1 - clamp01((age - CRACK) / 0.25);
+    G.lineCap = 'round';
+    G.strokeStyle = `rgba(255,150,50,${0.5 * a})`; G.lineWidth = 6; G.beginPath(); G.moveTo(...p0); G.lineTo(p0[0] + dir[0] * f, p0[1] + dir[1] * f); G.stroke();
+    G.strokeStyle = `rgba(255,248,220,${a})`; G.lineWidth = 2; G.beginPath(); G.moveTo(...p0); G.lineTo(p0[0] + dir[0] * f, p0[1] + dir[1] * f); G.stroke();
+    for (let i = 0; i < 6; i++) { // sparks thrown up at the crack's head
+      const h = hash01(i + Math.floor(age * 30) * 13), x = p0[0] + dir[0] * f + (h - 0.5) * 10, y = p0[1] + dir[1] * f - hash01(i + 40) * 12;
+      R(x, y, 1.5, 1.5, `rgba(255,${200 + 55 * h},120,${a})`);
+    }
+  }
+  if (k > 0.05) for (let i = 0; i < 16; i++) { // rocks crumble off the raised edge: a burst at the lurch, then now and then
+    const per = 2.6, first = CRACK + 0.1 + hash01(i) * 0.5, tt = age < first + 1 ? age - first : (age - first - 1 + hash01(i + 9) * per) % per;
+    if (tt < 0 || tt > 0.9) continue;
+    const u = hash01(i + 20), ex = p0[0] + dir[0] * u, ey = p0[1] + dir[1] * u - SPLIT.lift * e;
+    const x = ex + (hash01(i + 30) - 0.5) * 6 + c.nx * tt * 8, y = ey + 140 * tt * tt, sz = 1.5 + hash01(i + 40) * 2;
+    R(x, y, sz, sz, `rgba(${120 + 40 * hash01(i)},${85 + 20 * hash01(i + 1)},55,${1 - tt / 0.9})`);
+  }
+  if (c.t < 0.9) { // closing: dust rolls out along the seam as the halves grind together
+    const f = 1 - c.t / 0.9;
+    for (let i = 0; i < 12; i++) {
+      const u = (i + 0.5) / 12, x = p0[0] + dir[0] * u, y = p0[1] + dir[1] * u, r = 3 + f * 10 * (0.6 + 0.4 * hash01(i));
+      G.fillStyle = `rgba(190,160,120,${0.35 * Math.sin(f * Math.PI)})`; G.beginPath(); G.ellipse(x, y - r * 0.3, r, r * 0.55, 0, 0, Math.PI * 2); G.fill();
+    }
+  }
+}
+
+function drawChasm(m, now) {
+  const c = m.arenaChange;
+  if (!c || c.kind !== 'chasm') return;
+  drawSplit(c, now);
+  const tx = -c.ny, ty = c.nx, off = c.x * tx + c.y * ty, rr = c.x * c.x + c.y * c.y - off * off;
+  const L = Math.sqrt(Math.max(0, ARENA.r * ARENA.r - rr)) ; // half-length of the line inside the arena
+  const age = (c.time - c.t), open = clamp01((age - CRACK) / 0.4), close = Math.min(1, c.t / 0.6), k = open * close;
+  const cx = c.x - tx * off, cy = c.y - ty * off; // the point of the line nearest the centre
+  const hw = (c.w / 2) * k, ends = [-L, L].map((u) => ({ x: cx + tx * u, y: cy + ty * u }));
+  const quad = (w) => [[ends[0], -w], [ends[1], -w], [ends[1], w], [ends[0], w]].map(([e, ww]) => [sx(e.x + c.nx * ww), sy(e.y + c.ny * ww)]);
+  const poly = (pts, fill) => { G.beginPath(); pts.forEach(([px, py], i) => (i ? G.lineTo(px, py) : G.moveTo(px, py))); G.closePath(); G.fillStyle = fill; G.fill(); };
+  const art = useArt && ART.fx.tandavaCrack;
+  if (art) { // the painted crack, laid along the line (squashed into the 3/4 view by the screen positions)
+    const a0 = [sx(ends[0].x), sy(ends[0].y)], a1 = [sx(ends[1].x), sy(ends[1].y)], len = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]);
+    const thick = Z(c.w) * (1.4 + 1.2 * Math.abs(c.nx)) * k; // looks thicker seen across than end-on
+    fxSprite(G, 'tandavaCrack', (a0[0] + a1[0]) / 2, (a0[1] + a1[1]) / 2, len * 1.04, { h: thick, rot: Math.atan2(a1[1] - a0[1], a1[0] - a0[0]), alpha: Math.min(1, 0.4 + k) });
+    poly(quad(hw * 0.12), `rgba(255,240,200,${0.35 * k * (0.7 + 0.3 * Math.sin(now * 9))})`); // a pulse of light inside
+    drawSplitBeats(c, ends, now);
+    return;
+  }
+  poly(quad(hw + 2.5), 'rgba(60,30,10,.55)');                                    // broken sand edge
+  poly(quad(hw), '#120604');                                                     // the dark chasm
+  poly(quad(hw * 0.45), `rgba(255,${150 + 60 * Math.sin(now * 9)},60,${0.75 * k})`); // molten light inside
+  poly(quad(hw * 0.15), `rgba(255,245,210,${0.9 * k})`);
+  drawSplitBeats(c, ends, now);
+}
+
 // ---------- fighters ----------
 // A wall stays where it was built. It looks weaker as its strength gets used up.
 function drawWall(w) {
@@ -156,15 +293,30 @@ function drawWall(w) {
   R(x - bw / 2, y + 7, bw * left, 1, w.standing ? '#ffffff' : '#ffd34a');                    // time left
 }
 
+// How high a fighter is off the ground, in screen units (ground rule 17): a jump arcs, a flight rises and bobs.
+function heightOf(p, now) {
+  const a = p.air;
+  if (!a) return 0;
+  if (a.kind === 'jump') return 11 * Math.sin(Math.PI * Math.min(1, a.t / a.dur));
+  return 13 * Math.min(1, a.t / Math.max(0.01, a.lift)) + (airborne(p) ? 1.5 * Math.sin(now * 3) : 0);
+}
+// Which off-the-ground frame: lift-off / flying / casting in the air; crouch / mid-air / landing.
+function airPose(p) {
+  const a = p.air, A = AIR_POSES;
+  if (a.kind === 'fly') return a.t < a.lift ? A.lift : p.cast || p.recover > 0 ? A.cast : A.up;
+  return a.t < 0.08 ? A.crouch : a.t > a.dur - 0.1 ? A.land : A.up;
+}
 function drawFighter(m, p, now) {
-  const x = sx(p.x), y = sy(p.y), c = p.ch.color, o = opponent(m, p);
-  ell(x, y + 1, 9, 4, 'rgba(0,0,0,.3)');
+  const x = sx(p.x), gy = sy(p.y) + liftAt(p.x, p.y), h = heightOf(p, now), y = gy - h, c = p.ch.color, o = opponent(m, p);
+  ell(x, gy + 1, 9 * (1 - h / 60), 4 * (1 - h / 60), `rgba(0,0,0,${0.3 - h / 120})`); // the shadow stays on the sand
+  if (p.air?.kind === 'fly') ell(x, gy + 1, 7, 3, `rgba(80,230,215,${0.25 + 0.15 * Math.sin(now * 6)})`); // teal glow under a flyer
   if (p.effects.invuln && Math.floor(now * 20) % 2) G.globalAlpha = 0.4;
   let top = y - 30;
   if (useArt && ART.sheets[p.ch.id]) {
-    ring(x, y + 1, Z(9), Z(9) * SQ, p.id === 0 ? 'rgba(90,160,255,.9)' : 'rgba(255,90,70,.9)', 1); // player ring
+    ring(x, gy + 1, Z(9), Z(9) * SQ, p.id === 0 ? 'rgba(90,160,255,.9)' : 'rgba(255,90,70,.9)', 1); // player ring, on the ground
     const pose = poseOf(m, p);
     if (m.phase === 'done' && drawEnd(m, p, x, y + 1, now)) { /* knockout / victory */ }
+    else if (p.air && drawSprite(G, p.ch.id, 'air', airPose(p), x, y + 1, p.face.x < 0, 1 + 0.08 * Math.min(1, h / 13))) { /* jumping or flying (rule 17): a little bigger the higher, as if nearer */ }
     else if (pose == null || !drawSprite(G, p.ch.id, 'act', pose, x, y + 1, p.face.x < 0)) {
       const moving = anim[p.id].moving, fps = moving ? 10 : 5, i = Math.floor(now * fps) % 4 + (moving ? 4 : 0);
       drawSprite(G, p.ch.id, 'walk', i, x, y + 1, p.face.x < 0);
@@ -264,7 +416,8 @@ function drawProjectile(pr0, now) {
       G.stroke(); ell(x, hy, size * 0.5, size * 0.5, 'rgba(150,210,255,.25)');
     }
     const left = Math.cos(a) < 0; // flying left: mirror the sprite rather than turning it upside down
-    fxSprite(G, name, x, hy, size, name === 'chakra' ? { spin: now * 14 } : name === 'notes' ? { flip } : { rot: left ? a - Math.PI : a, flip: (name === 'wave') !== left });
+    const fade = pr0.k < 1 ? { alpha: 0.4 + 0.6 * (2 * pr0.k - 1) } : {}; // a shot past its full-strength distance looks fainter (rule 4)
+    fxSprite(G, name, x, hy, size, { ...(name === 'chakra' ? { spin: now * 14 } : name === 'notes' ? { flip } : { rot: left ? a - Math.PI : a, flip: (name === 'wave') !== left }), ...fade });
     return;
   }
   switch (pr.shape) {
@@ -329,6 +482,7 @@ function poseOf(m, p) {
 // fxNow: the clock the effects were stamped with (the fight clock, which stops during pauses and scenes)
 export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = [null, null]) {
   trackMotion(m);
+  chasm = m.arenaChange?.kind === 'chasm' ? m.arenaChange : null;
   let sh = 0; // screen shake from power moves landing
   for (const f of fx) if (f.kind === 'shake') sh += f.amp * Math.max(0, 1 - (fxNow - f.t0) / f.life);
   G.save();
@@ -339,6 +493,7 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   if (m.scene) sceneSky(m);
   for (const f of fx) if (f.kind === 'god') drawGod(f, fxNow); // a god appearing in the sky (small and medium boons)
   drawArena();
+  drawChasm(m, now);
   for (const a of m.areas) {
     const k = 1 - a.t / a.delay;
     if (fxArt('danger')) { // the warning circle fills in as the arrows get closer
@@ -357,8 +512,9 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
     drawSignatureHalo(sx(p.x), sy(p.y) - 18, m.scene.t);
   }
   const order = [...m.players, ...m.walls].sort((a, b) => a.y - b.y); // back to front
-  for (const o of order) if (o.ch) drawFighter(m, o, now); else drawWall(o);
-  for (const pr of m.projectiles) drawProjectile(pr, now);
+  const lifted = (o, draw) => { const d = liftAt(o.x, o.y); if (d) { G.save(); G.translate(0, d); draw(); G.restore(); } else draw(); }; // rides its half of a split island
+  for (const o of order) if (o.ch) drawFighter(m, o, now); else lifted(o, () => drawWall(o));
+  for (const pr of m.projectiles) lifted(pr, () => drawProjectile(pr, now));
   for (const f of fx) if (!f.ground) drawFx(f, fxNow);
   if (m.scene) sceneAura(m, now);
   G.restore();
@@ -574,9 +730,11 @@ function box(x, y, w, h, r, fill, stroke) {
   if (fill) { G.fillStyle = fill; G.fill(); }
   if (stroke) { G.strokeStyle = stroke; G.lineWidth = 0.75; G.stroke(); }
 }
-const hpShown = [100, 100]; let hudLast = 0; // the health bar's red "just lost" part drains after a hit
+// The health bar's red "just lost" part drains after a hit. It runs on real time, not the match clock: the clock
+// stops at a KO, and the red part used to freeze there, so the bar looked full-ish while the number said 0%.
+const hpShown = [100, 100]; let hudLast = null;
 function drawHud(m, tags, hints = [null, null]) {
-  const dt = Math.min(0.1, Math.max(0, m.t - hudLast)); hudLast = m.t;
+  const now = performance.now() / 1000, dt = hudLast === null ? 0 : Math.min(0.1, Math.max(0, now - hudLast)); hudLast = now;
   for (const p of m.players) {
     const right = p.id === 1, X = (v, w = 0) => (right ? W - v - w : v), al = right ? 'right' : 'left';
     const pw = p.power / p.ch.power.size; // both power bars always visible (ground rule 14)
@@ -594,7 +752,7 @@ function drawHud(m, tags, hints = [null, null]) {
     G.font = `8px ${FONT}`; const nw = G.measureText(p.ch.name).width;
     txt(tags[p.id], X(46 + nw + 8), 6, tags[p.id] === 'CPU' ? '#b8b0c8' : '#fff', al);
     // health: red trail for what was just lost, then the colour bar
-    hpShown[p.id] = p.hp > hpShown[p.id] ? p.hp : Math.max(p.hp, hpShown[p.id] - 30 * dt);
+    hpShown[p.id] = p.hp > hpShown[p.id] ? p.hp : Math.max(p.hp, hpShown[p.id] - (m.phase === 'done' ? 60 : 30) * dt);
     const bx = X(46, 114), k = Math.max(0, p.hp / 100), kt = hpShown[p.id] / 100;
     box(bx - 1, 15, 116, 10, 3, '#0d0812', '#5a4a2a');
     const fill = (from, to, c1, c2) => {
@@ -606,7 +764,7 @@ function drawHud(m, tags, hints = [null, null]) {
     const col = p.hp > 50 ? ['#8af07a', '#2e9c3a'] : p.hp > 25 ? ['#ffe07a', '#d09a1a'] : ['#ff7a5a', '#b8241a'];
     fill(0, k, ...col);
     R(right ? bx + 114 * (1 - k) : bx, 16, 114 * k, 1.5, 'rgba(255,255,255,.35)');
-    txt(`${Math.ceil(p.hp)}%`, X(164), 16, '#fff', al);
+    txt(`${Math.max(0, Math.ceil(p.hp))}%`, X(164), 16, '#fff', al);
     // power: gold, marked every 10%
     box(bx - 1, 28, 116, 5, 2, '#0d0812', '#5a4a2a');
     const pg = G.createLinearGradient(0, 29, 0, 32); pg.addColorStop(0, '#fff1a0'); pg.addColorStop(1, '#e0a21a');
@@ -614,16 +772,16 @@ function drawHud(m, tags, hints = [null, null]) {
     for (let i = 1; i < 10; i++) R(bx + 11.4 * i, 29, 0.5, 3, 'rgba(0,0,0,.45)');
     txt(`${Math.floor(p.power)}`, X(164), 27, '#ffd34a', al, 6);
     // boon / meditation line
-    // devotion: 10 segments earned by meditating; a part-filled one only counts once it's full
-    const MD = TUNE.meditate, segW = 7.2, dx0 = X(46, MD.segments * segW), part = p.med ? Math.min(1, p.med.meter / MD.segTime) : 0;
+    // devotion: 8 segments earned by meditating; a part-filled one only counts once it's full
+    const MD = TUNE.meditate, segW = 72 / MD.segments, dx0 = X(46, MD.segments * segW), part = p.med ? Math.min(1, p.med.meter / MD.segTime) : 0;
     for (let i = 0; i < MD.segments; i++) {
       const sxp = dx0 + (right ? MD.segments - 1 - i : i) * segW, full = i < p.devotion, tierEdge = MD.tiers.includes(i + 1);
       R(sxp, 36, segW - 1.2, 5, '#0d0812');
-      if (full) R(sxp, 36, segW - 1.2, 5, i + 1 > MD.tiers[1] ? '#fff2b0' : i + 1 > MD.tiers[0] ? '#ffcf6a' : '#e0a040');
+      if (full) R(sxp, 36, segW - 1.2, 5, i + 1 > MD.tiers[0] ? '#fff2b0' : '#e0a040');
       else if (i === p.devotion && part > 0) R(sxp, 36 + 5 * (1 - part), segW - 1.2, 5 * part, 'rgba(255,207,106,.45)');
       if (tierEdge) R(sxp + segW - 1.2, 35, 0.6, 7, '#c9a24a');
     }
-    const tierName = p.devotion >= MD.tiers[2] ? 'DIVINE' : p.devotion >= MD.tiers[1] ? 'MEDIUM' : p.devotion >= MD.tiers[0] ? 'SMALL' : '';
+    const tierName = p.devotion >= MD.tiers[1] ? 'DIVINE' : p.devotion >= MD.tiers[0] ? 'SMALL' : '';
     txt(tierName ? `ASK: ${tierName}` : 'DEVOTION', X(46 + MD.segments * segW + 4), 35.5, tierName ? '#ffcf6a' : '#a898c0', al, 6);
     if (p.boon) { // the held boon, in a gold tag under the panel
       const label = `${p.boon.tier === 'divine' ? '✦ ' : ''}${p.boon.name.toUpperCase()}${hints[p.id] ? `   ${hints[p.id].keys}` : ''}`;
@@ -652,9 +810,10 @@ const SCENE_LOOK = {
   shakti_vel: { face: [0.4, 0.3], at: [0.7, 0.4], glow: '255,200,90', spark: '255,240,190', bg: ['#5a3a10', '#0a0604'], sub: 'DIVINE BOON OF MURUGAN' },
   brahmastra: { face: [0.4, 0.3], at: [0.7, 0.38], glow: '255,246,214', spark: '255,255,236', bg: ['#4a3a20', '#0a0806'], sub: 'DIVINE BOON OF BRAHMA' },
   pashupatastra: { face: [0.4, 0.3], at: [0.82, 0.37], glow: '160,215,255', spark: '210,240,255', bg: ['#1a2a6a', '#03050f'], sub: 'DIVINE BOON OF SHIVA' },
+  tandava: { face: [0.5, 0.3], at: [0.5, 0.6], glow: '255,150,60', spark: '255,230,170', bg: ['#5a1a10', '#0a0302'], sub: 'BOON OF SHIVA: THE ISLAND SPLITS' },
 };
 export const sceneKey = (name) => ({ 'Thousand-Arm Form': 'siddhan_sig', 'Gaja Arrow': 'veeran_elephant', Pashupatastra: 'pashupatastra',
-  Brahmastra: 'brahmastra', 'Shakti Vel': 'shakti_vel', Vishwaroopam: 'vishwaroopam' })[name] || null;
+  Brahmastra: 'brahmastra', 'Shakti Vel': 'shakti_vel', Vishwaroopam: 'vishwaroopam', "Shiva's Tandava": 'tandava' })[name] || null;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const easeOut = (v) => 1 - (1 - v) ** 3;
 
@@ -796,7 +955,7 @@ function sceneTitle(m) {
 }
 
 // The boon card: when a god grants a wish, say what it is, what it does and how to use it.
-const TIER_LABEL = { small: 'A SMALL BOON', medium: 'A MEDIUM BOON', divine: 'A DIVINE WEAPON' };
+const TIER_LABEL = { small: 'A SMALL BOON', divine: 'A DIVINE WEAPON' };
 export function drawOffer(o, p, hint, t) {
   const e = easeOut(clamp01(t / 0.3)), out = clamp01((t - 4) / 0.5), a = e * (1 - out);
   const w = 300, h = 74, x = CX - w / 2, y = H - 84 + (1 - e) * 20;
@@ -856,23 +1015,50 @@ function drawMoveList(ch, x, y, w) {
     yy += 22;
   }
 }
+// The fighter card on the select screen: five trait bars (ground rule 16's shared budget) and one line each for
+// what the fighter is strong and weak at. The moves and keys are a page of their own (up).
+const TRAITS = [['range', 'RANGE'], ['speed', 'SPEED'], ['defence', 'DEFENCE'], ['control', 'CONTROL'], ['burst', 'BURST']];
+function drawTraitCard(ch, x, y, w, now) {
+  txt(ch.name.toUpperCase(), x, y, ch.color, 'left', 16);
+  txt(ch.cls === 'mage' ? 'MAGE' : 'WARRIOR', x + w, y + 6, '#c9b07a', 'right', 8);
+  wrap(ch.bio || '', Math.floor(w / 5.1)).slice(0, 2).forEach((l, i) => txt(l, x, y + 20 + i * 7, '#d8cfe8', 'left', 5));
+  let yy = y + 42;
+  const pw = 22, gap = 3, px0 = x + w - 5 * (pw + gap) + gap;
+  for (const [k, label] of TRAITS) {
+    const v = ch.traits?.[k] || 0;
+    txt(label, x, yy + 1, '#e8dcc0', 'left', 8);
+    for (let i = 0; i < 5; i++) {
+      const on = i < v, bx = px0 + i * (pw + gap);
+      box(bx, yy, pw, 9, 2, on ? ch.color : 'rgba(255,255,255,.06)', on ? 'rgba(255,240,200,.55)' : 'rgba(201,162,74,.35)');
+      if (on) R(bx + 2, yy + 1.5, pw - 4, 1.5, 'rgba(255,255,255,.35)'); // a little shine on the lit pips
+    }
+    yy += 19;
+  }
+  yy += 4;
+  R(x, yy - 6, w, 0.6, 'rgba(201,162,74,.5)');
+  txt('STRONG', x, yy + 2, '#9fe07a', 'left', 6); txtFit((ch.strong || '').toUpperCase(), x + 48, yy + 2, '#d8f5c8', 'left', 6, w - 48);
+  txt('WEAK', x, yy + 16, '#ff8a7a', 'left', 6); txtFit((ch.weak || '').toUpperCase(), x + 48, yy + 16, '#ffd0c8', 'left', 6, w - 48);
+  const blink = 0.55 + 0.45 * Math.sin(now * 4);
+  txt('UP: MOVES AND KEYS', x + w / 2, yy + 36, `rgba(255,207,106,${blink})`, 'center', 6);
+}
 // how boons work, and every boon by tier
 function drawBoonsPage(now) {
   R(0, 0, W, H, 'rgba(8,6,14,.94)'); covered();
   txt('BOONS OF THE GODS', CX, 8, '#ffcf6a', 'center', 16);
-  const how = ['MEDITATE (DOWN + SPECIAL 1) BEHIND A BARRIER TO FILL 10 DEVOTION SEGMENTS.',
-    'TWO SPECIALS ASK A RANDOM GOD FOR A BOON: 3 = SMALL, 6 = MEDIUM, 10 = DIVINE WEAPON.',
+  const how = ['MEDITATE (DOWN + SPECIAL 1) BEHIND A BARRIER TO FILL 8 DEVOTION SEGMENTS.',
+    'A WALL YOU BUILT STAYS UP WHILE YOU SIT.',
+    'TWO SPECIALS ASK A RANDOM GOD FOR A BOON: 4 = SMALL, 8 = DIVINE WEAPON.',
     'THE GOD REVEALS IT AND YOU HOLD IT. TWO SPECIALS AGAIN USE IT, NOW OR LATER.',
     'A BOON ATTACK ALWAYS FINDS THE OPPONENT. ONLY ANOTHER ATTACK MEETING IT CAN WEAKEN IT.'];
-  how.forEach((l, i) => txt(l, CX, 30 + i * 8, '#d8cfe8', 'center', 5));
-  const tiers = [['SMALL  (3)', 0], ['MEDIUM  (6)', 1], ['DIVINE WEAPON  (10)', 2]], colW = 150;
+  how.forEach((l, i) => txt(l, CX, 28 + i * 8, '#d8cfe8', 'center', 5));
+  const tiers = [['SMALL  (4)', 0], ['DIVINE WEAPON  (8)', 1]], colW = 225;
   tiers.forEach(([label, ti], c) => {
     const x = 15 + c * colW + c * 3; let y = 72;
-    box(x - 4, y - 4, colW, 172, 5, 'rgba(40,24,10,.6)', ti === 2 ? '#e8c060' : 'rgba(201,162,74,.6)');
-    txt(label, x + colW / 2 - 4, y, ti === 2 ? '#fff2b0' : '#ffcf6a', 'center', 6); y += 12;
+    box(x - 4, y - 4, colW, 172, 5, 'rgba(40,24,10,.6)', ti === 1 ? '#e8c060' : 'rgba(201,162,74,.6)');
+    txt(label, x + colW / 2 - 4, y, ti === 1 ? '#fff2b0' : '#ffcf6a', 'center', 6); y += 12;
     for (const [gid, god] of Object.entries(GODS_LIST)) for (const b of god.tiers[ti]) {
       txt(b.name.toUpperCase(), x, y, '#fff', 'left', 5); txt(god.name.toUpperCase(), x + colW - 8, y, '#c9b07a', 'right', 5); y += 7;
-      for (const l of wrap(b.desc || '', 28).slice(0, 3)) { txt(l, x + 3, y, '#c8bcd8', 'left', 5); y += 6; }
+      for (const l of wrap(b.desc || '', 44).slice(0, 3)) { txt(l, x + 3, y, '#c8bcd8', 'left', 5); y += 6; }
       y += 4;
     }
   });
@@ -882,7 +1068,10 @@ export function drawSelect(now, o) {
   drawBackdrop(now);
   R(0, 0, W, H, 'rgba(8,6,14,.82)');
   if (o.boonsPage) { drawBoonsPage(now); txt('ANY KEY: BACK', CX, 260, '#ddd', 'center', 6); return; }
-  if (o.controlsPage) { drawControls(o.pads); txt('ANY KEY: BACK', CX, 260, '#ddd', 'center', 6); return; }
+  if (o.movesPage) { // the focused fighter's moves and keys
+    box(110, 12, 260, 236, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)'); drawMoveList(o.chars[o.ids[o.cursor[o.focus || 0]]], 120, 20, 240);
+    txt('ANY KEY: BACK', CX, 260, '#ddd', 'center', 6); return;
+  }
   txt('CHOOSE YOUR FIGHTER', CX, 6, '#ffcf6a', 'center', 16);
   const cw = 100, chh = 133, gap = 12, x0 = 14, y0 = 32;
   o.ids.forEach((id, i) => drawCard(o.chars[id], x0 + i * (cw + gap), y0, cw, chh, now));
@@ -895,8 +1084,8 @@ export function drawSelect(now, o) {
   }
   if (o.mode === '1p') txt(o.tutorial ? 'THE OTHER ONE IS YOUR TRAINING DUMMY' : 'THE CPU TAKES THE OTHER FIGHTER', x0 + cw + gap / 2, y0 + chh + 18, '#9aa', 'center', 5);
   box(232, 28, 242, 222, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)');
-  drawMoveList(o.chars[o.ids[o.cursor[o.focus || 0]]], 240, 34, 226);
-  txt(o.mode === '1p' ? 'LEFT/RIGHT CHOOSE   ENTER LOCK IN   UP: CONTROLS   DOWN: BOONS' : 'LEFT/RIGHT CHOOSE   ATTACK 1 LOCK IN   UP: CONTROLS   DOWN: BOONS', CX, 258, '#ddd', 'center', 5);
+  drawTraitCard(o.chars[o.ids[o.cursor[o.focus || 0]]], 242, 36, 222, now);
+  txt(o.mode === '1p' ? 'LEFT/RIGHT CHOOSE   ENTER LOCK IN   UP: MOVES   DOWN: BOONS' : 'LEFT/RIGHT CHOOSE   ATTACK 1 LOCK IN   UP: MOVES   DOWN: BOONS', CX, 258, '#ddd', 'center', 5);
 }
 // pause menu pages: page 0 and 1 = the two fighters in this match, 2 = boons
 export function drawInfo(page, chs) {

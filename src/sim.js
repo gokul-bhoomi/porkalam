@@ -30,7 +30,8 @@ function makeFighter(ch, i) {
   return {
     id: i, ch, x: i === 0 ? -TUNE.startX : TUNE.startX, y: 0, face: { x: i === 0 ? 1 : -1, y: 0 },
     hp: ch.health, power: ch.power.size * TUNE.startPower, kvx: 0, kvy: 0,
-    cast: null, block: null, med: null, dash: null, effects: {}, chord: null, lotus: false,
+    cast: null, block: null, med: null, dash: null, effects: {}, recover: 0, air: null, chasmSide: 0,
+    chord: null,
     devotion: 0, // full devotion segments, earned by meditating and spent on boons (ground rule 11)
     boon: null,  // a boon the gods have offered, held until it's used
     msg: null, stats: { dealt: 0, taken: 0 },
@@ -96,7 +97,9 @@ export function startArenaChange(m, change) {
 
 // how charged a hold-to-charge move is (0 = tapped, 1 = full)
 export const chargeOf = (c) => clamp((c.t - c.move.cast) / (c.move.charge.max - c.move.cast), 0, 1);
-const canMove = (p) => !p.cast && !p.block && !p.med && !p.dash && !p.effects.hold && !p.effects.stun;
+const canMove = (p) => !p.cast && !p.block && !p.med && !p.dash && p.air?.kind !== 'jump' && !p.effects.hold && !p.effects.stun;
+// Ground rule 17: off the ground = jumping (from the first moment) or flying (once the lift-off is done).
+export const airborne = (p) => !!p.air && (p.air.kind === 'jump' || p.air.t >= p.air.lift);
 const unitDir = (dx, dy) => { const l = Math.hypot(dx, dy); return l > 1e-9 ? { x: dx / l, y: dy / l } : { x: 0, y: 0 }; };
 
 // ---------------------------------------------------------------------------------------------
@@ -131,7 +134,18 @@ function movement(m, inputs, dt) {
     const inp = inputs[p.id];
     for (const k of Object.keys(p.effects)) if ((p.effects[k].t -= dt) <= 0) delete p.effects[k];
     if (p.msg && (p.msg.t -= dt) <= 0) p.msg = null;
+    if (p.recover > 0) p.recover = Math.max(0, p.recover - dt);
     p.power = Math.min(p.ch.power.size, p.power + p.ch.power.refill * dt); // ground rule 2: constant rate
+    if (p.air) { // ground rule 17
+      const a = p.air; a.t += dt;
+      if (a.kind === 'jump') {
+        p.x += a.vx * dt; p.y += a.vy * dt;
+        if (a.t >= a.dur - 1e-9) land(m, p);
+      } else if (a.t >= a.lift) { // flying costs power every second it lasts; out of power = land
+        p.power = Math.max(0, p.power - a.drain * dt);
+        if (p.power <= 1e-9) land(m, p);
+      }
+    }
     if (p.dash) {
       p.x += p.dash.vx * dt; p.y += p.dash.vy * dt;
       if ((p.dash.t -= dt) <= 0) p.dash = null;
@@ -139,13 +153,14 @@ function movement(m, inputs, dt) {
       let mx = +inp.mx || 0, my = +inp.my || 0;
       const l = Math.hypot(mx, my);
       if (l > 1) { mx /= l; my /= l; }
-      const sp = p.ch.speed * TUNE.pace.move * (1 - (p.effects.slow?.mag || 0));
+      const sp = (airborne(p) && p.air.kind === 'fly' ? p.air.speed : p.ch.speed) * TUNE.pace.move * (1 - (p.effects.slow?.mag || 0));
       p.x += mx * sp * dt; p.y += my * sp * dt;
     }
     p.x += p.kvx * dt; p.y += p.kvy * dt;
     const f = Math.exp(-TUNE.kbFriction * dt);
     p.kvx *= f; p.kvy *= f;
     if (Math.hypot(p.kvx, p.kvy) < 1) p.kvx = p.kvy = 0;
+    keepOutOfChasm(m, p); // Shiva's Tandava: nobody on the ground crosses the chasm
     // ground rule 13: the edge is an invisible wall; getting knocked into it costs health
     const d = Math.hypot(p.x, p.y);
     if (d > R) {
@@ -174,6 +189,10 @@ function movement(m, inputs, dt) {
     pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt; pr.lt += dt;
     pr.flown += Math.hypot(pr.vx, pr.vy) * dt;
     if (pr.flown > pr.reach) pr.dead = true; // a basic shot only reaches as far as its range
+    if (pr.falloff) { // ground rule 4 (owner, 2026-11-14): past its full-strength distance a shot weakens, down to half
+      const F = pr.falloff, k = 1 - 0.5 * clamp((pr.flown - F.full) / (F.half - F.full), 0, 1);
+      pr.dmg *= k / pr.k; pr.k = k; // scales what's left of it (a wall may already have soaked some)
+    }
     if (pr.legs > 0 && pr.lt >= pr.legTime) { // a chakra flies in straight legs and re-aims between them
       const o = m.players[1 - pr.owner], sp = Math.hypot(pr.vx, pr.vy), u = unitDir(o.x - pr.x, o.y - pr.y);
       pr.vx = u.x * sp; pr.vy = u.y * sp; pr.legs--; pr.lt = 0;
@@ -182,12 +201,46 @@ function movement(m, inputs, dt) {
   }
   m.projectiles = m.projectiles.filter((pr) => !pr.dead);
 
-  for (const w of m.walls) if (w.standing && (w.t -= dt) <= 0) w.dead = true;
+  // a standing wall doesn't time out while its builder meditates behind it; hits still wear it down (owner, 2026-11-14)
+  for (const w of m.walls) if (w.standing && !m.players[w.owner]?.med && (w.t -= dt) <= 0) w.dead = true;
   m.walls = m.walls.filter((w) => !w.dead);
   for (const a of m.areas) a.t -= dt;
   for (const u of m.units) u.t -= dt;
   m.units = m.units.filter((u) => u.t > 0);
+  lavaBurn(m, dt);
   if (m.arenaChange && (m.arenaChange.t -= dt) <= 0) m.arenaChange = null;
+}
+
+// Ground rule 17: touching down ends jumping or flying, with a short landing pause.
+function land(m, p) {
+  p.air = null;
+  p.recover = Math.max(p.recover, TUNE.air.land);
+  ev(m, 'land', { pid: p.id });
+}
+// Shiva's Tandava (an arena change, ground rule 12): a chasm along a line. Someone on the ground stays on their side
+// of it; jumping or flying crosses it (coming down inside it puts you on the nearer edge).
+function keepOutOfChasm(m, p) {
+  const c = m.arenaChange;
+  if (!c || c.kind !== 'chasm') return;
+  const s = (p.x - c.x) * c.nx + (p.y - c.y) * c.ny, half = c.w / 2 + TUNE.fighterR;
+  if (airborne(p)) { if (Math.abs(s) >= half) p.chasmSide = Math.sign(s); return; }
+  if (Math.abs(s) >= half) { p.chasmSide = Math.sign(s); return; }
+  const side = p.chasmSide || Math.sign(s) || 1, push = side * half - s;
+  p.x += c.nx * push; p.y += c.ny * push;
+  const vn = p.kvx * c.nx + p.kvy * c.ny; if (vn * side < 0) { p.kvx -= vn * c.nx; p.kvy -= vn * c.ny; }
+}
+
+// The sunk half of Shiva's Tandava is lava: anyone on the ground there burns (`lava` % a second, in 0.5 s ticks).
+// It hurts but doesn't count as a hit: it doesn't break a cast or meditation, or push (owner, 2026-11-14).
+function lavaBurn(m, dt) {
+  const c = m.arenaChange;
+  if (!c || c.kind !== 'chasm' || !c.lava) return;
+  for (const p of m.players) {
+    const s = (p.x - c.x) * c.nx + (p.y - c.y) * c.ny;
+    if (airborne(p) || s <= 0) { p.lavaT = 0; continue; }
+    p.lavaT = (p.lavaT || 0) + dt;
+    if (p.lavaT >= 0.5 - 1e-9) { p.lavaT -= 0.5; m.hits.push({ target: p, dmg: c.lava * 0.5, kb: 0, from: null, burn: true, pierceBlock: true, src: 'Lava', by: c.owner }); }
+  }
 }
 
 // ---------- 2. new moves ----------
@@ -200,7 +253,7 @@ function newMoves(m, inputs, dt) {
     else if (p.med) { // a button gets up from meditation and does its thing straight away (e.g. two specials spend the devotion)
       if (act || pr('block')) { stopMed(m, p, 'MEDITATION STOPPED'); if (act && act !== 'cls' && !p.effects.stun) tryAct(m, p, act, inp); }
       else progressMed(m, p, dt);
-    } else if (act && !p.block && !p.effects.stun) tryAct(m, p, act, inp);
+    } else if (act && !p.block && !p.effects.stun) tryAct(m, p, act, inp); // attacks work in the air too (owner, 2026-11-14)
     handleBlock(m, p, inp, dt);
   }
 }
@@ -241,6 +294,9 @@ function tryAct(m, p, slot, inp) {
   if (slot === 'boon') move = p.boon.move;
   else move = p.ch.moves[slot];
   if (!move) return;
+  if (move.kind === 'fly' && p.air?.kind === 'fly') { land(m, p); return; } // press again to land (always allowed)
+  if (p.recover > 0) return; // still recovering from the last attack (ground rule 16)
+  if (p.air && (move.kind === 'meditate' || move.kind === 'fly' || move.kind === 'jump')) { say(p, move.kind === 'meditate' ? 'LAND FIRST' : 'IN THE AIR'); return; }
   // a boon can be used from any distance: it always finds the opponent (owner, 2026-11-08)
   const why = whyNot(m, p, slot === 'boon' ? { ...move, range: 'anywhere' } : move);
   if (why) { say(p, why); return; }
@@ -249,24 +305,37 @@ function tryAct(m, p, slot, inp) {
     p.boon = null;
   }
   pay(p, move);
+  if (move.kind === 'fly') { // ground rule 17: lift-off takes `lift` s, then he is off the ground until he lands
+    p.air = { kind: 'fly', t: 0, lift: move.lift, speed: move.speed, drain: move.drain };
+    ev(m, 'fly', { pid: p.id }); ev(m, 'cast', { pid: p.id, name: move.name, slot }); // used like any special
+    return;
+  }
+  if (move.kind === 'jump') { // a short hop the way the stick points (sideways, toward the middle, if it points nowhere)
+    const o = opponent(m, p), l = Math.hypot(+inp.mx || 0, +inp.my || 0);
+    let d = l > 0.3 ? { x: (+inp.mx || 0) / l, y: (+inp.my || 0) / l } : null;
+    if (!d) { const u = unitDir(o.x - p.x, o.y - p.y), side = -u.y * -p.x + u.x * -p.y >= 0 ? 1 : -1; d = { x: -u.y * side, y: u.x * side }; }
+    p.air = { kind: 'jump', t: 0, lift: 0, dur: move.time, vx: (d.x * move.distance) / move.time, vy: (d.y * move.distance) / move.time };
+    ev(m, 'jump', { pid: p.id }); ev(m, 'cast', { pid: p.id, name: move.name, slot });
+    return;
+  }
   if (move.kind === 'meditate') {
     const M = TUNE.meditate;
     if (p.devotion >= M.segments) { say(p, 'DEVOTION FULL'); return; }
-    p.med = { meter: 0, barrier: M.barrier, fast: p.lotus }; // the barrier goes up by itself
+    p.med = { meter: 0, barrier: TUNE.meditate.barrier }; // a full barrier goes up by itself (rule 11)
     ev(m, 'meditate', { pid: p.id });
     return;
   }
   const l = Math.hypot(+inp.mx || 0, +inp.my || 0);
-  p.cast = { move, slot, t: 0, dir: l > 0.3 ? { x: inp.mx / l, y: inp.my / l } : null };
+  p.cast = { move, slot, t: 0, dir: l > 0.3 ? { x: (+inp.mx || 0) / l, y: (+inp.my || 0) / l } : null };
   ev(m, 'cast', { pid: p.id, name: move.name, slot });
   if (move.cast <= 0 && !move.charge) finishCast(m, p);
 }
 
-// Which boon spending devotion buys right now: tier by how much is banked (3 / 6 / 10 segments), then a random
+// Which boon spending devotion buys right now: tier by how much is banked (4 / 8 segments), then a random
 // boon of that tier that can be used from here, from any god (Brahmastra weighted by health, see TUNE).
 // Null (and nothing spent) if none fits.
 const GOD_IDS = Object.keys(GODS);
-const TIER_NAMES = ['small', 'medium', 'divine'];
+const TIER_NAMES = ['small', 'divine'];
 function pickBoon(m, p) {
   const tiers = TUNE.meditate.tiers;
   let ti = -1;
@@ -302,19 +371,25 @@ function finishCast(m, p) {
   release(m, p, c);
 }
 
+// Recovery after an attack (ground rule 16). Blink and meditation aren't attacks.
+const ATTACKS = new Set(['projectile', 'melee', 'area', 'global']);
+export const recoveryOf = (mv) => (ATTACKS.has(mv.kind) ? (isBasic(mv) ? TUNE.recover.basic : TUNE.recover.special) : 0);
+
 function release(m, p, c) {
   const mv = c.move, o = opponent(m, p);
   ev(m, 'release', { pid: p.id, name: mv.name });
+  p.recover = recoveryOf(mv);
   switch (mv.kind) {
     case 'projectile': {
       const n = mv.count || 1, base = Math.atan2(o.y - p.y, o.x - p.x);
       const dmg = mv.charge ? mv.damage + (mv.charge.damage - mv.damage) * chargeOf(c) : mv.damage;
+      const quick = isBasic(mv) && c.slot !== 'boon' && (!mv.charge || chargeOf(c) < TUNE.quickShot); // rule 6: quick basic shots pass each other
       for (let i = 0; i < n; i++) {
         const a = base + (n > 1 ? (i - (n - 1) / 2) * mv.spread : 0), cx = Math.cos(a), cy = Math.sin(a);
         m.projectiles.push({
           id: m.nid++, owner: p.id, name: mv.name, shape: mv.shape, x: p.x + cx * TUNE.fighterR, y: p.y + cy * TUNE.fighterR,
           vx: cx * mv.speed * TUNE.pace.shot, vy: cy * mv.speed * TUNE.pace.shot, r: mv.radius, dmg, kb: mv.knockback, life: mv.life, legs: mv.legs ? mv.legs - 1 : 0,
-          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, divine: !!mv.divine, boon: c.slot === 'boon', reach: isBasic(mv) ? RANGES[rangeOf(mv)][1] : Infinity, flown: 0, seek: c.slot === 'boon', pierceBlock: !!mv.pierceBlock || c.slot === 'boon', pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [],
+          legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, divine: !!mv.divine, boon: c.slot === 'boon', reach: isBasic(mv) ? RANGES[rangeOf(mv)][1] : Infinity, flown: 0, seek: c.slot === 'boon', falloff: c.slot === 'boon' ? null : mv.falloff || null, k: 1, pierceBlock: !!mv.pierceBlock || c.slot === 'boon', pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [], quick,
         });
       }
       break;
@@ -331,6 +406,18 @@ function release(m, p, c) {
     case 'global': // across the whole arena, landing when the strike reaches (strikeDelay s), so it matches what's drawn
       m.strikesDue.push({ owner: p.id, t: mv.strikeDelay || 0, from: { x: p.x, y: p.y }, dmg: mv.damage, kb: mv.knockback, src: mv.name, divine: !!mv.divine });
       break;
+    case 'tandava': { // Shiva's Tandava: the island splits along a line between the fighters (ground rule 12)
+      const n = unitDir(o.x - p.x, o.y - p.y), cx = (p.x + o.x) / 2, cy = (p.y + o.y) / 2;
+      startArenaChange(m, { kind: 'chasm', name: mv.name, time: mv.time, x: cx, y: cy, nx: n.x, ny: n.y, w: mv.width, lava: mv.lava || 0, owner: p.id });
+      for (const f of m.players) { // whoever stands on the line is thrown aside, to their own side
+        const s = (f.x - cx) * n.x + (f.y - cy) * n.y;
+        f.chasmSide = Math.sign(s) || (f === p ? -1 : 1);
+        if (!airborne(f) && Math.abs(s) < mv.width / 2 + TUNE.fighterR) { f.kvx += n.x * f.chasmSide * TUNE.air.chasmPush; f.kvy += n.y * f.chasmSide * TUNE.air.chasmPush; }
+      }
+      m.hits.push({ target: o, dmg: mv.damage, kb: 0, from: null, pierceBlock: true, src: mv.name, by: p.id }); // a boon always finds its target
+      ev(m, 'tandava', { pid: p.id, x: cx, y: cy });
+      break;
+    }
     case 'brahmastra': // both fighters reach 0 health at once: a draw
       for (const t of m.players) m.hits.push({ target: t, dmg: Infinity, kb: 0, absolute: true, from: null, src: 'Brahmastra' });
       m.brahmastra = true;
@@ -345,7 +432,6 @@ function release(m, p, c) {
       break;
     }
     case 'heal': m.hits.push({ target: p, heal: mv.heal, src: mv.name }); break;
-    case 'lotus': p.lotus = true; break;
     case 'dash': {
       const d = c.dir || unitDir(p.x - o.x, p.y - o.y);
       p.dash = { vx: d.x * mv.speed, vy: d.y * mv.speed, t: mv.time };
@@ -360,14 +446,14 @@ function release(m, p, c) {
 // Only full segments count: stopping (or having the barrier broken) loses the part-filled one.
 function progressMed(m, p, dt) {
   const M = TUNE.meditate;
-  p.med.meter += dt * (p.med.fast ? 2 : 1);
+  p.med.meter += dt;
   if (p.med.meter < M.segTime - 1e-9) return;
   p.med.meter = 0;
   p.devotion = Math.min(M.segments, p.devotion + 1);
   ev(m, 'devotion', { pid: p.id, devotion: p.devotion });
   if (p.devotion >= M.segments) { endMed(p); ev(m, 'medFull', { pid: p.id }); say(p, 'DEVOTION FULL'); }
 }
-function endMed(p) { if (p.med?.fast) p.lotus = false; p.med = null; } // a Lotus seat speeds up one meditation
+function endMed(p) { p.med = null; }
 function stopMed(m, p, why) { endMed(p); say(p, why); ev(m, 'medStop', { pid: p.id }); }
 
 // Block = build a wall (owner, 2026-11-07). While block is held the fighter stands still and the wall in
@@ -393,7 +479,7 @@ function handleBlock(m, p, inp, dt) {
   }
   if (!inp.block) { p.blockDone = false; return; }
   if (!p.block) {
-    if (p.blockDone || p.cast || p.med || p.dash || p.effects.stun || p.power + 1e-9 < def.cost) return;
+    if (p.blockDone || p.cast || p.med || p.dash || p.air || p.effects.stun || p.power + 1e-9 < def.cost) return;
     p.power -= def.cost;
     // several walls can stand at once, each until its own time runs out (owner, 2026-11-08); only past
     // TUNE.block.maxWalls does the oldest one go
@@ -437,6 +523,7 @@ function clashes(m) {
   for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
     const a = bodies[i], b = bodies[j];
     if (a.owner === b.owner || a.dead || b.dead || Math.hypot(a.x - b.x, a.y - b.y) > a.r + b.r) continue; // only when they touch
+    if (a.quick && b.quick) continue; // two quick basic shots fly past each other (owner, 2026-11-14)
     ev(m, 'clash', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, a: a.name, b: b.name });
     if (a.dmg > b.dmg) { a.dmg -= b.dmg; b.dead = true; }
     else if (b.dmg > a.dmg) { b.dmg -= a.dmg; a.dead = true; }
@@ -465,6 +552,7 @@ function collectHits(m) {
       if (pr.pierceUnits) pr.hitUnits.push(u.id); else { pr.dead = true; break; }
     }
     if (pr.dead || o.effects.invuln || Math.hypot(o.x - pr.x, o.y - pr.y) > FR + pr.r) continue;
+    if (o.air?.kind === 'jump' && !pr.seek) continue; // ground rule 17: shots pass under a jump (boons still find him)
     const d = unitDir(pr.vx, pr.vy);
     m.hits.push({ target: o, dmg: pr.dmg, kb: pr.kb, dir: d, from: { x: pr.x - d.x * 20, y: pr.y - d.y * 20 }, effect: pr.effect, divine: pr.divine, pierceBlock: pr.pierceBlock, walled: true, src: pr.name, by: pr.owner });
     pr.dead = true;
@@ -474,14 +562,14 @@ function collectHits(m) {
     if (s.dead) continue;
     const p = m.players[s.owner], o = opponent(m, p);
     for (const u of m.units) if (u.owner !== s.owner && Math.hypot(u.x - p.x, u.y - p.y) <= s.reach) m.hits.push({ target: u, dmg: s.dmg, kb: 0, from: s.from, src: s.name });
-    if (!o.effects.invuln && dist(p, o) <= s.reach) m.hits.push({ target: o, dmg: s.dmg, kb: s.kb, from: s.from, src: s.name, by: s.owner });
+    if (!o.effects.invuln && !airborne(o) && dist(p, o) <= s.reach) m.hits.push({ target: o, dmg: s.dmg, kb: s.kb, from: s.from, src: s.name, by: s.owner }); // melee can't reach anyone off the ground
   }
   for (const a of m.areas) {
     if (a.t > 0) continue;
     a.dead = true;
     ev(m, 'rain', { x: a.x, y: a.y, r: a.r });
     const o = m.players[1 - a.owner];
-    if (!o.effects.invuln && Math.hypot(o.x - a.x, o.y - a.y) <= a.r + FR) m.hits.push({ target: o, dmg: a.dmg, kb: a.kb, from: { x: a.x, y: a.y }, src: 'Arrow rain', by: a.owner });
+    if (!o.effects.invuln && !airborne(o) && Math.hypot(o.x - a.x, o.y - a.y) <= a.r + FR) m.hits.push({ target: o, dmg: a.dmg, kb: a.kb, from: { x: a.x, y: a.y }, src: 'Arrow rain', by: a.owner });
     for (const u of m.units) if (u.owner !== a.owner && Math.hypot(u.x - a.x, u.y - a.y) <= a.r + u.r) m.hits.push({ target: u, dmg: a.dmg, kb: 0, from: a, src: 'Arrow rain' });
   }
   m.areas = m.areas.filter((a) => !a.dead);
@@ -512,14 +600,20 @@ function applyHits(m) {
     let dmg = h.dmg;
     const w = wallFor(m, t, h);
     if (w) dmg = absorb(m, w, dmg);
-    // the meditation barrier takes the damage instead of health; only divine weapons go through it
+    // the meditation barrier takes most of the damage; a little (`leak`) still reaches health, so sitting under fire
+    // isn't free (owner, 2026-11-14). Divine weapons go straight through it.
     if (t.med && !h.divine && !h.absolute && dmg > 0) {
-      const a = Math.min(t.med.barrier, dmg);
+      const a = Math.min(t.med.barrier, dmg * (1 - TUNE.meditate.leak));
       t.med.barrier -= a; dmg -= a;
       ev(m, 'barrier', { pid: t.id, amount: a, left: t.med.barrier, x: t.x, y: t.y });
       if (t.med.barrier <= 1e-9) stopMed(m, t, 'BARRIER BROKEN');
+      else { // the barrier held: the little that leaks through hurts, but doesn't break meditation or push
+        if (dmg > 0) { n.dmg += dmg; n.srcs.push(h.src); if (h.by != null && m.players[h.by]) m.players[h.by].stats.dealt += dmg; }
+        continue;
+      }
     }
     if (!(dmg > 0)) continue;
+    if (h.burn) { n.dmg += dmg; n.srcs.push(h.src); if (h.by != null && m.players[h.by]) m.players[h.by].stats.dealt += dmg; continue; } // lava: hurts, never interrupts
     n.dmg += dmg; n.hit = true; n.srcs.push(h.src);
     if (h.by != null && m.players[h.by]) m.players[h.by].stats.dealt += Number.isFinite(dmg) ? dmg : 0;
     if (t.kvx != null && h.kb) {

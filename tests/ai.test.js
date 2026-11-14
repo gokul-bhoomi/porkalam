@@ -49,7 +49,7 @@ test('the computer uses its specials, walls and meditation', () => {
 
 test('a harder computer beats an easier one more often than not', () => {
   let hard = 0, easy = 0;
-  for (let seed = 1; seed <= 8; seed++) {
+  for (let seed = 1; seed <= 24; seed++) { // 8 seeds was too few: a 4-4 split by chance
     const side = seed % 2; // swap sides so the fighter doesn't decide it
     const lv = side ? ['easy', 'hard'] : ['hard', 'easy'];
     const { m } = cpuMatch(lv, seed, 120);
