@@ -6,7 +6,7 @@ Both fighters are **original characters**. The game is inspired by Indian mythol
 
 **Signature moves have a 2 s cast** (was ~4 s; owner, 2026-11-09), and both signatures do the same damage (35%). The fighter stands still and can't move or block. Any hit breaks it, and the cost is still spent. When the cast completes, a power-up plays in the arena itself: the camera closes in, the world around the sand island becomes the power, and the move goes off.
 
-## Siddhan (Mage)
+## Mangulan (Mage)
 A young wandering mystic-sorcerer: saffron and indigo robes, rudraksha beads, a topknot, and a staff topped with a brass bell. His magic glows teal.
 - **Movement:** slow. Can blink a short distance for a small power cost.
 - **Identity (owner, 2026-11-14):** control, and magic that finds you, but slow.
@@ -22,7 +22,7 @@ A young wandering mystic-sorcerer: saffron and indigo robes, rudraksha beads, a 
 | Signature: Thousand-Arm Form | Anywhere | Very large + health | Power-up in the arena. Large damage across the whole arena |
 | Meditation | n/a | Time | Fills devotion behind a barrier |
 
-## Veeran (Warrior, bow)
+## Kanalan (Warrior, bow)
 A South Indian archer-warrior: bronze and crimson armour, a tiger-stripe sash, a cloth turban with a metal band, a longbow and a curved knife.
 - **Movement:** fast.
 - **Identity (owner, 2026-11-14):** speed and aimed arrows, but the arrows can be dodged, walls stop them, and they weaken from far away.
@@ -48,7 +48,7 @@ Two specials spend devotion to ask a random god for a boon: 4 segments = small, 
 | Brahma | Kamandalu: restores 18% health | Brahmastra: both fighters reach 0 health, so it's a draw |
 | Krishna | (none) | Vishwaroopam: 40% damage across the whole arena |
 
-Owner, 2026-11-14: the medium level was removed, along with Third-eye spark, Sudarshana Chakra (Siddhan already has a chakra) and Lotus seat. Small boons were raised to 16-18% so they're worth sitting for.
+Owner, 2026-11-14: the medium level was removed, along with Third-eye spark, Sudarshana Chakra (Mangulan already has a chakra) and Lotus seat. Small boons were raised to 16-18% so they're worth sitting for.
 
 Owner, 2026-11-08: Flute charm and Peacock dash were removed. A boon's attack always finds the opponent: it homes in, works from any distance and passes walls; only another attack or boon meeting it can weaken or cancel it. When a god grants a boon, a card shows its name, what it does and the keys to use it.
 

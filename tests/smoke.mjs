@@ -69,7 +69,7 @@ await check('menus: pick a 7 minute match, choose a fighter on the select screen
     d.press('confirm'); d.step(1);
     const select = d.snapshot().screen;
     d.press('down'); d.step(1); const boons = window.__game.boonsPage; d.press('up'); d.step(1); // the boons page opens and closes
-    d.press('right'); d.step(1);                                       // choose Veeran
+    d.press('right'); d.step(1);                                       // choose Kanalan
     d.press('confirm'); d.step(1);
     return { setup, select, boons, snap: d.snapshot() };
   });
@@ -77,7 +77,7 @@ await check('menus: pick a 7 minute match, choose a fighter on the select screen
   expect(s.boons === true, 'the boons page did not open');
   expect(s.snap.screen === 'fight' && s.snap.match.duration === 420, `expected a 7 minute fight, got ${s.snap.screen} ${s.snap.match?.duration}`);
   expect(s.snap.mode === '1p' && s.snap.level === 'hard' && s.snap.cpu === 1, `expected 1 player vs a hard CPU: ${JSON.stringify(s.snap)}`);
-  expect(s.snap.match.players[0].name === 'Veeran' && s.snap.match.players[1].name === 'Siddhan', `expected you as Veeran vs a CPU Siddhan: ${s.snap.match.players.map((p) => p.name)}`);
+  expect(s.snap.match.players[0].name === 'Kanalan' && s.snap.match.players[1].name === 'Mangulan', `expected you as Kanalan vs a CPU Mangulan: ${s.snap.match.players.map((p) => p.name)}`);
 });
 
 await check('1 player: the computer fights back and either key set moves you', async () => {
@@ -86,13 +86,13 @@ await check('1 player: the computer fights back and either key set moves you', a
   await page.keyboard.down('ArrowRight'); // P2 keys also move the 1-player fighter
   const x = await game(() => { const d = window.__game.debug, x0 = d.snapshot().match.players[0].x; d.step(30); return [x0, d.snapshot().match.players[0].x]; });
   await page.keyboard.up('ArrowRight');
-  expect(x[1] > x[0] + 10, `arrow keys did not move Siddhan: ${x}`);
+  expect(x[1] > x[0] + 10, `arrow keys did not move Mangulan: ${x}`);
   const s = await game(() => { const d = window.__game.debug; d.step(60 * 20); return d.snapshot().match; });
   expect(s.players[0].hp < 100 || s.players[1].devotion > 0, `the CPU did nothing in 20 s (no hit, no meditation): ${JSON.stringify(s.players)}`);
   await page.screenshot({ path: join(SHOTS, 'cpu.png') });
 });
 
-await check('a gamepad moves Siddhan and fires a mantra bolt (P1 pad)', async () => {
+await check('a gamepad moves Mangulan and fires a mantra bolt (P1 pad)', async () => {
   await open('?seed=4&pause=1');
   const s = await game(() => {
     const d = window.__game.debug; d.start({ minutes: 5 });
@@ -102,11 +102,11 @@ await check('a gamepad moves Siddhan and fires a mantra bolt (P1 pad)', async ()
     window.__pad(0, 0, true); d.step(2); window.__pad(0, 0, false); d.step(15);
     return { x0, x1, proj: d.snapshot().match.projectiles };
   });
-  expect(s.x1 > s.x0 + 10, `Siddhan did not move: ${s.x0} -> ${s.x1}`);
+  expect(s.x1 > s.x0 + 10, `Mangulan did not move: ${s.x0} -> ${s.x1}`);
   expect(s.proj >= 1, 'no mantra bolt in the air');
 });
 
-await check('the keyboard moves Veeran and he blocks (P2 keys)', async () => {
+await check('the keyboard moves Kanalan and he blocks (P2 keys)', async () => {
   await open('?seed=4&pause=1');
   await game(() => window.__game.debug.start({ minutes: 5 }));
   await page.keyboard.down('ArrowUp');
@@ -299,7 +299,7 @@ await check('tutorial: every lesson can be completed in order, and the dummy nev
     const L = () => g.tutorial.lesson;
     d.press('down'); d.step(1); d.press('confirm'); d.step(1); // title -> TUTORIAL -> fighter select
     const pick = g.screen;
-    d.press('confirm'); d.step(1);                             // you play Siddhan, the dummy is Veeran
+    d.press('confirm'); d.step(1);                             // you play Mangulan, the dummy is Kanalan
     const until = (id, act, max = 3000) => { // repeat the action until the lesson moves on
       seen.push(id);
       for (let f = 0; f < max && L() === id; f += 10) { act(f); d.step(10); }
@@ -350,10 +350,10 @@ await check('no text overlaps or runs off screen on any menu page', async () => 
     d.press('confirm'); d.step(1); shot('setup 1P');
     d.press('right'); d.step(1); shot('setup 2P'); d.press('left'); d.step(1); // back to 1 player
     d.press('confirm'); d.step(1);
-    shot('select: Siddhan'); d.press('right'); d.step(1); shot('select: Veeran');
+    shot('select: Mangulan'); d.press('right'); d.step(1); shot('select: Kanalan');
     d.press('down'); d.step(1); shot('boons page'); d.press('up'); d.step(1);
     d.press('up'); d.step(1); shot('controls page'); d.press('up'); d.step(1);
-    d.press('confirm'); d.step(1); // into the fight (Veeran vs CPU Siddhan)
+    d.press('confirm'); d.step(1); // into the fight (Kanalan vs CPU Mangulan)
     d.step(30); shot('fight HUD');
     const m = d.match(); m.players[0].devotion = 8; d.setInput(0, { s1: true, s2: true }); d.step(1); d.setInput(0, {}); d.step(40); shot('boon card + held boon tag');
     d.press('pause'); d.step(1); shot('pause menu');

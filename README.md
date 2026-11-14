@@ -2,7 +2,7 @@
 
 **Play it:** https://gokul-bhoomi.github.io/porkalam/ (GitHub Pages, served from `main`).
 
-Siddhan (Mage) vs Veeran (Warrior), inspired by Indian mythology: one player against the computer or two players on one screen. Every ground rule, class rule and move from the docs works, drawn with the Codex art (or the grey-box shapes with `?grey=1`).
+Mangulan (Mage) vs Kanalan (Warrior), inspired by Indian mythology: one player against the computer or two players on one screen. Every ground rule, class rule and move from the docs works, drawn with the Codex art (or the grey-box shapes with `?grey=1`).
 
 ## Run it
 
@@ -10,7 +10,7 @@ Siddhan (Mage) vs Veeran (Warrior), inspired by Indian mythology: one player aga
 npm run serve
 ```
 
-Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: press any button to connect; pad 1 is P1 (Siddhan), pad 2 is P2 (Veeran). The title screen lists every control.
+Then open http://127.0.0.1:5174. Backquote (`) toggles fullscreen. Controllers: press any button to connect; pad 1 is P1 (Mangulan), pad 2 is P2 (Kanalan). The title screen lists every control.
 
 The title screen has **Play**, **Tutorial** and **Controls**. The **tutorial** is a practice fight against a training dummy, in 12 lessons that explain the screen and every move (walk, both attacks, block, the three specials, the signature, meditation, boons); the clock is stopped, nobody can be knocked out and your power is topped up, and the lessons that ask you to do something move on once you've done it. Afterwards you can keep practising. **Controls** (also in the pause menu) lets each player remap their keys and the pad buttons: pick a cell, press Enter, then the new key. A key that is already used swaps with the old one; Esc, M, 0 and ` are kept by the game. The bindings are saved in the browser (`localStorage`), and Reset to defaults puts them back. The table below shows the defaults.
 

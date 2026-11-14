@@ -26,7 +26,7 @@ const SHEETS = {
   veeran: { walk: 'art/veeran_sheet.png', act: 'art/veeran_actions.png', air: 'art/veeran_jump.png' },
 };
 // Off-the-ground poses (ground rule 17), 3 frames each (Codex, 2026-11-14):
-// Siddhan's fly: lift-off, flying, casting in the air. Veeran's jump: crouch, mid-air, landing.
+// Mangulan's fly: lift-off, flying, casting in the air. Kanalan's jump: crouch, mid-air, landing.
 export const AIR_POSES = { lift: 0, up: 1, cast: 2, crouch: 0, land: 2 };
 // Frame numbers in each action sheet (0-based).
 export const POSES = {
