@@ -148,8 +148,35 @@ export async function loadArt(base = '') {
   if (divineHalo) Object.assign(ART.fx, cutFx(divineHalo, ['divineHalo'], 80));
   const crack = await loadImg(base + 'art/fx_tandava_crack.png'); // Shiva's Tandava: the glowing chasm (Codex, 2026-11-14)
   if (crack) Object.assign(ART.fx, cutFx(crack, ['tandavaCrack']));
+  // Shiva's Tandava lava (ChatGPT, 2026-11-15): a tileable molten floor, and the torn cliff face on magenta
+  const [lavaFloor, lavaCliff] = await Promise.all([loadImg(base + 'art/lava_floor.png'), loadImg(base + 'art/lava_cliff.png')]);
+  if (lavaFloor) ART.lavaFloor = lavaFloor;
+  if (lavaCliff) ART.lavaCliff = keyOut(lavaCliff).c;
   const ele = await loadImg(base + 'art/fx_elephant.png'); // single sprite: the Gaja Arrow's war elephant
   if (ele) Object.assign(ART.fx, cutFx(ele, ['elephant']));
+  // Blocks and meditation barriers (ChatGPT, 2026-11-15): 4 stage cells each, kept whole so the stages line up
+  const cellSheet = async (file, names, prep, k) => { // k = kept resolution (1 for art drawn bigger than half size)
+    const img = await loadImg(base + file);
+    if (!img) return;
+    const { c, d } = keyOut(img);
+    if (prep) { prep(d, c.width); c.getContext('2d').putImageData(d, 0, 0); }
+    Object.assign(ART.fx, fullCells(c, names, k));
+  };
+  await Promise.all([
+    cellSheet('art/fx_yantra.png', ['yantra1', 'yantra2', 'yantra3', 'yantraCrack']),
+    cellSheet('art/fx_flame.png', ['flame1', 'flame2', 'flame3', 'flame4', 'flame5', 'flame6', 'flame7', 'flame8']), // one flame, an 8-frame loop
+    cellSheet('art/fx_smoke.png', ['smoke1', 'smoke2', 'smoke3', 'smoke4']),
+    cellSheet('art/fx_arrow_parts.png', ['arrow1', 'arrow2', 'arrow3', 'arrow4', 'arrowStump1', 'arrowStump2', 'arrowTop1', 'arrowTop2']), // Kanalan's volley, one arrow at a time
+    cellSheet('art/fx_arrow_volley.png', ['volley1', 'volley2', 'volley3', 'volleyBreak']),
+    cellSheet('art/fx_shrine.png', ['shrineBack', 'shrineFront', 'shrineBackHurt', 'shrineFrontHurt'], null, 1),
+    cellSheet('art/fx_fire_ring.png', ['ring1', 'ring2', 'ring3', 'ring4'], clearRingSand, 1),
+  ]);
+  await cellSheet('art/fx_yantra2.png', ['yantra1', 'yantra2', 'yantra3', 'yantraCrack'], null, 1);
+  await Promise.all([ // built from pieces (2026-11-15): the shrine stone by stone, the yantra layer by layer
+    cellSheet('art/fx_shrine_big.png', ['shrinePlatform', 'shrinePlatformHurt', 'shrineRoof', 'shrineRoofHurt'], null, 1),
+    cellSheet('art/fx_shrine_pillar.png', ['pillar', 'pillarCracked', 'pillarCracked2', 'pillarStump', 'pillarTop', 'kalasam', 'rubble1', 'rubble2'], null, 1),
+    cellSheet('art/fx_yantra_layers.png', ['yl1', 'yl2', 'yl3', 'yl4', 'yl5', 'yl6'], null, 1),
+  ]); // the richer crystal yantra (2026-11-15) replaces the first one
   ART.ready = true;
   return ART;
 }
@@ -185,6 +212,33 @@ function cutFx(img, names, minAlpha = 40) {
     out[name] = { canvas: small, x: x0 * k, y: y0 * k, w: (x1 - x0 + 2) * k, h: (y1 - y0 + 2) * k };
   });
   return out;
+}
+
+// Whole cells of a sheet (no cropping), at half size, so stages and layers stay lined up.
+function fullCells(c, names, k = 0.5) {
+  const small = document.createElement('canvas'), out = {};
+  small.width = Math.round(c.width * k); small.height = Math.round(c.height * k);
+  const g = small.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, small.width, small.height);
+  const cw = small.width / names.length;
+  names.forEach((name, i) => { out[name] = { canvas: small, x: i * cw, y: 0, w: cw, h: small.height }; });
+  return out;
+}
+
+// The fire ring's sheet has painted sand inside the ring: clear it (flood fill from the middle of each cell) so the arena shows through.
+function clearRingSand(px, W) {
+  const cells = W / 512, sand = (i) => px[i] > 200 && px[i + 1] > 115 && px[i + 1] < 215 && px[i + 2] > 25 && px[i + 2] < 135;
+  for (let cell = 0; cell < cells; cell++) {
+    const seen = new Uint8Array(512 * 512), st = [256, 340];
+    while (st.length) {
+      const y = st.pop(), x = st.pop();
+      if (x < 0 || y < 0 || x >= 512 || y >= 512 || seen[y * 512 + x]) continue;
+      seen[y * 512 + x] = 1;
+      const i = (y * W + cell * 512 + x) * 4;
+      if (!sand(i)) continue;
+      px[i + 3] = 0;
+      st.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
+    }
+  }
 }
 
 // Draw an effect sprite. w = drawn width in layout units; h = height (default keeps the shape).

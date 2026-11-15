@@ -169,6 +169,7 @@ function drawSplit(c, now) {
     if (side < 0) { g.addColorStop(0, '#a07a52'); g.addColorStop(0.5, '#6b4a2e'); g.addColorStop(1, '#3a2414'); } else { g.addColorStop(0, '#0a0302'); g.addColorStop(1, '#2a0e06'); }
     G.fillStyle = g; G.fillRect(0, 0, W, H);
     if (side < 0) for (let i = 0; i < 14; i++) { const x = CX - rx + (i / 13) * rx * 2; line(x, CY - ry, x + 3, CY + ry, 'rgba(0,0,0,.18)', 1); } // rock strata
+    else if (ART.lavaFloor && c.lava) drawLava(c, k, now); // the gap the sunk half leaves (its far rim, the chasm) fills with the same lava, not black
     else { G.fillStyle = `rgba(255,120,40,${0.25 * k * (0.7 + 0.3 * Math.sin(now * 5))})`; G.fillRect(0, 0, W, H); } // lava glow far below
     G.restore();
     G.save(); G.translate(0, dy); clip(side);
@@ -176,12 +177,38 @@ function drawSplit(c, now) {
     if (side > 0) { G.fillStyle = `rgba(20,6,0,${0.22 * k})`; G.fillRect(0, 0, W, H); drawLava(c, k, now); } // the sunk half sits in shadow, and burns
     G.restore();
   }
+  drawCliffFaces(c, k, rx, ry, clip);
+}
+
+// The torn rock face (art/lava_cliff.png, lava dripping down it) in the gaps the split opens: under the raised
+// half's front rim, and along the chasm when the raised half is the far one (its broken edge faces the camera).
+// Drawn as thin vertical slices so the strip follows the curved rim.
+const CLIFF_SRC = { y: 150, h: 215 }; // the rock band in the strip image, top lip to bottom rubble
+function drawCliffFaces(c, k, rx, ry, clip) {
+  const img = ART.lavaCliff;
+  if (!img || k < 0.05) return;
+  const h = SPLIT.lift * k, step = 2;
+  const slice = (x, top, hh) => { const s = hh / CLIFF_SRC.h, sw = step / s; G.drawImage(img, (((x - CX) / s) % (img.width - sw) + (img.width - sw)) % (img.width - sw), CLIFF_SRC.y, sw, CLIFF_SRC.h, x, top, step + 0.5, hh); };
+  G.save(); G.imageSmoothingEnabled = true;
+  G.save(); clip(-1); // the raised half's front rim: the band it uncovered by rising
+  for (let x = CX - rx; x < CX + rx; x += step) { const u = (x - CX) / rx, yb = CY + ry * Math.sqrt(Math.max(0, 1 - u * u)); slice(x, yb - h, h + 2); }
+  G.restore();
+  if (c.ny > 0) { // the raised half is behind the chasm: its torn edge faces us, from its lifted rim down to the sunk floor
+    const tx = -c.ny, ty = c.nx, a = [sx(c.x - tx * 400), sy(c.y - ty * 400)], b = [sx(c.x + tx * 400), sy(c.y + ty * 400)];
+    G.beginPath(); G.ellipse(CX, CY, rx, ry, 0, 0, Math.PI * 2); G.clip();
+    const deep = h + SPLIT.sink * k;
+    for (let x = Math.max(CX - rx, Math.min(a[0], b[0])); x < Math.min(CX + rx, Math.max(a[0], b[0])); x += step) {
+      const y = a[1] + ((x - a[0]) / (b[0] - a[0] || 1)) * (b[1] - a[1]); slice(x, y - h, deep + 1);
+    }
+  }
+  G.restore();
 }
 
 // The sunk half is lava (it burns anyone standing there): a red cast, glowing cracks that pulse, and bubbles that
 // swell and pop. Drawn in world positions so it stays put on the floor.
 function drawLava(c, k, now) {
   if (k <= 0.01) return;
+  if (ART.lavaFloor) { drawLavaArt(c, k, now); return; }
   const tx = -c.ny, ty = c.nx, at = (s, u) => [sx(c.x + c.nx * s + tx * u), sy(c.y + c.ny * s + ty * u)];
   const pulse = 0.75 + 0.25 * Math.sin(now * 4);
   G.fillStyle = `rgba(190,40,0,${0.3 * k * pulse})`; G.fillRect(0, 0, W, H);
@@ -206,6 +233,45 @@ function drawLava(c, k, now) {
     G.fillStyle = `rgba(255,${180 + 60 * ph},80,${(ph < 0.85 ? 0.7 : (1 - ph) * 4.6) * k})`;
     G.beginPath(); G.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2); G.fill();
   }
+}
+
+// The painted lava (art/lava_floor.png): it spreads out from the chasm as the half sinks (the sand melts), two
+// layers of the texture drift against each other so the crust looks like it floats, the glow pulses and is
+// hottest along the chasm, and embers rise off it. Laid on the floor in the 3/4 view (squashed by SQ).
+const LAVA = { tile: 70, melt: 1.1 }; // one tile of the texture in world units; seconds for the lava to cover the half
+function drawLavaArt(c, k, now) {
+  const age = c.time - c.t, reach = ARENA.r * 2.2 * easeOut(clamp01((age - CRACK) / LAVA.melt));
+  if (reach <= 1) return;
+  const tx = -c.ny, ty = c.nx, B = 2000, at = (s, u) => [sx(c.x + c.nx * s + tx * u), sy(c.y + c.ny * s + ty * u)];
+  G.save();
+  G.beginPath(); [at(0, -B), at(0, B), at(reach, B), at(reach, -B)].forEach(([x, y], i) => (i ? G.lineTo(x, y) : G.moveTo(x, y))); G.closePath(); G.clip();
+  const layer = (scale, dx, dy, alpha, op) => {
+    const pat = G.createPattern(ART.lavaFloor, 'repeat'), s = (LAVA.tile * scale * SC) / ART.lavaFloor.width;
+    pat.setTransform(new DOMMatrix().translate(CX + dx * SC, CY + dy * SC * SQ).scale(s, s * SQ));
+    G.globalCompositeOperation = op; G.globalAlpha = alpha; G.fillStyle = pat; G.fillRect(0, 0, W, H);
+  };
+  G.imageSmoothingEnabled = true;
+  const pulse = 0.75 + 0.25 * Math.sin(now * 2.2);
+  layer(1, now * 1.6, now * 0.9, k, 'source-over');                     // the crust, drifting slowly
+  layer(1.37, -now * 2.3, now * 1.4, 0.32 * k * pulse, 'lighter');       // a second, larger layer: the molten glow shifting under it
+  G.globalCompositeOperation = 'source-over'; G.globalAlpha = 1;
+  const ga = at(0, 0), gb = at(ARENA.r * 0.8, 0), grd = G.createLinearGradient(ga[0], ga[1], gb[0], gb[1]); // hottest along the chasm
+  grd.addColorStop(0, `rgba(255,170,60,${0.35 * k * pulse})`); grd.addColorStop(1, 'rgba(255,90,20,0)');
+  G.globalCompositeOperation = 'lighter'; G.fillStyle = grd; G.fillRect(0, 0, W, H); G.globalCompositeOperation = 'source-over';
+  if (reach < ARENA.r * 2.1) { // the melting front: a bright rim where the sand is turning to lava
+    const [x0, y0] = at(reach, -B), [x1, y1] = at(reach, B);
+    G.lineCap = 'round';
+    G.strokeStyle = `rgba(255,120,30,${0.6 * k})`; G.lineWidth = 7; G.beginPath(); G.moveTo(x0, y0); G.lineTo(x1, y1); G.stroke();
+    G.strokeStyle = `rgba(255,235,170,${0.9 * k})`; G.lineWidth = 2; G.beginPath(); G.moveTo(x0, y0); G.lineTo(x1, y1); G.stroke();
+  }
+  for (let i = 0; i < 30; i++) { // embers: rise, drift and fade, each on its own clock
+    const per = 1.6 + hash01(i + 400) * 1.4, ph = ((now + hash01(i + 500) * per) % per) / per;
+    const s0 = 6 + hash01(i + 600) * ARENA.r * 1.5; if (s0 > reach) continue;
+    const [x, y] = at(s0, (hash01(i + 700) - 0.5) * ARENA.r * 1.9);
+    const a = Math.sin(ph * Math.PI) * k, r = 0.8 + hash01(i + 800) * 1.2;
+    R(x + Math.sin(now * 2 + i) * 4 * ph, y - ph * 34, r, r, `rgba(255,${170 + 70 * (1 - ph)},90,${a})`);
+  }
+  G.restore();
 }
 
 // Beats on top of the halves: the racing crack, rocks breaking off the cliff edge into the gap, dust as it closes.
@@ -267,12 +333,290 @@ function drawChasm(m, now) {
 
 // ---------- fighters ----------
 // A wall stays where it was built. It looks weaker as its strength gets used up.
-function drawWall(w) {
+// Draw one whole cell of a stage sheet (fullCells in art.js). upp = layout units per cell pixel (cells are 512 px);
+// cell point (256, ay*512) lands on (x, y). o: from/to = which rows (0..1), sx = horizontal squash, alpha, add (glow),
+// lift = pushed down by this much and cut off at row `ground` (rising out of the sand).
+function drawCell(name, x, y, upp, ay, o = {}) {
+  const f = fxArt(name);
+  if (!f) return false;
+  const dw = 512 * upp * (f.w / f.h) * (o.sx ?? 1), dh = 512 * upp * (o.sy ?? 1), lift = o.lift ?? 0; // cells are 512 px tall
+  const r0 = o.from ?? 0, r1 = Math.min(o.to ?? 1, lift ? (o.ground ?? 1) - lift / dh : 1);
+  if (r1 <= r0) return true;
+  G.save();
+  if (o.alpha != null) G.globalAlpha *= o.alpha;
+  if (o.add) G.globalCompositeOperation = 'lighter';
+  G.imageSmoothingEnabled = true;
+  G.drawImage(f.canvas, f.x, f.y + f.h * r0, f.w, f.h * (r1 - r0), x - dw / 2, y - ay * dh + r0 * dh + lift, dw, dh * (r1 - r0));
+  G.restore();
+  return true;
+}
+
+// ---------- debris: chips, shards, splinters, dust, smoke, and pieces of a broken sprite ----------
+// Each bit flies on its own simple arc (worked out from its start, so a slow frame never breaks it) and lands on the sand.
+const PARTS = [];
+const rnd = (a, b) => a + Math.random() * (b - a);
+function partAt(q, t) {
+  let tt = t;
+  if (q.floor != null && q.g) { // when does it land?
+    const a = 0.5 * q.g, b = q.vy, c = q.y - q.floor, d = b * b - 4 * a * c;
+    if (d >= 0) { const tl = (-b + Math.sqrt(d)) / (2 * a); if (tl > 0 && t > tl) tt = tl; }
+  }
+  return { x: q.x + q.vx * tt, y: q.y + q.vy * tt + 0.5 * (q.g || 0) * tt * tt, tt };
+}
+function drawParts(now, back) {
+  for (let i = PARTS.length - 1; i >= 0; i--) if (now - PARTS[i].t0 > PARTS[i].life || now < PARTS[i].t0 - 1) PARTS.splice(i, 1);
+  for (const q of PARTS) {
+    if (!!q.back !== back || now < q.t0) continue; // not started yet (a delayed puff)
+    const t = now - q.t0, k = t / q.life, at = partAt(q, t), rot = (q.rot || 0) + (q.vr || 0) * at.tt;
+    G.save();
+    G.globalAlpha = (q.alpha ?? 1) * (q.late ? 1 - clamp01((k - 0.65) / 0.35) : 1 - k);
+    if (q.add) G.globalCompositeOperation = 'lighter';
+    G.translate(at.x + (q.sway ? Math.sin(t * 5 + q.sway) * 3 : 0), at.y); if (q.sx) G.scale(q.sx, 1); G.rotate(rot);
+    const z = q.size;
+    if (q.kind === 'piece') { // a piece of a broken sprite: the art itself, clipped to a jagged shape
+      G.beginPath(); q.poly.forEach(([px, py], i) => (i ? G.lineTo(px, py) : G.moveTo(px, py))); G.closePath(); G.clip();
+      G.imageSmoothingEnabled = true; G.drawImage(q.img.canvas, q.img.x, q.img.y, q.img.w, q.img.h, q.ox, q.oy, q.dw, q.dh);
+    } else if (q.kind === 'chip' || q.kind === 'shard') {
+      G.fillStyle = q.color; G.beginPath(); G.moveTo(-z, -z * 0.6); G.lineTo(z * 0.8, -z * 0.8); G.lineTo(z * 0.5, z * 0.7); if (q.kind === 'chip') G.lineTo(-z * 0.7, z * 0.5); G.closePath(); G.fill();
+    } else if (q.kind === 'spark') { G.fillStyle = q.color; G.fillRect(-z / 2, -z / 2, z, z); }
+    else if (q.kind === 'splinter') { G.strokeStyle = q.color; G.lineWidth = 1.6; G.beginPath(); G.moveTo(-z / 2, 0); G.lineTo(z / 2, 0); G.stroke(); }
+    else if (q.kind === 'feather') { G.fillStyle = '#f4efe2'; G.beginPath(); G.ellipse(0, 0, z, z * 0.35, 0, 0, Math.PI * 2); G.fill(); }
+    else if (q.kind === 'dust') { const r = Math.max(0.1, z * (0.5 + 0.9 * easeOut(Math.min(1, k)))); G.fillStyle = q.color; G.beginPath(); G.ellipse(0, 0, r, r * 0.6, 0, 0, Math.PI * 2); G.fill(); }
+    else if (q.kind === 'ripple') { const r = z * easeOut(k); G.strokeStyle = q.color; G.lineWidth = 1.5 * (1 - k) + 0.3; G.beginPath(); G.ellipse(0, 0, r * 0.45, r, 0, 0, Math.PI * 2); G.stroke(); }
+    else if (q.kind === 'sprite') { const f = fxArt(q.name); if (f) { const w2 = z * f.w / f.h; G.imageSmoothingEnabled = true; G.drawImage(f.canvas, f.x, f.y, f.w, f.h, -w2 / 2, -z / 2, w2, z); } }
+    else if (q.kind === 'smoke') {
+      const f = fxArt('smoke' + (1 + Math.min(3, Math.floor(k * 4)))), h = z * (0.6 + 0.6 * k);
+      if (f) { G.imageSmoothingEnabled = true; G.drawImage(f.canvas, f.x, f.y, f.w, f.h, -h / 2, -h, h, h); }
+      else { G.fillStyle = 'rgba(90,80,75,.5)'; G.beginPath(); G.ellipse(0, -h / 3, h / 3, h / 4, 0, 0, Math.PI * 2); G.fill(); }
+    }
+    G.restore();
+  }
+}
+// Break one cell of a stage sheet into jagged pieces, laid out exactly where drawCell drew it, and throw them.
+// o: cols/rows (how many pieces), sx (squash), dir (away from the hit), throw(piece centre, cell centre) -> {vx, vy}, g, life, add, back.
+function shatter(name, x, y, upp, ay, o, now) {
+  const f = fxArt(name);
+  if (!f) return;
+  const dw = 512 * upp * (f.w / f.h) * (o.sx ?? 1), dh = 512 * upp, left = x - dw / 2, top = y - ay * dh, C = o.cols, Rr = o.rows;
+  const pt = (i, j) => [left + (i + (i > 0 && i < C ? rnd(-0.38, 0.38) : 0)) * dw / C, top + (j + (j > 0 && j < Rr ? rnd(-0.38, 0.38) : 0)) * dh / Rr];
+  const grid = []; for (let j = 0; j <= Rr; j++) { grid.push([]); for (let i = 0; i <= C; i++) grid[j].push(pt(i, j)); }
+  for (let j = 0; j < Rr; j++) for (let i = 0; i < C; i++) {
+    const a = grid[j][i], b = grid[j][i + 1], c = grid[j + 1][i + 1], d = grid[j + 1][i];
+    const tris = (i + j) % 2 ? [[a, b, c], [a, c, d]] : [[a, b, d], [b, c, d]];
+    for (const tri of tris) {
+      const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3, cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3, v = o.throw(cx - x, cy - y);
+      PARTS.push({ kind: 'piece', img: f, t0: now, life: o.life * rnd(0.85, 1.15), x: cx, y: cy, vx: v.vx, vy: v.vy, g: o.g, floor: (o.floor ?? y) + rnd(-1, 4),
+        vr: rnd(-1, 1) * (o.spin ?? 3), poly: tri.map(([px, py]) => [px - cx, py - cy]), ox: left - cx, oy: top - cy, dw, dh, add: o.add, back: o.back, late: true });
+    }
+  }
+}
+function burst(n, make) { for (let i = 0; i < n; i++) PARTS.push(make(i)); }
+const YANTRA = { h: 420, ay: 0.9 };
+// The layered yantra: ring, gates, triangles, petals, core, each arriving with its own motion as the block builds.
+const YL = { th: [0, 0.2, 0.45, 0.7, 0.88], dur: [0.32, 0.26, 0.34, 0.3, 0.28] };
+const YSTATE = new WeakMap();
+function yantraState(w) { let Y = YSTATE.get(w); if (!Y) { Y = { on: [], locked: [], cracks: [] }; YSTATE.set(w, Y); } return Y; }
+function drawYantraLayers(w, x, y, s, side, now, fade, flash) {
+  const Y = yantraState(w), top = (WALLFX.peak.get(w) ?? w.cap) / w.max, R = 222 * s, cy = y - R - 2;
+  YL.th.forEach((th, i) => { if (top >= th - 1e-6 && Y.on[i] == null) Y.on[i] = now; });
+  G.save(); G.translate(x, cy); G.scale(side, 1); G.globalAlpha *= fade;
+  const pulse = 0.85 + 0.15 * Math.sin(now * 5);
+  G.save(); G.globalCompositeOperation = 'lighter'; G.globalAlpha *= 0.35 * pulse; ell(0, R - 1, R * 0.7, R * 0.12, 'rgba(90,240,220,.8)'); G.restore(); // light where it meets the sand
+  const layer = (i, sc, rot, a, add) => {
+    const f = fxArt('yl' + (i + 1)); if (!f) return;
+    const d = 512 * s * sc;
+    G.save(); G.rotate(rot); G.globalAlpha *= a; if (add) G.globalCompositeOperation = 'lighter';
+    G.imageSmoothingEnabled = true; G.drawImage(f.canvas, f.x, f.y, f.w, f.h, -d / 2, -d / 2, d, d); G.restore();
+  };
+  for (let i = 0; i < 5; i++) {
+    const t0 = Y.on[i]; if (t0 == null || now < t0) continue;
+    const k = clamp01((now - t0) / YL.dur[i]), e = easeOut(k);
+    if (k >= 1 && !Y.locked[i]) { // it locks into place: a flash and a ring of light
+      Y.locked[i] = now;
+      PARTS.push({ kind: 'ripple', t0: now, life: 0.3, x: x, y: cy, vx: 0, vy: 0, size: R * (0.6 + i * 0.12), color: 'rgba(200,255,248,.85)', add: true });
+    }
+    const sc = [0.3 + 0.7 * e, 1.35 - 0.35 * e, 0.2 + 0.8 * e, 0.7 + 0.3 * e, k < 1 ? 0.3 + e + 0.3 * Math.sin(Math.PI * k) : 1 + 0.05 * Math.sin(now * 5)][i];
+    const rot = [(1 - e) * -4, (1 - e) * 0.8, (1 - e) * 6, (1 - e) * -1, 0][i]; // still once settled: rotating pixel art every frame makes it soft
+    layer(i, sc, rot, Math.min(1, k * 2));
+    const fl = Y.locked[i] ? 1 - clamp01((now - Y.locked[i]) / 0.25) : 0;
+    layer(i, sc, rot, 0.1 * pulse + 0.7 * fl + 0.5 * flash, true); // its glow (and the flash as it locks, or when hit)
+  }
+  // cracks spread from where each hit landed
+  const dmg = 1 - clamp01(w.cap / Math.max(1e-6, WALLFX.peak.get(w) ?? w.cap)), cf = fxArt('yl6');
+  if (cf) for (const c of Y.cracks) {
+    const r = (0.3 + 0.7 * clamp01((now - c.t0) / 0.18)) * (110 + 260 * dmg) * s;
+    G.save(); G.beginPath(); G.arc(c.x * s, c.y * s, r, 0, Math.PI * 2); G.clip(); G.rotate(c.rot);
+    const d = 512 * s; G.imageSmoothingEnabled = true; G.drawImage(cf.canvas, cf.x, cf.y, cf.w, cf.h, -d / 2, -d / 2, d, d);
+    G.globalCompositeOperation = 'lighter'; G.drawImage(cf.canvas, cf.x, cf.y, cf.w, cf.h, -d / 2, -d / 2, d, d); G.restore(); // bright, so the cracks read
+  }
+  G.restore();
+} // the yantra's height in its cell and where its foot is (replaced when fx_yantra2 loads)
+function shatterWall(w, L, now) { // a block used up: the yantra bursts into glass, the arrows snap and scatter
+  if (w.look === 'hill' && L.layers) { // each layer flies off on its own, spinning, then it all bursts into crystal
+    const Y = YSTATE.get(w), cy = L.y - 222 * L.s - 2;
+    (Y?.on || []).forEach((t, i) => { if (t == null || i > 3) return;
+      PARTS.push({ kind: 'sprite', name: 'yl' + (i + 1), t0: now, life: rnd(0.55, 0.8), x: L.x, y: cy, vx: rnd(-90, 90), vy: rnd(-70, 10), g: 120, rot: rnd(0, 6), vr: rnd(-9, 9), size: 512 * L.s * (1 + i * 0.05), sx: L.side, late: true }); });
+    burst(26, () => ({ kind: 'shard', t0: now, life: rnd(0.4, 0.8), x: L.x + rnd(-10, 10) * L.side, y: cy + rnd(-30, 30) * L.s * 8, vx: rnd(-110, 110), vy: rnd(-90, 30), g: 140, vr: rnd(-14, 14), size: rnd(2, 4.5), color: ['#9ff3ea', '#d8fffa', '#5fd6cf'][Math.floor(rnd(0, 3))], add: true }));
+    PARTS.push({ kind: 'ripple', t0: now, life: 0.4, x: L.x, y: cy, vx: 0, vy: 0, size: 60 * L.s * 8, color: 'rgba(190,255,245,.9)', add: true });
+  } else if (w.look === 'hill') {
+    shatter(L.name, L.x, L.y, L.s, L.ay, { cols: 5, rows: 6, sx: L.side, g: 90, life: 0.8, spin: 6,
+      throw: (dx, dy) => ({ vx: dx * 3.2 + rnd(-15, 15), vy: dy * 1.6 + rnd(-25, 5) }) }, now);
+    burst(18, () => ({ kind: 'spark', t0: now, life: rnd(0.3, 0.6), x: L.x + rnd(-8, 8), y: L.y - rnd(0, L.h * 0.9), vx: rnd(-70, 70), vy: rnd(-60, 20), g: 60, size: rnd(1.6, 3), color: '#bff8f0', add: true }));
+  } else {
+    shatter(L.name, L.x, L.y, L.s, L.ay, { cols: 6, rows: 3, sx: L.side, g: 320, life: 1.1, spin: 9,
+      throw: (dx, dy) => ({ vx: dx * 1.5 + rnd(-30, 30), vy: rnd(-70, -20) }) }, now);
+    burst(14, () => ({ kind: 'splinter', t0: now, life: rnd(0.6, 1), x: L.x + rnd(-15, 15), y: L.y - rnd(4, 20), vx: rnd(-60, 60), vy: rnd(-80, -20), g: 300, floor: L.y + rnd(0, 3), vr: rnd(-20, 20), size: rnd(4, 9), color: '#a8743a', late: true }));
+    burst(6, (i) => ({ kind: 'feather', t0: now, life: rnd(1, 1.6), x: L.x + rnd(-15, 15), y: L.y - rnd(15, 30), vx: rnd(-20, 20), vy: rnd(-25, -5), g: 25, floor: L.y, vr: rnd(-4, 4), size: rnd(2.6, 4), sway: i * 1.7, late: true }));
+  }
+  burst(5, () => ({ kind: 'dust', t0: now, life: rnd(0.6, 1), x: L.x + rnd(-14, 14), y: L.y - 2, vx: rnd(-12, 12), vy: rnd(-6, -1), size: rnd(5, 9), color: 'rgba(214,170,110,.45)' }));
+}
+// ---------- Kanalan's block: a volley of single arrows (art/fx_arrow_parts.png) ----------
+// Arrows rain down one after another and thud into the sand (more the longer he holds); each hit snaps some.
+const VOLLEY = { len: 36, ay: 0.89, fall: 0.17, max: 12, gap: 0.07, sky: 80 };
+const volleyOf = new WeakMap();
+function arrowAt(w, a) { // where an arrow stands: spread along the wall line, a little in front / behind it
+  const thick = 2 + 9 * (1 - Math.abs(w.ny)); // seen end-on, a thin line would stack into one column: spread them as a thicket instead
+  const wx = w.x - w.ny * a.t * w.hw + w.nx * a.d * thick, wy = w.y + w.nx * a.t * w.hw + w.ny * a.d * thick;
+  return { x: sx(wx), y: sy(wy) + 2, wy };
+}
+function volleyArrows(w, now) {
+  let v = volleyOf.get(w);
+  if (!v) { v = { arrows: [], seed: (w.id ?? 0) + 1 }; volleyOf.set(w, v); }
+  const peak = WALLFX.peak.get(w) ?? w.cap, want = Math.round(3 + clamp01(peak / w.max) * (VOLLEY.max - 3));
+  while (v.arrows.length < want) {
+    const i = v.arrows.length, h = (k) => hash01(v.seed * 31 + i * 7 + k), last = v.arrows[i - 1];
+    v.arrows.push({ t: (i === 0 ? 0 : h(1) * 2 - 1) * 0.95, d: i === 0 ? 0 : h(2) * 1.4 - 0.4, /* mostly on the enemy side, off the archer */ kind: Math.floor(h(3) * 4), lean: (h(4) - 0.5) * 0.2, flip: h(5) > 0.5,
+      at: Math.max(now, last ? last.at + VOLLEY.gap : now), snapped: null, landed: false });
+  }
+  return v.arrows;
+}
+const ARROW_UPP = () => VOLLEY.len / 400;
+function drawVolley(w, now, gone) {
+  const arrows = [...volleyArrows(w, now)].map((a) => ({ a, p: arrowAt(w, a) })).sort((u, v) => u.p.wy - v.p.wy);
+  const fade = gone ? 1 - gone.t : 1, dir = Math.sign(m0.players[1 - w.owner].x - w.x) || 1;
+  for (const { a, p } of arrows) {
+    if (now < a.at) continue;
+    const f = (now - a.at) / VOLLEY.fall, upp = ARROW_UPP();
+    G.save(); G.globalAlpha *= fade;
+    if (f < 1) { // still falling from the sky, steeply, from behind the archer
+      const k = 1 - f;
+      G.translate(p.x - dir * k * VOLLEY.sky * 0.35, p.y - k * VOLLEY.sky); G.rotate(a.lean - dir * 0.25 * k);
+      drawCell('arrow' + (a.kind + 1), 0, 0, upp, VOLLEY.ay, { to: 0.86 });
+      G.restore(); continue;
+    }
+    if (!a.landed) { // thud: a puff of sand where it went in
+      a.landed = true;
+      burst(3, () => ({ kind: 'dust', t0: now, life: rnd(0.35, 0.6), x: p.x + rnd(-2, 2), y: p.y, vx: rnd(-12, 12), vy: rnd(-8, -2), size: rnd(3, 5), color: 'rgba(222,180,110,.6)' }));
+      burst(4, () => ({ kind: 'spark', t0: now, life: rnd(0.3, 0.5), x: p.x, y: p.y - 1, vx: rnd(-25, 25), vy: rnd(-45, -15), g: 200, floor: p.y + 1, size: rnd(0.8, 1.4), color: '#e8c27a' }));
+    }
+    const quiver = Math.sin((now - a.at) * 55) * 0.09 * Math.max(0, 1 - (now - a.at - VOLLEY.fall) / 0.35); // it shudders as it sticks
+    G.translate(p.x, p.y); G.rotate(a.lean + quiver); if (a.flip) G.scale(-1, 1);
+    drawCell(a.snapped || gone ? 'arrowStump' + (1 + (a.kind % 2)) : 'arrow' + (a.kind + 1), 0, 0, upp, VOLLEY.ay);
+    G.restore();
+  }
+}
+function snapArrow(w, a, now, dir) { // the top half flies off, the stump stays in the sand
+  a.snapped = now;
+  const p = arrowAt(w, a), y = p.y + liftAt(w.x, w.y), hy = y - VOLLEY.len * 0.55;
+  PARTS.push({ kind: 'sprite', name: 'arrowTop' + (1 + Math.floor(rnd(0, 2))), t0: now, life: rnd(0.8, 1.1), x: p.x, y: hy, vx: dir * rnd(25, 60), vy: rnd(-90, -50), g: 330, floor: y + rnd(-1, 3), rot: a.lean, vr: dir * rnd(6, 12), size: VOLLEY.len * 0.62, late: true });
+  burst(4, () => ({ kind: 'splinter', t0: now, life: rnd(0.4, 0.7), x: p.x, y: y - VOLLEY.len * 0.3, vx: dir * rnd(10, 60), vy: rnd(-70, -20), g: 300, floor: y, vr: rnd(-25, 25), size: rnd(2.5, 5), color: '#b98444', late: true }));
+  if (Math.random() < 0.5) PARTS.push({ kind: 'feather', t0: now, life: 1.2, x: p.x, y: hy - 5, vx: dir * rnd(5, 20), vy: -18, g: 25, floor: y, vr: 3, size: 3, sway: rnd(0, 6), late: true });
+}
+
+// Hits on a block or a meditation barrier, from the sim's events (main.js passes them in): show every hit.
+export function fxEvent(e, m, now) {
+  if (!useArt || !m) return;
+  if (e.type === 'blocked') {
+    const w = m.walls.find((q) => q.x === e.x && q.y === e.y), L = w && WALLFX.look.get(w);
+    if (!L) return;
+    WALLFX.hit.set(w, now);
+    if (L.layers) yantraState(w).cracks.push({ x: rnd(-150, 150), y: rnd(-150, 150), rot: rnd(0, 6.3), t0: now });
+    const o = m.players[1 - e.pid], dir = Math.sign(o.x - e.x) || 1, hy = L.y - rnd(0.3, 0.8) * L.h, hx = L.x + dir * 3;
+    if (w.look === 'hill') { // glass rings and cracks off where it was struck
+      PARTS.push({ kind: 'ripple', t0: now, life: 0.35, x: hx, y: hy, vx: 0, vy: 0, size: 24, color: 'rgba(170,255,240,.9)', add: true });
+      burst(7, () => ({ kind: 'shard', t0: now, life: rnd(0.35, 0.6), x: hx, y: hy, vx: dir * rnd(20, 70), vy: rnd(-50, 10), g: 140, vr: rnd(-12, 12), size: rnd(2.2, 4.2), color: '#9ff3ea', add: true }));
+    } else if (fxArt('arrow1') && volleyOf.get(w)) { // real arrows snap: as many as the strength it lost, nearest the hit first
+      const v = volleyOf.get(w), peak = WALLFX.peak.get(w) || w.max, up = v.arrows.filter((a) => !a.snapped && now >= a.at);
+      const keep = Math.ceil(v.arrows.length * clamp01(w.cap / peak)), n = Math.max(1, up.length - keep);
+      up.sort((a, b) => arrowAt(w, b).x * dir - arrowAt(w, a).x * dir).slice(0, n).forEach((a) => snapArrow(w, a, now, dir));
+    } else { // an arrow snaps: splinters, a feather, the broken half tumbling away
+      burst(5, () => ({ kind: 'splinter', t0: now, life: rnd(0.5, 0.8), x: hx, y: hy, vx: dir * rnd(20, 70), vy: rnd(-70, -20), g: 300, floor: L.y, vr: rnd(-25, 25), size: rnd(4, 8), color: '#b98444', late: true }));
+      PARTS.push({ kind: 'splinter', t0: now, life: 0.9, x: hx, y: hy - 4, vx: dir * rnd(30, 50), vy: rnd(-90, -60), g: 320, floor: L.y + 1, vr: dir * rnd(10, 16), size: 16, color: '#c8964f', late: true });
+      PARTS.push({ kind: 'feather', t0: now, life: 1.3, x: hx, y: hy - 6, vx: dir * rnd(5, 20), vy: -20, g: 25, floor: L.y, vr: 3, size: 3.5, sway: rnd(0, 6), late: true });
+    }
+  }
+  if (e.type === 'barrier') {
+    const p = m.players[e.pid], o = m.players[1 - e.pid], dir = Math.sign(o.x - p.x) || 1, x = sx(p.x), y = sy(p.y) + liftAt(p.x, p.y);
+    MED.hit[p.id] = { t0: now, dir };
+    if (p.ch.id === 'siddhan' && fxArt('pillar')) shrineHit(p, now, dir);
+    else if (p.ch.id === 'siddhan') { // stone chips and dust burst off the struck pillar
+      const hx = x + dir * 26, hy = y - rnd(10, 40);
+      burst(9, () => ({ kind: 'chip', t0: now, life: rnd(0.7, 1.1), x: hx, y: hy, vx: dir * rnd(15, 70), vy: rnd(-70, -10), g: 320, floor: y + rnd(0, 6), vr: rnd(-15, 15), size: rnd(2, 4.5), color: ['#8a6a4a', '#a8845c', '#6f5238'][Math.floor(rnd(0, 3))], late: true }));
+      burst(3, () => ({ kind: 'dust', t0: now, life: rnd(0.5, 0.9), x: hx, y: hy + rnd(0, 10), vx: dir * rnd(5, 20), vy: rnd(-8, 4), size: rnd(8, 13), color: 'rgba(200,170,130,.55)' }));
+    } else { // the fire flares and spits sparks
+      const hx = x + dir * 30, hy = y - 6;
+      burst(14, () => ({ kind: 'spark', t0: now, life: rnd(0.3, 0.7), x: hx, y: hy - rnd(0, 18), vx: dir * rnd(10, 60) + rnd(-20, 20), vy: rnd(-80, -20), g: 90, size: rnd(1.6, 3.2), color: ['#ffd27a', '#ff9a3c', '#fff1c0'][Math.floor(rnd(0, 3))], add: true }));
+    }
+  }
+}
+
+// Walls the sim has just removed (broken or timed out) linger a moment so they can shatter / snap.
+let FX_MATCH = null;
+const WALLFX = { prev: [], ghosts: [], peak: new WeakMap(), look: new WeakMap(), hit: new WeakMap(), life: 0.5 };
+let m0 = null; // the match being drawn (wallGhosts needs to know who is attacking)
+function wallGhosts(walls, now) {
+  for (const w of WALLFX.prev) {
+    if (walls.includes(w)) continue;
+    const L = WALLFX.look.get(w);
+    if (w.dead && L && w.look !== 'hill' && fxArt('arrow1')) { // every arrow still standing snaps; the stumps linger
+      for (const a of volleyOf.get(w)?.arrows || []) if (!a.snapped && now >= a.at) snapArrow(w, a, now, Math.sign(m0.players[1 - w.owner].x - w.x) || 1);
+      WALLFX.ghosts.push({ ghost: true, w, x: w.x, y: w.y, t0: now });
+    } else if (w.dead && L) shatterWall(w, L, now); // broken: it bursts / snaps apart
+    else WALLFX.ghosts.push({ ghost: true, w, x: w.x, y: w.y, t0: now }); // its time ran out: it just fades
+  }
+  WALLFX.prev = [...walls];
+  WALLFX.ghosts = WALLFX.ghosts.filter((g) => now - g.t0 < WALLFX.life && now >= g.t0);
+  return WALLFX.ghosts;
+}
+// Stage art for a wall: grows with its strength; the cracked / snapped cell once hits have worn it down.
+const WALL_ART = { hill: ['yantra1', 'yantra2', 'yantra3', 'yantraCrack'], arrows: ['volley1', 'volley2', 'volley3', 'volleyBreak'] };
+function drawWallArt(w, now, gone = null) {
+  const names = WALL_ART[w.look === 'hill' ? 'hill' : 'arrows'];
+  if (!fxArt(names[0])) return false;
+  const k = w.cap / w.max, peak = Math.max(WALLFX.peak.get(w) ?? 0, w.cap);
+  WALLFX.peak.set(w, peak);
+  const top = peak / w.max, hurt = gone || w.cap < peak - 0.12 * w.max, stage = hurt ? 3 : top < 0.4 ? 0 : top < 0.75 ? 1 : 2; // stage by the strongest it got: a hit never un-forms it
+  const x = sx(w.x), y = sy(w.y) + 2, len = 2 * Z(w.hw) * 1.25, side = Math.max(0.55, Math.abs(w.ny)); // narrower seen end-on
+  const fade = gone ? 1 - gone.t : w.standing && w.t < 0.6 && Math.floor(w.t * 10) % 2 ? 0.4 : 1;
+  const flash = 1 - clamp01((now - (WALLFX.hit.get(w) ?? -9)) / 0.25), jolt = flash * Math.sin(now * 80) * 1.2; // a hit: it flares and jolts
+  const dy = liftAt(w.x, w.y);
+  if (w.look === 'hill' && fxArt('yl1')) { // the yantra assembles layer by layer (art/fx_yantra_layers.png)
+    const s = Math.max(38, len * 1.05) / YANTRA.h;
+    drawYantraLayers(w, x + jolt, y, s, Math.max(0.8, side), now, fade, flash);
+    if (!gone) WALLFX.look.set(w, { name: names[3], x, y: y + dy, s, ay: YANTRA.ay, side, h: 440 * s, layers: true });
+  } else if (w.look === 'hill') { // the yantra: upright teal light, breathing
+    const s = Math.max(38, len * 1.05) / YANTRA.h, pulse = 0.85 + 0.15 * Math.sin(now * 6);
+    drawCell(names[stage], x + jolt, y, s, YANTRA.ay, { sx: side, alpha: fade * (0.6 + 0.4 * Math.min(1, k * 2 + 0.3)) });
+    drawCell(names[stage], x + jolt, y, s, YANTRA.ay, { sx: side, alpha: fade * (0.35 * pulse + 0.6 * flash), add: true });
+    if (!gone) WALLFX.look.set(w, { name: names[3], x, y: y + dy, s, ay: YANTRA.ay, side, h: YANTRA.h * s });
+  } else if (fxArt('arrow1')) { // the volley: single arrows that have rained down and stuck
+    drawVolley(w, now, gone);
+    if (!gone) WALLFX.look.set(w, { name: names[3], x, y: y + dy, s: 0, ay: 0, side, h: VOLLEY.len });
+  } else { // the arrow volley pictures (older art)
+    const s = Math.max(44, len * 1.25) / 440;
+    drawCell(names[stage], x + jolt, y, s, 0.83, { sx: side, alpha: fade });
+    if (!gone) WALLFX.look.set(w, { name: names[3], x, y: y + dy, s, ay: 0.83, side, h: 300 * s });
+  }
+  return true;
+}
+function drawWall(w, now) {
+  if (w.ghost) { drawWallArt(w.w, now, { t: (now - w.t0) / WALLFX.life }); return; }
   const B = TUNE.block, k = w.cap / w.max, x = sx(w.x), y = sy(w.y), px = -w.ny, py = w.nx, hw = Z(w.hw);
   const fade = w.standing && w.t < 0.6 && Math.floor(w.t * 10) % 2 ? 0.4 : 1; // blinks just before it disappears
   G.globalAlpha = fade;
   const art = fxArt(w.look === 'hill' ? 'hill' : 'arrowWall');
-  if (art) { // upright; narrower when the wall is seen end-on, taller as it gets stronger
+  if (useArt && drawWallArt(w, now)) { G.globalAlpha = 1; }
+  else if (art) { // upright; narrower when the wall is seen end-on, taller as it gets stronger
     const len = 2 * Z(w.hw) * 1.25, wide = len * Math.max(0.55, Math.abs(px));
     const up = (w.look === 'hill' ? 0.45 + 0.55 * k : 0.6 + 0.4 * k) * len / art.w * art.h;
     fxSprite(G, w.look === 'hill' ? 'hill' : 'arrowWall', x, y + 2, wide, { h: up, anchor: 'bottom' });
@@ -310,6 +654,14 @@ function drawFighter(m, p, now) {
   const x = sx(p.x), gy = sy(p.y) + liftAt(p.x, p.y), h = heightOf(p, now), y = gy - h, c = p.ch.color, o = opponent(m, p);
   ell(x, gy + 1, 9 * (1 - h / 60), 4 * (1 - h / 60), `rgba(0,0,0,${0.3 - h / 120})`); // the shadow stays on the sand
   if (p.air?.kind === 'fly') ell(x, gy + 1, 7, 3, `rgba(80,230,215,${0.25 + 0.15 * Math.sin(now * 6)})`); // teal glow under a flyer
+  const ch = m.arenaChange, inLava = ch?.kind === 'chasm' && ch.lava && !p.air && (p.x - ch.x) * ch.nx + (p.y - ch.y) * ch.ny > 0 && splitE(ch) > 0.3;
+  if (inLava) { // standing in the lava: it glows hot around the feet, and burns
+    const fl = 0.8 + 0.2 * Math.sin(now * 13 + p.id * 2);
+    G.save(); G.globalCompositeOperation = 'lighter';
+    ell(x, gy + 1, 13 * fl, 5.5 * fl, 'rgba(255,110,20,.45)'); ell(x, gy + 1, 7, 3, 'rgba(255,220,140,.55)');
+    G.restore();
+  }
+  const bar = barrierState(p, now), barArt = useArt && drawBarrier(p, bar, x, gy + 1, now, 'back');
   if (p.effects.invuln && Math.floor(now * 20) % 2) G.globalAlpha = 0.4;
   let top = y - 30;
   if (useArt && ART.sheets[p.ch.id]) {
@@ -330,6 +682,7 @@ function drawFighter(m, p, now) {
     txt(p.ch.cls === 'mage' ? 'M' : 'W', x, y - 8, '#fff', 'center', 8, null);
   }
   G.globalAlpha = 1;
+  if (barArt) drawBarrier(p, bar, x, gy + 1, now, 'front');
   if (m.phase === 'done') return; // no cast bars or status text once it's over
   const fx = Object.entries(p.effects).filter(([k]) => k !== 'invuln' || true);
   if (fx.length) {
@@ -338,28 +691,200 @@ function drawFighter(m, p, now) {
   }
   if (p.cast) {
     const mv = p.cast.move, k = mv.charge ? chargeOf(p.cast) : Math.min(1, p.cast.t / Math.max(0.01, mv.cast));
-    const label = mv.charge ? `CHARGE ${Math.round(mv.damage + (mv.charge.damage - mv.damage) * k)}` : short(mv.name);
     if (mv.cast >= 0.4 || mv.charge) {
-      txt(label, x, top, mv.signature || mv.scene ? '#ff9a3c' : '#fff', 'center');
+      // no move name over the head (owner, 2026-11-15: less text): just the cast bar
       R(x - 16, top + 10, 32, 3, 'rgba(0,0,0,.6)'); R(x - 16, top + 10, 32 * k, 3, '#fff');
-      if (!mv.charge) txt(`${Math.max(0, mv.cast - p.cast.t).toFixed(1)}`, x + 20, top + 8, '#fff', 'left');
       top -= 12;
     }
   }
   if (p.med) {
+    if (barArt && p.ch.id === 'siddhan') top = Math.min(top, gy - 512 * SHRINE.upp * SHRINE.feet - 6); // the label sits above the shrine roof
     const M = TUNE.meditate, k = p.med.meter / M.segTime;
-    // the barrier: a golden dome that fades as it soaks up hits
-    const bs = p.med.barrier / M.barrier, rx = Z(13), ry = Z(17), cy = y - Z(14), fl = 0.75 + 0.25 * Math.sin(now * 7);
-    const g = G.createRadialGradient(x, cy, 2, x, cy, ry * 1.2);
-    g.addColorStop(0, 'rgba(255,220,120,0)'); g.addColorStop(0.75, `rgba(255,210,110,${0.10 * bs})`); g.addColorStop(1, `rgba(255,230,150,${0.35 * bs * fl})`);
-    G.fillStyle = g; G.beginPath(); G.ellipse(x, cy, rx, ry, 0, 0, Math.PI * 2); G.fill();
-    ring(x, cy, rx, ry, `rgba(255,236,170,${0.25 + 0.6 * bs * fl})`, 1);
-    ring(x, y + 1, Z(13), Z(13) * SQ, `rgba(255,220,120,${0.5 * bs})`, 1);
+    if (!barArt) { // no art: the barrier is a golden dome that fades as it soaks up hits
+      const bs = p.med.barrier / M.barrier, rx = Z(13), ry = Z(17), cy = y - Z(14), fl = 0.75 + 0.25 * Math.sin(now * 7);
+      const g = G.createRadialGradient(x, cy, 2, x, cy, ry * 1.2);
+      g.addColorStop(0, 'rgba(255,220,120,0)'); g.addColorStop(0.75, `rgba(255,210,110,${0.10 * bs})`); g.addColorStop(1, `rgba(255,230,150,${0.35 * bs * fl})`);
+      G.fillStyle = g; G.beginPath(); G.ellipse(x, cy, rx, ry, 0, 0, Math.PI * 2); G.fill();
+      ring(x, cy, rx, ry, `rgba(255,236,170,${0.25 + 0.6 * bs * fl})`, 1);
+      ring(x, y + 1, Z(13), Z(13) * SQ, `rgba(255,220,120,${0.5 * bs})`, 1);
+    }
     ring(x, y - 6, 14, 12, 'rgba(0,0,0,.4)', 3);
     ring(x, y - 6, 14, 12, '#ffd34a', 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
-    txt('MEDITATING', x, top, '#ffd34a', 'center'); top -= 10;
   }
-  if (p.msg) txt(p.msg.text, x, top, '#ffb4a8', 'center');
+  if (p.msg && p.msg.text !== 'MEDITATION STOPPED') txt(p.msg.text, x, top, '#ffb4a8', 'center'); // the shrine sinking / fire going out already says it
+}
+
+// The meditation barrier, per fighter: Mangulan's stone shrine rises around him, Kanalan sits in a ring of sacred fire.
+// It wears down with the barrier (ground rule 11) and, once meditation ends, collapses / blows out for a moment.
+const MED = { start: new WeakMap(), last: [null, null], end: [null, null], hit: [null, null], pos: [null, null], endTime: 1.4, rise: 0.55 };
+function barrierState(p, now) {
+  const id = p.id;
+  if (p.med) {
+    if (!MED.start.has(p.med)) MED.start.set(p.med, now);
+    MED.last[id] = { bs: p.med.barrier / TUNE.meditate.barrier }; MED.end[id] = null;
+    return { bs: MED.last[id].bs, age: now - MED.start.get(p.med), end: 0 };
+  }
+  if (MED.last[id]) { MED.end[id] = { t0: now, bs: MED.last[id].bs }; MED.last[id] = null; barrierEnds(p, MED.end[id], now); }
+  const e = MED.end[id];
+  if (e && now >= e.t0 && now - e.t0 < MED.endTime) return { bs: e.bs, age: 99, end: (now - e.t0) / MED.endTime };
+  return null;
+}
+const SHRINE = { upp: 0.22, feet: 0.79, ground: 0.94 }, FIRE = { upp: 0.19, mid: 0.664 };
+// Meditation just ended: a broken shrine collapses into falling stone; a broken fire ring blows out into smoke.
+function barrierEnds(p, e, now) {
+  const at = MED.pos[p.id];
+  e.broke = e.bs < 0.05;
+  if (!at || !useArt) return;
+  e.x = at.x; e.y = at.y; // it collapses / burns out where it stood, not following the fighter
+  const { x, y } = at, dir = MED.hit[p.id]?.dir ?? 1;
+  if (p.ch.id === 'siddhan' && e.broke && fxArt('shrinePlatform') && fxArt('pillar')) { shrineBreaks(p, e, now); return; }
+  if (p.ch.id === 'siddhan' && e.broke && fxArt('shrineBackHurt')) {
+    const fall = { cols: 6, rows: 7, g: 300, life: 1.7, spin: 2.5, throw: (dx, dy) => ({ vx: dx * 0.6 - dir * rnd(5, 30), vy: rnd(-35, 0) }) };
+    shatter('shrineBackHurt', x, y, SHRINE.upp, SHRINE.feet, { ...fall, back: true }, now);
+    shatter('shrineFrontHurt', x, y, SHRINE.upp, SHRINE.feet, fall, now);
+    burst(10, () => ({ kind: 'dust', t0: now + rnd(0.15, 0.5), life: rnd(0.9, 1.4), x: x + rnd(-40, 40), y: y + rnd(-2, 6), vx: rnd(-18, 18), vy: rnd(-10, -2), size: rnd(8, 14), color: 'rgba(190,160,120,.5)' }));
+    e.shattered = true;
+  }
+  if (p.ch.id === 'veeran') {
+    for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2 + 0.4; PARTS.push({ kind: 'smoke', t0: now + i * 0.05, life: rnd(1.2, 1.6), x: x + Math.cos(a) * FLAME.rx, y: y + Math.sin(a) * FLAME.ry, vx: rnd(-4, 4), vy: rnd(-14, -8), size: rnd(44, 58), alpha: 0.9, back: Math.sin(a) < 0 }); }
+  }
+}
+// The ring of sacred fire: a loop of separate flames, each flickering on its own (art/fx_flame.png, 8 frames).
+// They shrink and die out one by one as the barrier drains, lean away from a hit, and snuff out when it breaks.
+const FLAME = { n: 28, rx: 34, ry: 13.5, h: 40, fps: 13, foot: 0.94 };
+function drawFlameRing(p, b, x, y, now, part) {
+  const hit = MED.hit[p.id], kick = hit ? 1 - clamp01((now - hit.t0) / 0.5) : 0;
+  const out = b.end ? 1 - clamp01(b.end * MED.endTime / 0.3) : 1, grow = easeOut(clamp01(b.age / 0.5)), alive = 0.15 + 0.85 * b.bs;
+  if (part === 'back') { // the scorched ring on the sand, and the glow
+    drawCell('ring4', x, y, FIRE.upp, FIRE.mid, { from: 0.5, alpha: 0.9 * (b.end ? 1 - clamp01((b.end - 0.4) / 0.6) : grow) });
+    G.save(); G.globalCompositeOperation = 'lighter'; ell(x, y, 40, 16, `rgba(255,120,30,${0.25 * alive * out * grow})`); G.restore();
+  }
+  const ids = [...Array(FLAME.n).keys()].map((i) => ({ i, a: (i / FLAME.n) * Math.PI * 2 + 0.17 })).filter((q) => (Math.sin(q.a) < 0) === (part === 'back'));
+  ids.sort((u, v) => Math.sin(u.a) - Math.sin(v.a));
+  for (const { i, a } of ids) {
+    const r = hash01(i * 7 + p.id * 31), rank = hash01(i * 13 + 5), life = clamp01((alive - rank * 0.95) * 5);
+    const hh = FLAME.h * (0.7 + 0.45 * r) * (0.3 + 0.7 * life) * grow * out * (0.93 + 0.07 * Math.sin(now * 7 + i)) * (1 + 0.25 * kick);
+    if (life <= 0 || hh < 1) continue;
+    const frame = Math.floor(now * FLAME.fps * (0.8 + 0.4 * r) + r * 8) % 8, f = fxArt('flame' + (frame + 1));
+    if (!f) continue;
+    const fx = x + Math.cos(a) * FLAME.rx, fy = y + Math.sin(a) * FLAME.ry, w = hh * f.w / f.h;
+    const lean = (hit ? hit.dir * 0.7 * kick : 0) + 0.06 * Math.sin(now * 1.7 + i * 2);
+    G.save(); G.translate(fx, fy); G.transform(1, 0, lean, 1, 0, 0); if (r > 0.5) G.scale(-1, 1);
+    G.imageSmoothingEnabled = true;
+    G.drawImage(f.canvas, f.x, f.y, f.w, f.h, -w / 2, -hh * FLAME.foot, w, hh);
+    G.globalCompositeOperation = 'lighter'; G.globalAlpha = 0.25; G.drawImage(f.canvas, f.x, f.y, f.w, f.h, -w / 2, -hh * FLAME.foot, w, hh);
+    G.restore();
+  }
+}
+// Mangulan's shrine, built from pieces (art/fx_shrine_big.png, fx_shrine_pillar.png): the platform pushes up out
+// of the sand, four pillars rise one by one, the roof drops onto them. Hits crack the pillar that was struck; as
+// the barrier drains pillars snap (the roof tilts); when it breaks the roof crashes down and it all sinks.
+// Positions are in the old whole-shrine cell (512 px, feet at 256,405), so it lines up with fx_shrine.png.
+const SH = {
+  feet: 405, pillarAy: 472 / 512, pillarH: 200, roofUnder: 194, roofAy: 300 / 512, platAy: 405 / 512, platGround: 482 / 512,
+  pillars: [{ x: 146, y: 372, s: 0.95 }, { x: 366, y: 372, s: 0.95 }, { x: 95, y: 414, s: 1.15, front: true }, { x: 417, y: 414, s: 1.15, front: true }],
+  plat: 0.25, pillarT: [0.22, 0.34, 0.46, 0.58], pillarRise: 0.2, roofT: 0.78, roofFall: 0.24, breaks: [0.75, 0.5, 0.25],
+};
+const shrineOf = [null, null];
+function shrineState(p) {
+  const key = p.med || shrineOf[p.id]?.key;
+  if (!shrineOf[p.id] || shrineOf[p.id].key !== key) shrineOf[p.id] = { key, pil: SH.pillars.map(() => ({ hits: 0, broke: null, landed: false })), plat: false, roof: false };
+  return shrineOf[p.id];
+}
+const shAt = (x, y, cx, cy) => ({ x: x + (cx - 256) * SHRINE.upp, y: y + (cy - SH.feet) * SHRINE.upp });
+function snapPillar(p, i, x, y, now, dir) {
+  const st = shrineState(p), q = st.pil[i], P = SH.pillars[i], at = shAt(x, y, P.x, P.y), up = SHRINE.upp * P.s;
+  q.broke = now;
+  PARTS.push({ kind: 'sprite', name: 'pillarTop', t0: now, life: rnd(1.1, 1.4), x: at.x, y: at.y - SH.pillarH * up * 0.7, vx: -dir * rnd(10, 35), vy: rnd(-40, -15), g: 300, floor: at.y + rnd(2, 6), rot: 0, vr: -dir * rnd(3, 6), size: 512 * up, back: !P.front, late: true });
+  burst(6, () => ({ kind: 'chip', t0: now, life: rnd(0.7, 1), x: at.x, y: at.y - SH.pillarH * up * 0.5, vx: rnd(-50, 50), vy: rnd(-60, -10), g: 320, floor: at.y + rnd(0, 6), vr: rnd(-15, 15), size: rnd(2, 4), color: '#8a6a4a', late: true }));
+  burst(3, () => ({ kind: 'dust', t0: now + 0.35, life: rnd(0.6, 0.9), x: at.x + rnd(-8, 8), y: at.y + 3, vx: rnd(-10, 10), vy: rnd(-6, -1), size: rnd(7, 11), color: 'rgba(200,170,130,.5)' }));
+}
+function shrineHit(p, now, dir) { // the pillar nearest the attacker takes it; past each threshold one snaps
+  const st = shrineState(p), at = MED.pos[p.id];
+  if (!at) return;
+  const order = st.pil.map((q, i) => i).filter((i) => !st.pil[i].broke).sort((a, b) => (SH.pillars[b].x - SH.pillars[a].x) * dir);
+  if (!order.length) return;
+  const i = order[0], P = SH.pillars[i], c = shAt(at.x, at.y, P.x, P.y), up = SHRINE.upp * P.s, hy = c.y - SH.pillarH * up * rnd(0.3, 0.8);
+  st.pil[i].hits++;
+  burst(9, () => ({ kind: 'chip', t0: now, life: rnd(0.7, 1.1), x: c.x, y: hy, vx: dir * rnd(15, 70), vy: rnd(-70, -10), g: 320, floor: at.y + rnd(0, 6), vr: rnd(-15, 15), size: rnd(2, 4.5), color: ['#8a6a4a', '#a8845c', '#6f5238'][Math.floor(rnd(0, 3))], late: true }));
+  if (fxArt('rubble1')) burst(2, (k) => ({ kind: 'sprite', name: 'rubble' + (k + 1), t0: now, life: rnd(0.9, 1.2), x: c.x, y: hy, vx: dir * rnd(20, 50), vy: rnd(-60, -20), g: 320, floor: at.y + rnd(2, 6), vr: rnd(-8, 8), size: 512 * SHRINE.upp * 0.7, late: true }));
+  burst(3, () => ({ kind: 'dust', t0: now, life: rnd(0.5, 0.9), x: c.x, y: hy + rnd(0, 10), vx: dir * rnd(5, 20), vy: rnd(-8, 4), size: rnd(8, 13), color: 'rgba(200,170,130,.55)' }));
+  const bs = p.med ? p.med.barrier / TUNE.meditate.barrier : 0, want = SH.breaks.filter((t) => bs < t).length;
+  let broken = st.pil.filter((q) => q.broke).length;
+  for (const j of order) { if (broken >= want) break; snapPillar(p, j, at.x, at.y, now, dir); broken++; }
+}
+function shrineBreaks(p, e, now) { // the barrier is gone: the last pillars snap and the roof crashes down in pieces
+  const st = shrineState(p), dir = MED.hit[p.id]?.dir ?? 1, { x, y } = e;
+  st.pil.forEach((q, i) => { if (!q.broke) snapPillar(p, i, x, y, now + i * 0.04, dir); });
+  const tilt = 0, r = shAt(x, y, 256, SH.roofUnder);
+  shatter(fxArt('shrineRoofHurt') ? 'shrineRoofHurt' : 'shrineRoof', r.x, r.y, SHRINE.upp, SH.roofAy, { cols: 6, rows: 5, g: 340, life: 1.6, spin: 2.5, floor: y + 4,
+    throw: (dx, dy) => ({ vx: dx * 0.5 - dir * rnd(0, 20), vy: rnd(-20, 10) }) }, now);
+  burst(12, () => ({ kind: 'dust', t0: now + rnd(0.2, 0.5), life: rnd(0.9, 1.4), x: x + rnd(-45, 45), y: y + rnd(-2, 6), vx: rnd(-18, 18), vy: rnd(-10, -2), size: rnd(9, 15), color: 'rgba(190,160,120,.5)' }));
+  st.roofGone = true;
+}
+function drawShrineBuilt(p, b, x, y, now, part) {
+  const st = shrineState(p), up = SHRINE.upp, age = b.age, endK = b.end ? clamp01(b.end * MED.endTime / 0.9) : 0;
+  const hit = MED.hit[p.id], kick = Math.max(hit ? 1 - clamp01((now - hit.t0) / 0.3) : 0, st.thud ? 1 - clamp01((now - st.thud) / 0.18) : 0);
+  const shake = kick * Math.sin(now * 70) * 1.4, sink = endK * 60;
+  const thud = (cx, cy, n) => { st.thud = now; burst(n, () => ({ kind: 'dust', t0: now, life: rnd(0.4, 0.7), x: x + (cx - 256) * up + rnd(-6, 6), y: y + (cy - SH.feet) * up, vx: rnd(-16, 16), vy: rnd(-7, -1), size: rnd(5, 9), color: 'rgba(214,180,130,.55)' })); };
+  const X = x + shake;
+  if (part === 'back') {
+    const k = clamp01(age / SH.plat), lift = (1 - easeOut(k)) * 130 * up + sink;
+    if (k >= 1 && !st.plat) { st.plat = true; if (!b.end) thud(256, 470, 6); }
+    drawCell(b.bs < 0.5 || b.end ? 'shrinePlatformHurt' : 'shrinePlatform', X, y, up, SH.platAy, { lift, ground: SH.platGround, alpha: 1 - endK * 0.6 });
+    ell(x, y - 2, 34, 9, `rgba(80,230,215,${0.1 * (1 - endK)})`);
+  }
+  SH.pillars.forEach((P, i) => {
+    if (!!P.front !== (part === 'front')) return;
+    const q = st.pil[i], k = clamp01((age - SH.pillarT[i]) / SH.pillarRise);
+    if (k <= 0) return;
+    if (k >= 1 && !q.landed) { q.landed = true; if (!b.end) thud(P.x, P.y, 3); }
+    const c = shAt(X, y, P.x, P.y), sc = up * P.s, lift = (1 - easeOut(k)) * SH.pillarH * sc * 1.05 + sink;
+    const name = q.broke ? 'pillarStump' : q.hits >= 2 ? 'pillarCracked2' : q.hits >= 1 ? 'pillarCracked' : 'pillar';
+    drawCell(name, c.x, c.y, sc, SH.pillarAy, { lift, ground: SH.pillarAy, alpha: 1 - endK * 0.6 });
+  });
+  if (part === 'front' && !st.roofGone) { // the roof drops onto the pillars; it tilts toward the side that lost pillars
+    const k = clamp01((age - SH.roofT) / SH.roofFall);
+    if (k > 0) {
+      if (k >= 1 && !st.roof) { st.roof = true; if (!b.end) { thud(256, 180, 5); thud(256, 470, 4); } }
+      const br = st.pil.map((q, i) => (q.broke ? (SH.pillars[i].x < 256 ? -1 : 1) : 0)), nb = br.filter(Boolean).length;
+      const tilt = br.reduce((a, v) => a + v, 0) * 0.06, drop = -(1 - k * k) * 70 + nb * 2.5 + sink;
+      const r = shAt(X, y, 256, SH.roofUnder);
+      G.save(); G.translate(r.x, r.y + drop); G.rotate(tilt);
+      drawCell(nb >= 2 ? 'shrineRoofHurt' : 'shrineRoof', 0, 0, up, SH.roofAy, { alpha: Math.min(1, k * 3) * (1 - endK * 0.6) });
+      G.restore();
+    }
+  }
+  return true;
+}
+function drawBarrier(p, b, x, y, now, part) {
+  if (!b) return false;
+  const ended = b.end ? MED.end[p.id] : null;
+  if (ended?.x != null) { x = ended.x; y = ended.y; } // meditation is over: the ending plays where it stood
+  else MED.pos[p.id] = { x, y };
+  if (p.ch.id === 'siddhan' && fxArt('shrinePlatform') && fxArt('pillar')) return drawShrineBuilt(p, b, x, y, now, part);
+  if (p.ch.id === 'siddhan') {
+    if (!fxArt('shrineBack')) return false;
+    const e = MED.end[p.id];
+    if (b.end && e?.shattered) return true; // it is falling apart as debris now
+    const dh = 512 * SHRINE.upp, hurt = b.bs < 0.5;
+    const rise = (1 - easeOut(clamp01(b.age / MED.rise))) * dh * SHRINE.ground;
+    const fall = b.end ? clamp01(b.end * MED.endTime / 0.9) * dh * SHRINE.ground : 0;
+    const hit = MED.hit[p.id], kick = hit ? 1 - clamp01((now - hit.t0) / 0.3) : 0;
+    const shake = kick * Math.sin(now * 70) * 1.6;
+    const name = (part === 'back' ? 'shrineBack' : 'shrineFront') + (hurt ? 'Hurt' : '');
+    if (part === 'back') ell(x, y - 2, 34, 9, `rgba(80,230,215,${0.12 * (1 - b.end)})`); // faint teal glow from the carvings
+    drawCell(name, x + shake, y, SHRINE.upp, SHRINE.feet, { lift: rise + fall, ground: SHRINE.ground, alpha: 1 - b.end * 0.5 });
+    return true;
+  }
+  if (fxArt('flame1')) { drawFlameRing(p, b, x, y, now, part); return true; }
+  if (!fxArt('ring1')) return false;
+  const stage = b.end ? 'ring4' : b.bs > 0.66 ? 'ring1' : b.bs > 0.33 ? 'ring2' : 'ring3';
+  const grow = easeOut(clamp01(b.age / 0.4)), fl = 1 + 0.04 * Math.sin(now * 13 + p.id) + 0.03 * Math.sin(now * 23);
+  const o = part === 'back' ? { to: FIRE.mid } : { from: FIRE.mid };
+  if (part === 'back' && !b.end) { G.save(); G.globalCompositeOperation = 'lighter'; ell(x, y, 34, 13, `rgba(255,120,30,${0.22 * b.bs * fl})`); G.restore(); }
+  drawCell(stage, x, y, FIRE.upp, FIRE.mid, { ...o, sy: grow * fl, alpha: 1 - b.end });
+  return true;
 }
 
 // The match is over: the loser falls (knockout) or slumps (time up), the winner celebrates.
@@ -481,6 +1006,7 @@ function poseOf(m, p) {
 
 // fxNow: the clock the effects were stamped with (the fight clock, which stops during pauses and scenes)
 export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = [null, null]) {
+  if (m !== FX_MATCH) { FX_MATCH = m; WALLFX.prev = []; WALLFX.ghosts = []; MED.last = [null, null]; MED.end = [null, null]; MED.hit = [null, null]; PARTS.length = 0; } // a new match starts clean
   trackMotion(m);
   chasm = m.arenaChange?.kind === 'chasm' ? m.arenaChange : null;
   let sh = 0; // screen shake from power moves landing
@@ -511,9 +1037,12 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
     const p = m.players[m.scene.pid];
     drawSignatureHalo(sx(p.x), sy(p.y) - 18, m.scene.t);
   }
-  const order = [...m.players, ...m.walls].sort((a, b) => a.y - b.y); // back to front
+  m0 = m;
+  const order = [...m.players, ...m.walls, ...wallGhosts(m.walls, now)].sort((a, b) => a.y - b.y); // back to front
   const lifted = (o, draw) => { const d = liftAt(o.x, o.y); if (d) { G.save(); G.translate(0, d); draw(); G.restore(); } else draw(); }; // rides its half of a split island
-  for (const o of order) if (o.ch) drawFighter(m, o, now); else lifted(o, () => drawWall(o));
+  drawParts(now, true);
+  for (const o of order) if (o.ch) drawFighter(m, o, now); else lifted(o, () => drawWall(o, now));
+  drawParts(now, false);
   for (const pr of m.projectiles) lifted(pr, () => drawProjectile(pr, now));
   for (const f of fx) if (!f.ground) drawFx(f, fxNow);
   if (m.scene) sceneAura(m, now);
@@ -943,11 +1472,9 @@ function sceneTitle(m) {
   if (hit > 0) {
     const e = easeOut(hit), sz = 1 + 1.6 * (1 - e), y = H - 58;
     G.globalAlpha = e * (1 - clamp01((t - s.dur + 0.3) / 0.3));
-    txt(p.ch.name.toUpperCase(), CX, y - 14, p.ch.color, 'center');
     G.save(); G.translate(CX, y + 12); G.scale(sz, sz); txt(s.name.toUpperCase(), 0, -12, '#ffe7a0', 'center', 24, 'rgba(40,16,0,.9)'); G.restore();
     const lw = 140 * easeOut(clamp01((t - 0.6) / 0.4));
     R(CX - lw, y + 38, lw * 2, 1, `rgba(${look.glow},.9)`);
-    if (look.sub) txt(look.sub, CX, y + 42, `rgba(${look.spark},.95)`, 'center', 8, 'rgba(0,0,0,.8)');
     G.globalAlpha = 1;
   }
   const flash = Math.max(0, 1 - t / 0.1) * 0.7 + clamp01((t - s.dur + 0.12) / 0.12) * 0.8;
@@ -955,21 +1482,18 @@ function sceneTitle(m) {
 }
 
 // The boon card: when a god grants a wish, say what it is, what it does and how to use it.
-const TIER_LABEL = { small: 'A SMALL BOON', divine: 'A DIVINE WEAPON' };
 export function drawOffer(o, p, hint, t) {
   const e = easeOut(clamp01(t / 0.3)), out = clamp01((t - 4) / 0.5), a = e * (1 - out);
-  const w = 300, h = 74, x = CX - w / 2, y = H - 84 + (1 - e) * 20;
+  const w = 240, h = 44, x = CX - w / 2, y = H - 56 + (1 - e) * 20;
   G.save(); G.globalAlpha = a;
   const g = G.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(46,26,8,.95)'); g.addColorStop(1, 'rgba(22,12,4,.95)');
   box(x, y, w, h, 7, g, '#e8c060'); box(x + 3, y + 3, w - 6, h - 6, 5, null, 'rgba(232,192,96,.4)');
-  txt(`${o.god.toUpperCase()} GRANTS ${p.ch.name.toUpperCase()} ${TIER_LABEL[o.tier] || 'A BOON'}`, CX, y + 7, '#c9b07a', 'center', 6);
-  txt(o.name.toUpperCase(), CX, y + 17, o.tier === 'divine' ? '#fff2b0' : '#ffe7a0', 'center', 16, 'rgba(60,20,0,.9)');
-  txt(o.desc || '', CX, y + 40, '#f0e6d0', 'center', 6);
+  txt(o.name.toUpperCase(), CX, y + 8, o.tier === 'divine' ? '#fff2b0' : '#ffe7a0', 'center', 16, 'rgba(60,20,0,.9)'); // just the name (owner, 2026-11-15: less text)
   const pulse = 0.65 + 0.35 * Math.sin(t * 6);
   if (hint) {
     G.globalAlpha = a * pulse;
-    txt(`USE IT ANY TIME: ${hint.keys}  OR PAD ${hint.pad}`, CX, y + 55, '#9fe07a', 'center', 6);
-  } else txt('THE COMPUTER HOLDS IT', CX, y + 54, '#c8bce0', 'center', 6);
+    txt(`${hint.keys}  /  PAD ${hint.pad}`, CX, y + 31, '#9fe07a', 'center', 6);
+  }
   G.restore();
 }
 

@@ -1,7 +1,7 @@
 import { W, H, RES, STEP, TUNE, ARENA } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { CHARS } from './chars/index.js';
-import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, drawRemap, drawTutorial, CX, fitView, setUseArt, useArt } from './render.js';
+import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, drawRemap, drawTutorial, CX, fitView, fxEvent, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
 import { createInput, KEYS, KEY_NAME, PAD, PAD_NAMES, REMAP, ACTIONS, RESERVED, PAD_RESERVED, setKey, setPad, resetControls } from './input.js';
 import { createTutorial, startTutorial, nextLesson, frozen, beforeStep, afterStep, view as tutView, lesson } from './tutorial.js';
@@ -52,6 +52,7 @@ const go = (screen) => { S.screen = screen; S.sel = 0; S.screenAt = S.now; sound
 // power moves that break the arena when they land
 const POWER_MOVES = new Set(['Thousand-Arm Form', 'Gaja Arrow', 'Pashupatastra', 'Shakti Vel', 'Brahmastra', 'Vishwaroopam']);
 function onEvent(e, m) {
+  fxEvent(e, m, S.now); // every hit on a block or a barrier shows (debris, flares)
   const now = S.clock, add = (f) => S.fx.push({ t0: now, life: 0.8, ...f });
   const crack = (x, y, size) => { // a crack in the sand that fades slowly; only the newest 16 stay
     add({ kind: 'crack', x, y, size, seed: Math.floor(Math.random() * 1e6), life: 30, ground: true });
@@ -96,7 +97,6 @@ function onEvent(e, m) {
     if (e.dmg > 0) { add({ kind: 'pop', x: e.x, y: e.y, text: Number.isFinite(e.dmg) ? `-${Math.round(e.dmg * 10) / 10}` : 'X', color: '#ff6a5a' }); add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 }); }
     if (e.heal > 0) add({ kind: 'pop', x: e.x, y: e.y, text: `+${e.heal}`, color: '#7aff8a' });
   }
-  if (e.type === 'blocked') add({ kind: 'pop', x: e.x, y: e.y, text: `BLOCK ${Math.round(e.amount * 10) / 10}`, color: '#9fe07a' });
   if (e.type === 'clash') add({ kind: 'clash', x: e.x, y: e.y, life: 0.4 });
   if (e.type === 'swing') { const p = m.players[e.pid]; add({ kind: 'swing', x: p.x, y: p.y, a: Math.atan2(p.face.y, p.face.x), life: 0.2 }); }
   if (e.type === 'barrier') add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 });
@@ -117,7 +117,7 @@ function onEvent(e, m) {
     if (e.name === 'Pashupatastra') { add({ kind: 'bolt', x: p.x, y: p.y, life: 0.5 }); add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '170,220,255', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Brahmastra') { for (const q of m.players) add({ kind: 'pillar', x: q.x, y: q.y, life: 1.2 }); add({ kind: 'global', x: 0, y: 0, life: 0.9, color: '255,255,255' }); shake(5, 1.0); }
   }
-  if (e.type === 'wall') { add({ kind: 'pop', x: e.x, y: e.y - 8, text: 'WALL', color: '#ffb46a' }); add({ kind: 'splash', x: e.x, y: e.y, life: 0.9, big: 1 }); }
+  if (e.type === 'wall') { add({ kind: 'splash', x: e.x, y: e.y, life: 0.9, big: 1 }); }
   if (e.type === 'boon') { // a god answers and reveals the boon: the fight slows, the god appears, blessing
     S.slowmo = { t0: S.now };
     add({ kind: 'god', god: e.godId, x: 0, y: 0, life: 2.4 });
@@ -126,9 +126,9 @@ function onEvent(e, m) {
   if (e.type === 'boonUsed') { // the held boon is used: the god's light comes down on the caster
     const p = m.players[e.pid];
     add({ kind: 'invoke', god: e.godId, x: p.x, y: p.y, pid: e.pid, life: 1.2 });
-    S.banner = { text: `${p.ch.name.toUpperCase()} USES ${e.name.toUpperCase()}`, sub: `${e.tier.toUpperCase()} BOON OF ${e.god.toUpperCase()}`, t0: S.now };
+    S.banner = { text: e.name.toUpperCase(), t0: S.now }; // just the name
   }
-  if (e.type === 'medFull') S.banner = { text: `${m.players[e.pid].ch.name.toUpperCase()}: DEVOTION FULL`, sub: 'A DIVINE WEAPON IS READY', t0: S.now };
+  if (e.type === 'medFull') S.banner = { text: 'DEVOTION FULL', t0: S.now };
 }
 
 // how this player uses a held boon (their two special keys, and the pad), or null for the computer
@@ -318,7 +318,7 @@ function render() {
     if (S.banner && S.now - S.banner.t0 < 3) {
       R(0, H - 34, W, 30, 'rgba(10,12,20,.8)');
       txt(S.banner.text, CX, H - 30, '#ffcf6a', 'center');
-      txt(S.banner.sub, CX, H - 18, '#ddd', 'center');
+      if (S.banner.sub) txt(S.banner.sub, CX, H - 18, '#ddd', 'center');
     }
     if (S.match.phase === 'done') drawResult(S.match, S.sel, S.now - S.screenAt);
     if (S.paused) { drawPause(S.sel, pauseItems()); if (S.info != null) drawInfo(S.info, S.match.players.map((p) => p.ch)); }
