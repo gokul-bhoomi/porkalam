@@ -223,7 +223,7 @@ await check('the Codex art loads: arena plus 8 frames for each fighter, and ?gre
   const a = await game(() => window.__game.art);
   expect(a.arena, 'arena.png did not load');
   expect(a.frames.siddhan === 8 && a.frames.veeran === 8 && a.actions.siddhan === 8 && a.actions.veeran === 8, `frames: ${JSON.stringify(a)}`);
-  expect(a.fx === 85, `expected 85 effect sprites (two sheets of 8, the war elephant, 8 legacy hands, 2 circle hands, 2 halo hands, 1 divine halo, the Tandava crack, 4 stages each of yantra, arrow volley, shrine, fire ring, 8 flame frames, 4 smoke frames, 8 single-arrow parts, 4 shrine platform / roof, 8 pillar pieces, 6 yantra layers), got ${a.fx}`);
+  expect(a.fx === 105, `expected 104 effect sprites (two sheets of 8, the war elephant, 8 legacy hands, 2 circle hands, 2 halo hands, 1 divine halo, the Tandava crack, 4 stages each of yantra, arrow volley, shrine, fire ring, 8 flame frames, 4 smoke frames, 8 single-arrow parts, 4 shrine platform / roof, 8 pillar pieces, 6 yantra layers, 16 divine weapon pieces, storm, sky eye, cosmic form), got ${a.fx}`);
   expect(a.scenes >= 5, `expected the power-up sky paintings, got ${a.scenes}`);
   expect(a.gods === 4, `expected the 4 boon gods, got ${a.gods}`);
   expect(a.sceneLayers >= 2, `expected the spirit-form layers for both signatures, got ${a.sceneLayers}`);

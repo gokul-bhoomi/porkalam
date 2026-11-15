@@ -1,12 +1,13 @@
 import { W, H, RES, STEP, TUNE, ARENA } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { CHARS } from './chars/index.js';
-import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, drawRemap, drawTutorial, CX, fitView, fxEvent, setUseArt, useArt } from './render.js';
+import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, drawRemap, drawTutorial, CX, fitView, fxEvent, BRAHMA_HOLD, BRAHMA_AFTER, BRAHMA_BORN, divineTime, DRAMA_MOVES, setUseArt, useArt } from './render.js';
 import { loadArt, ART } from './art.js';
 import { createInput, KEYS, KEY_NAME, PAD, PAD_NAMES, REMAP, ACTIONS, RESERVED, PAD_RESERVED, setKey, setPad, resetControls } from './input.js';
 import { createTutorial, startTutorial, nextLesson, frozen, beforeStep, afterStep, view as tutView, lesson } from './tutorial.js';
 import * as sound from './audio.js';
 import { createCpu, cpuInput, LEVELS, LEVEL_IDS } from './ai.js';
+import { createTestMode } from './testmode.js';
 
 const cv = document.getElementById('screen');
 const ctx = cv.getContext('2d');
@@ -20,6 +21,11 @@ const S = {
   seed: Number(qs.get('seed')) || 1 + Math.floor(Math.random() * 1e6), screenAt: 0,
 };
 const DBG = { paused: qs.get('pause') === '1', override: [null, null], menu: [] };
+// ?test: straight into a match with a panel to hand out any boon (src/testmode.js)
+const TEST = createTestMode(qs, {
+  match: () => S.match,
+  start: (o) => { S.mode = o.mode; S.side = 0; S.tutorial = false; if (o.chars) S.chars = o.chars; S.minutes = Math.min(TUNE.match.max / 60, o.minutes); startMatch(); },
+});
 
 // Setup screen rows. 1 player: you pick your fighter and the computer's level.
 const CHAR_IDS = Object.keys(CHARS);
@@ -51,6 +57,30 @@ const go = (screen) => { S.screen = screen; S.sel = 0; S.screenAt = S.now; sound
 
 // power moves that break the arena when they land
 const POWER_MOVES = new Set(['Thousand-Arm Form', 'Gaja Arrow', 'Pashupatastra', 'Shakti Vel', 'Brahmastra', 'Vishwaroopam']);
+// what a hit shows in the arena: a power move shatters the island; heavy hits crack the sand; damage numbers
+function hitFx(e, shake) {
+  const now = S.clock, add = (f) => S.fx.push({ t0: now, life: 0.8, ...f });
+  const crack = (x, y, size) => { // a crack in the sand that fades slowly; only the newest 16 stay
+    add({ kind: 'crack', x, y, size, seed: Math.floor(Math.random() * 1e6), life: 30, ground: true });
+    const cracks = S.fx.filter((f) => f.kind === 'crack');
+    if (cracks.length > 16) S.fx.splice(S.fx.indexOf(cracks[0]), 1);
+  };
+  if (e.dmg > 0 && (e.srcs || []).some((s) => POWER_MOVES.has(s) && s !== 'Thousand-Arm Form')) { // a power move lands: the island shatters
+    add({ kind: 'shatter', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 2.2 });
+    add({ kind: 'scar', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 60, ground: true }); // the fissures stay
+    for (let i = 0; i < 5; i++) { const a = Math.random() * Math.PI * 2, r = 12 + Math.random() * 40; crack(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, 0.9 + Math.random() * 0.6); }
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3; add({ kind: 'splash', x: Math.cos(a) * ARENA.r, y: Math.sin(a) * ARENA.r, life: 1.4, big: 2.6 }); }
+    if (shake) add({ kind: 'shake', x: 0, y: 0, amp: 6, life: 0.9 });
+    const own = ART.fx.storm && (e.srcs || []).some((s) => DRAMA_MOVES.has(s)); // the divine weapons stage their own impact (render.js)
+    if (!own) { add({ kind: 'global', x: 0, y: 0, life: 0.35, color: '255,255,255' }); S.slowmo = { t0: S.now, short: true }; } // a heavy hit-stop
+    sound.play('shatter2');
+  }
+  {
+    if (e.dmg >= 8 && !(e.srcs || []).includes('Thousand-Arm Form')) crack(e.x, e.y, Number.isFinite(e.dmg) ? Math.min(1.4, e.dmg / 25) : 1.6); // heavy hits break the sand
+    if (e.dmg > 0) { add({ kind: 'pop', x: e.x, y: e.y, text: Number.isFinite(e.dmg) ? `-${Math.round(e.dmg * 10) / 10}` : 'X', color: '#ff6a5a' }); add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 }); }
+    if (e.heal > 0) add({ kind: 'pop', x: e.x, y: e.y, text: `+${e.heal}`, color: '#7aff8a' });
+  }
+}
 function onEvent(e, m) {
   fxEvent(e, m, S.now); // every hit on a block or a barrier shows (debris, flares)
   const now = S.clock, add = (f) => S.fx.push({ t0: now, life: 0.8, ...f });
@@ -81,21 +111,11 @@ function onEvent(e, m) {
   if (e.type === 'boonUsed' && e.tier !== 'divine') sound.play('powerLand');
   if (e.type === 'scene') { sound.play('powerUp'); sound.duck(0.15, 2.6); }
   if (e.type === 'release' && POWER_MOVES.has(e.name)) sound.play('powerLand');
-  if (e.type === 'end') { sound.play(e.reason === 'ko' || e.reason === 'double' || e.reason === 'brahmastra' ? 'ko' : 'tick'); if (e.winner != null) setTimeout(() => sound.play('win'), 1200); }
-  if (e.type === 'hp' && e.dmg > 0 && (e.srcs || []).some((s) => POWER_MOVES.has(s) && s !== 'Thousand-Arm Form')) { // a power move lands: the island shatters
-    add({ kind: 'shatter', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 2.2 });
-    add({ kind: 'scar', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 60, ground: true }); // the fissures stay
-    for (let i = 0; i < 5; i++) { const a = Math.random() * Math.PI * 2, r = 12 + Math.random() * 40; crack(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, 0.9 + Math.random() * 0.6); }
-    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3; add({ kind: 'splash', x: Math.cos(a) * ARENA.r, y: Math.sin(a) * ARENA.r, life: 1.4, big: 2.6 }); }
-    add({ kind: 'shake', x: 0, y: 0, amp: 6, life: 0.9 });
-    add({ kind: 'global', x: 0, y: 0, life: 0.35, color: '255,255,255' });
-    S.slowmo = { t0: S.now, short: true }; // a heavy hit-stop
-    sound.play('shatter2');
-  }
+  if (e.type === 'shivaTakes') { sound.duck(0.03, 6); sound.play('boon', true); setTimeout(() => sound.play('medFull'), 2000); setTimeout(() => sound.play('powerLand'), 4000); } // Shiva takes both Brahmastras back: his arrival, a gong as the eye opens, a boom as it swallows them
+  if (e.type === 'end' && e.reason === 'brahmastra' && ART.fx.sun2) { sound.play('ko'); sound.play('powerLand'); } // the boom as the second sun lands
+  else if (e.type === 'end') { sound.play(e.reason === 'ko' || e.reason === 'double' || e.reason === 'brahmastra' ? 'ko' : 'tick'); if (e.winner != null) setTimeout(() => sound.play('win'), 1200); }
   if (e.type === 'hp') {
-    if (e.dmg >= 8 && !(e.srcs || []).includes('Thousand-Arm Form')) crack(e.x, e.y, Number.isFinite(e.dmg) ? Math.min(1.4, e.dmg / 25) : 1.6); // heavy hits break the sand
-    if (e.dmg > 0) { add({ kind: 'pop', x: e.x, y: e.y, text: Number.isFinite(e.dmg) ? `-${Math.round(e.dmg * 10) / 10}` : 'X', color: '#ff6a5a' }); add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 }); }
-    if (e.heal > 0) add({ kind: 'pop', x: e.x, y: e.y, text: `+${e.heal}`, color: '#7aff8a' });
+    hitFx(e, !(ART.fx.sun2 && (e.srcs || []).includes('Brahmastra'))); // (the second sun stages its own shaking, render.js)
   }
   if (e.type === 'clash') add({ kind: 'clash', x: e.x, y: e.y, life: 0.4 });
   if (e.type === 'swing') { const p = m.players[e.pid]; add({ kind: 'swing', x: p.x, y: p.y, a: Math.atan2(p.face.y, p.face.x), life: 0.2 }); }
@@ -114,8 +134,9 @@ function onEvent(e, m) {
     }
     if (e.name === 'Gaja Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Shakti Vel') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,200,90', r: 60 }); shake(3, 0.4); }
-    if (e.name === 'Pashupatastra') { add({ kind: 'bolt', x: p.x, y: p.y, life: 0.5 }); add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '170,220,255', r: 60 }); shake(3, 0.4); }
-    if (e.name === 'Brahmastra') { for (const q of m.players) add({ kind: 'pillar', x: q.x, y: q.y, life: 1.2 }); add({ kind: 'global', x: 0, y: 0, life: 0.9, color: '255,255,255' }); shake(5, 1.0); }
+    if (e.name === 'Pashupatastra') { if (!ART.fx.trident1) add({ kind: 'bolt', x: p.x, y: p.y, life: 0.5 }); add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '170,220,255', r: 60 }); shake(3, 0.4); }
+    if (e.name === 'Brahmastra' && ART.fx.sun2) { sound.duck(0.02, BRAHMA_HOLD); setTimeout(() => { if (S.match?.brahma) sound.play('medFull'); }, BRAHMA_BORN * 1000); } // silence; a gong as the second sun is born
+    if (e.name === 'Brahmastra') { if (!ART.fx.sun2) { for (const q of m.players) add({ kind: 'pillar', x: q.x, y: q.y, life: 1.2 }); add({ kind: 'global', x: 0, y: 0, life: 0.9, color: '255,255,255' }); } if (!ART.fx.sun2) shake(5, 1.0); } // with art: the second sun (render.js), which stages its own shaking
   }
   if (e.type === 'wall') { add({ kind: 'splash', x: e.x, y: e.y, life: 0.9, big: 1 }); }
   if (e.type === 'boon') { // a god answers and reveals the boon: the fight slows, the god appears, blessing
@@ -202,6 +223,7 @@ function updateControls(any) {
 }
 
 function update(dt) {
+  if (TEST && S.screen === 'fight') TEST.tick(S.now);
   const inp = input.poll();
   if (inp.pads) sound.unlock(); // a pad press may count as a gesture in some browsers
   sound.setMusic(S.screen === 'fight' && !S.paused && S.match?.phase === 'fight' ? 'fight' : 'menu');
@@ -273,7 +295,7 @@ function update(dt) {
       return;
     }
     if (match.phase === 'done') {
-      if (S.now - S.screenAt < 1.6) return; // let the knockout play before the menu takes input
+      if (S.now - S.screenAt < 1.6 + (match.result?.reason === 'brahmastra' && ART.fx.sun2 ? BRAHMA_AFTER : 0)) return; // let the knockout (or the second sun) play before the menu takes input
       if (any('up')) S.sel = (S.sel + 2) % 3;
       if (any('down')) S.sel = (S.sel + 1) % 3;
       if (any('confirm')) { if (S.sel === 0) startMatch(); else go(S.sel === 1 ? 'setup' : 'title'); }
@@ -394,6 +416,7 @@ let last = performance.now(), acc = 0;
 // Slow motion for a moment after a boon is invoked, so everyone sees what it is (render-side only: the sim
 // still runs in fixed steps, just fewer of them per second).
 function timeScale() {
+  if (S.screen === 'fight' && !S.paused) { const k = divineTime(S.now); if (k < 1) return k; } // a divine weapon's slow motion / impact freeze
   if (!S.slowmo || S.screen !== 'fight' || S.paused) return 1;
   const t = S.now - S.slowmo.t0;
   if (S.slowmo.short) { if (t > 0.6) { S.slowmo = null; return 1; } return t < 0.25 ? 0.1 : 0.1 + 0.9 * ((t - 0.25) / 0.35); } // impact hit-stop
@@ -414,4 +437,4 @@ if (qs.get('grey') === '1') setUseArt(false);
 Promise.all([
   Promise.race([Promise.all([document.fonts.load('8px "Press Start 2P"'), document.fonts.load('900 20px "Noto Serif Tamil"', 'போர்க்களம்')]), new Promise((r) => setTimeout(r, 1500))]),
   loadArt().then(fitView).catch((e) => S.errors.push(String(e))),
-]).finally(() => requestAnimationFrame((ts) => { last = ts; frame(ts); })); // start the clock on the first frame
+]).finally(() => { if (TEST) TEST.start(); requestAnimationFrame((ts) => { last = ts; frame(ts); }); }); // start the clock on the first frame

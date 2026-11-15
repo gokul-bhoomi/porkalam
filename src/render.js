@@ -238,7 +238,7 @@ function drawLava(c, k, now) {
 // The painted lava (art/lava_floor.png): it spreads out from the chasm as the half sinks (the sand melts), two
 // layers of the texture drift against each other so the crust looks like it floats, the glow pulses and is
 // hottest along the chasm, and embers rise off it. Laid on the floor in the 3/4 view (squashed by SQ).
-const LAVA = { tile: 70, melt: 1.1 }; // one tile of the texture in world units; seconds for the lava to cover the half
+const LAVA = { tile: 70, melt: 1.1, pat: null }; // one tile of the texture in world units; seconds for the lava to cover the half
 function drawLavaArt(c, k, now) {
   const age = c.time - c.t, reach = ARENA.r * 2.2 * easeOut(clamp01((age - CRACK) / LAVA.melt));
   if (reach <= 1) return;
@@ -246,7 +246,7 @@ function drawLavaArt(c, k, now) {
   G.save();
   G.beginPath(); [at(0, -B), at(0, B), at(reach, B), at(reach, -B)].forEach(([x, y], i) => (i ? G.lineTo(x, y) : G.moveTo(x, y))); G.closePath(); G.clip();
   const layer = (scale, dx, dy, alpha, op) => {
-    const pat = G.createPattern(ART.lavaFloor, 'repeat'), s = (LAVA.tile * scale * SC) / ART.lavaFloor.width;
+    const pat = LAVA.pat || (LAVA.pat = G.createPattern(ART.lavaFloor, 'repeat')), s = (LAVA.tile * scale * SC) / ART.lavaFloor.width;
     pat.setTransform(new DOMMatrix().translate(CX + dx * SC, CY + dy * SC * SQ).scale(s, s * SQ));
     G.globalCompositeOperation = op; G.globalAlpha = alpha; G.fillStyle = pat; G.fillRect(0, 0, W, H);
   };
@@ -523,9 +523,392 @@ function snapArrow(w, a, now, dir) { // the top half flies off, the stump stays 
   if (Math.random() < 0.5) PARTS.push({ kind: 'feather', t0: now, life: 1.2, x: p.x, y: hy - 5, vx: dir * rnd(5, 20), vy: -18, g: 25, floor: y, vr: 3, size: 3, sway: rnd(0, 6), late: true });
 }
 
+// ---------- the divine weapons in the arena (art/fx_pashupata, fx_vel, fx_vishwa, fx_brahma, fx_storm, fx_sky_eye, fx_cosmic_form) ----------
+// Each one is staged: the world dims, time slows, the camera pushes in, the game freezes for an instant on impact,
+// the screen shakes. Pashupatastra: a storm rolls in, Shiva's eye opens across the sky, its bolt strikes.
+// Shakti Vel: time crawls as the vel flies and the camera rides it; a gold shockwave tears the sand.
+// Vishwaroopam: the sky becomes the cosmos and Krishna's universal form looms over it; pillars of light rain down.
+// Brahmastra: silence; the arrow climbs and becomes a second sun that fills the sky; white-out; ash.
+export const DRAMA_MOVES = new Set(['Pashupatastra', 'Shakti Vel', 'Vishwaroopam', 'Brahmastra']);
+const DIV = [];
+const DR = { freeze: 0, slow: null, cam: null, dim: null, shake: [] };
+const EYE = { x: CX, y: 78 }; // where Shiva's eye opens in the sky
+// The game's time scale while a divine weapon plays (main.js multiplies the sim clock by it).
+export function divineTime(now) {
+  if (now < DR.freeze) return 0.03;
+  if (DR.slow && now < DR.slow.until) return DR.slow.k;
+  return 1;
+}
+const freeze = (now, s) => { DR.freeze = Math.max(DR.freeze, now + s); };
+const shakeAt = (now, amp, life) => DR.shake.push({ t0: now, amp, life });
+function dramaShake(now) {
+  DR.shake = DR.shake.filter((q) => now - q.t0 < q.life);
+  const b = DIV.find((d) => d.kind === 'brahma');
+  return DR.shake.reduce((a, q) => a + (now < q.t0 ? 0 : q.amp * (1 - (now - q.t0) / q.life)), 0) + (b ? brahmaRumble(now - b.t0) : 0);
+}
+// camera: push in on a point (or follow one), easing in and out
+function camOn(now, z, at, hold) { DR.cam = { t0: now, z, at, until: now + hold }; }
+let DR_NOW = 0; // the clock, for camera targets that move
+function divineCamera(now) {
+  DR_NOW = now;
+  const c = DR.cam;
+  if (!c) return null;
+  const w = Math.min(easeOut(clamp01((now - c.t0) / 0.3)), 1 - clamp01((now - c.until) / 0.45));
+  if (w <= 0 && now > c.until) { DR.cam = null; return null; }
+  const p = typeof c.at === 'function' ? c.at() : c.at;
+  if (!p) return null;
+  const z = typeof c.z === 'function' ? c.z() : c.z;
+  return { z: 1 + (z - 1) * w, fx: CX + (p.x - CX) * w, fy: H / 2 + (p.y - H / 2) * w };
+}
+function dimOn(now, rgb, a, until) { DR.dim = { t0: now, rgb, a, until }; }
+function drawDim(now) {
+  const d = DR.dim;
+  if (!d) return;
+  const k = Math.min(clamp01((now - d.t0) / 0.3), 1 - clamp01((now - d.until) / 0.5));
+  if (k <= 0 && now > d.until) { DR.dim = null; return; }
+  G.fillStyle = `rgba(${d.rgb},${d.a * k})`; G.fillRect(-W, -H, W * 3, H * 3);
+}
+const tgtOf = (m, pid) => m.players[1 - pid];
+const scr = (q) => ({ x: sx(q.x), y: sy(q.y) + liftAt(q.x, q.y) });
+const DIV_LAST = { vel: null, velPos: null };
+function divineEvent(e, m, now) {
+  if (e.type === 'release' && DRAMA_MOVES.has(e.name) && fxArt('storm')) {
+    const p = m.players[e.pid];
+    if (e.name === 'Pashupatastra') { // the storm and the eye; time slows while the trident flies
+      DIV.push({ kind: 'storm', t0: now, life: 5, pid: e.pid }); // shortened when it lands
+      dimOn(now, '8,16,44', 0.55, now + 4); DR.slow = { k: 0.45, until: now + 4 }; // (a safety limit; the hit ends it)
+    }
+    if (e.name === 'Shakti Vel') { // time crawls, the camera rides the vel
+      dimOn(now, '30,16,0', 0.4, now + 4); DR.slow = { k: 0.3, until: now + 4 };
+      camOn(now, 1.35, () => DIV_LAST.velPos, 4);
+    }
+    if (e.name === 'Vishwaroopam') { // the sky opens onto the cosmos; light rains toward the target
+      DIV.push({ kind: 'cosmic', t0: now, life: 3.2, pid: e.pid });
+      dimOn(now, '4,4,22', 0.6, now + 1.6); DR.slow = { k: 0.5, until: now + 0.85 };
+      const o = tgtOf(m, e.pid);
+      for (let i = 0; i < 9; i++) { // pillars sweep in from far away to the target
+        const k = i / 8, a = hash01(i * 5 + Math.floor(now)) * Math.PI * 2, r = (1 - k) * ARENA.r * 0.9;
+        DIV.push({ kind: 'pillar', t0: now + 0.05 + k * 0.32, life: 0.9, wx: o.x + Math.cos(a) * r, wy: o.y + Math.sin(a) * r * 0.8, big: i === 8 });
+      }
+    }
+    if (e.name === 'Brahmastra') {
+      const d = { kind: 'brahma', t0: now, life: BRAHMA_HOLD, x: p.x, y: p.y, pid: e.pid, hp0: [...hpShown] }; // the bars hold until the sun lands
+      DIV.push(d);
+      DR.cam = { t0: now, z: () => brahmaCam(d, DR_NOW).z, at: () => brahmaCam(d, DR_NOW), until: now + B.born + 1.6 };
+    }
+  }
+  if (e.type === 'shivaTakes' && fxArt('storm')) { // two Brahmastras: Shiva takes both back
+    for (let i = DIV.length - 1; i >= 0; i--) if (DIV[i].kind === 'brahma') DIV.splice(i, 1);
+    DR.cam = null; DR.dim = null;
+    DIV.push({ kind: 'shiva', t0: now, life: SHV.dur, at: [scr(m.players[e.pid]), scr(m.players[e.other])] });
+    DIV.push({ kind: 'storm', t0: now + SHV.eye, life: SHV.dur - SHV.eye - 0.3, pid: e.pid }); // the storm, and the eye opening in it
+    freeze(now, SHV.dur); // the game all but stops while Shiva acts
+  }
+  if (e.type === 'hp' && e.dmg > 0 && fxArt('storm')) {
+    const src = e.srcs || [], at = { x: sx(e.x), y: sy(e.y) + liftAt(e.x, e.y) };
+    if (src.includes('Pashupatastra')) {
+      DR.slow = null; freeze(now, 0.18); shakeAt(now, 7, 1.0); camOn(now, 1.3, at, 0.9);
+      DIV.push({ kind: 'bolt', t0: now, life: 1.3, ...at });
+      const st = DIV.find((d) => d.kind === 'storm'); if (st) st.life = now - st.t0 + 1.6;
+      if (DR.dim) DR.dim.until = now + 1.2;
+    }
+    if (src.includes('Shakti Vel')) {
+      DR.slow = null; freeze(now, 0.2); shakeAt(now, 6, 0.8); camOn(now, 1.3, at, 0.8);
+      if (DR.dim) DR.dim.until = now + 0.8;
+      DIV.push({ kind: 'shock', t0: now, life: 0.9, ...at });
+      PARTS.push({ kind: 'sprite', name: 'velBurst', t0: now, life: 0.6, x: at.x, y: at.y - 18, vx: 0, vy: 0, size: 90, add: true });
+      burst(16, () => ({ kind: 'dust', t0: now + rnd(0, 0.15), life: rnd(0.8, 1.3), x: at.x + rnd(-20, 20), y: at.y + rnd(-2, 4), vx: rnd(-40, 40), vy: rnd(-25, -5), size: rnd(10, 18), color: 'rgba(214,176,120,.55)' }));
+    }
+    if (src.includes('Vishwaroopam')) { freeze(now, 0.15); shakeAt(now, 5, 0.7); camOn(now, 1.25, at, 0.7); }
+  }
+}
+// A shot in flight. Returns true when it drew it.
+function drawDivineShot(pr0, now) {
+  const x = sx(pr0.x), gy = sy(pr0.y), hy = gy - 18, a = Math.atan2(pr0.vy * SQ, pr0.vx), left = Math.cos(a) < 0, rot = left ? a - Math.PI : a;
+  if (pr0.name === 'Pashupatastra' && fxArt('trident1')) {
+    ell(x, gy, 16, 4, 'rgba(120,190,255,.3)');
+    fxSprite(G, 'trident' + (1 + (Math.floor(now * 18) % 2)), x, hy, 72, { rot, flip: left });
+    G.save(); G.globalCompositeOperation = 'lighter'; ell(x, hy, 34, 18, 'rgba(140,200,255,.25)'); G.restore();
+    return true;
+  }
+  if (pr0.name === 'Shakti Vel' && fxArt('vel')) {
+    DIV_LAST.vel = { vx: pr0.vx, vy: pr0.vy }; DIV_LAST.velPos = { x, y: hy };
+    const ca = Math.cos(a), sa = Math.sin(a);
+    ell(x, gy, 16, 3, 'rgba(0,0,0,.3)');
+    fxSprite(G, 'velTrail', x - ca * 52, hy - sa * 52, 100, { rot, flip: left, alpha: 0.95 });
+    fxSprite(G, 'vel', x, hy, 66, { rot, flip: left });
+    G.save(); G.globalCompositeOperation = 'lighter'; ell(x + ca * 16, hy + sa * 16, 16, 10, 'rgba(255,220,120,.3)'); G.restore();
+    for (const w of m0?.walls || []) if (Math.hypot(w.x - pr0.x, w.y - pr0.y) < 9 && !w.velPierced) { // it bursts straight through a block
+      w.velPierced = true;
+      PARTS.push({ kind: 'sprite', name: 'velBurst', t0: now, life: 0.45, x: sx(w.x), y: sy(w.y) - 20, vx: 0, vy: 0, size: 54, add: true });
+      burst(10, () => ({ kind: 'spark', t0: now, life: rnd(0.3, 0.6), x: sx(w.x), y: sy(w.y) - 20, vx: rnd(-60, 60), vy: rnd(-60, 20), g: 80, size: rnd(1.5, 3), color: '#ffd27a', add: true }));
+    }
+    return true;
+  }
+  return false;
+}
+// The sky behind the island (storm, Shiva's eye, the cosmic form): drawn over the backdrop, under the arena.
+function drawHeaven(m, now) {
+  for (const d of DIV) {
+    const t = now - d.t0, k = t / d.life;
+    if (d.kind === 'storm' && fxArt('storm')) {
+      const inn = easeOut(clamp01(t / 0.5)), out = clamp01((t - d.life + 0.7) / 0.7), a = inn * (1 - out);
+      fxSprite(G, 'storm', CX, -12 + 70 * inn, W * 1.15, { h: W * 1.15 / 4, alpha: a });
+      if (fxArt('skyEye')) { // the eye opens in the clouds
+        const open = easeOut(clamp01((t - 0.35) / 0.45)), pulse = 1 + 0.03 * Math.sin(now * 9);
+        G.save(); G.globalCompositeOperation = 'lighter'; ell(EYE.x, EYE.y, 120 * open, 40 * open, `rgba(255,150,60,${0.25 * a})`); G.restore();
+        fxSprite(G, 'skyEye', EYE.x, EYE.y, W * 0.95 * pulse, { h: W * 0.95 / 4 * open * pulse, alpha: a });
+      }
+    }
+    if (d.kind === 'brahma' && t >= 0) drawBrahma(m, d, t, now, 'heaven');
+    if (d.kind === 'shiva') drawGod({ god: 'shiva', t0: d.t0 + SHV.god[0], life: SHV.god[1] - SHV.god[0] }, now); // Shiva himself appears first
+    if (d.kind === 'cosmic') {
+      const inn = easeOut(clamp01(t / 0.5)), out = clamp01((t - d.life + 0.8) / 0.8), a = inn * (1 - out);
+      G.fillStyle = `rgba(6,4,24,${0.75 * a})`; G.fillRect(-W, -H, W * 3, H + 60 + CY - 60); // the sky goes black
+      if (fxArt('cosmosSky')) { const w = W * 1.3 * (1.06 - 0.06 * inn); fxSprite(G, 'cosmosSky', CX, 62, w, { h: w * 0.375, alpha: a }); }
+      else if (fxArt('cosmos')) fxSprite(G, 'cosmos', CX, 40, W * 1.3, { h: W * 0.5, spin: now * 0.05, alpha: 0.7 * a });
+      if (fxArt('cosmicForm')) fxSprite(G, 'cosmicForm', CX, 60 + 14 * (1 - inn), W * 1.1 * (1.04 - 0.04 * inn), { h: W * 1.1 / 4, alpha: 0.9 * a });
+    }
+  }
+}
+function drawDivine(m, now, layer) {
+  DR_NOW = now;
+  if (m.brahma) for (const d of DIV) if (d.kind === 'brahma') d.t0 = now - m.brahma.t; // in step with the sim's Brahmastra (it pauses for a scene)
+  for (let i = DIV.length - 1; i >= 0; i--) if (now - DIV[i].t0 > DIV[i].life || now < DIV[i].t0 - 5) DIV.splice(i, 1);
+  if (layer === 'ground') drawDim(now);
+  for (const d of DIV) {
+    const t = now - d.t0, k = t / d.life;
+    if (t < 0) continue;
+    if (d.kind === 'bolt') { // from the eye in the sky down to the target
+      if (layer === 'sky' && t < 0.7) {
+        const dx = d.x - EYE.x, dy = d.y - 14 - EYE.y, len = Math.hypot(dx, dy), flick = Math.floor(now * 26) % 2;
+        G.save(); G.translate(EYE.x, EYE.y); G.rotate(Math.atan2(dy, dx) - Math.PI / 2);
+        fxSprite(G, 'lightning', flick ? 2 : -2, 0, 70, { h: len, anchor: 'top', flip: !!flick, alpha: 1 - clamp01((t - 0.45) / 0.25) });
+        G.restore();
+        G.save(); G.globalCompositeOperation = 'lighter'; ell(d.x, d.y - 12, 22, 20, `rgba(170,220,255,${0.4 * (1 - t / 0.7)})`); G.restore();
+      }
+      if (layer === 'ground') { const g = 1 - clamp01((t - 0.3) / 1.0), bg = G.createRadialGradient(d.x, d.y + 1, 0, d.x, d.y + 1, 26); bg.addColorStop(0, `rgba(20,10,6,${0.45 * g})`); bg.addColorStop(1, 'rgba(20,10,6,0)'); G.save(); G.translate(d.x, d.y + 1); G.scale(1, 0.32); G.translate(-d.x, -d.y - 1); G.fillStyle = bg; G.beginPath(); G.arc(d.x, d.y + 1, 26, 0, Math.PI * 2); G.fill(); G.restore(); G.save(); G.globalCompositeOperation = 'lighter'; ell(d.x, d.y + 1, 20 + 90 * easeOut(clamp01(t / 0.6)), 7 + 30 * easeOut(clamp01(t / 0.6)), `rgba(140,200,255,${0.45 * g})`); G.restore(); }
+      if (layer === 'screen') { // a white frame, then a black one: the strike
+        if (t < 0.05) { G.fillStyle = 'rgba(235,245,255,.92)'; G.fillRect(-W, -H, W * 3, H * 3); }
+        else if (t < 0.1) { G.fillStyle = 'rgba(0,0,8,.85)'; G.fillRect(-W, -H, W * 3, H * 3); }
+      }
+    }
+    if (d.kind === 'shock' && layer === 'ground') { // a gold shockwave ring tears across the sand
+      const u = easeOut(clamp01(t / 0.6)), a = 1 - clamp01((t - 0.3) / 0.6), r = 14 + 150 * u;
+      G.save(); G.globalCompositeOperation = 'lighter';
+      G.strokeStyle = `rgba(255,214,120,${0.9 * a})`; G.lineWidth = 3 * (1 - u) + 1; G.beginPath(); G.ellipse(d.x, d.y, r, r * SQ, 0, 0, Math.PI * 2); G.stroke();
+      G.strokeStyle = `rgba(255,255,230,${0.6 * a})`; G.lineWidth = 1; G.beginPath(); G.ellipse(d.x, d.y, r * 0.8, r * 0.8 * SQ, 0, 0, Math.PI * 2); G.stroke();
+      G.restore();
+      if (fxArt('lightImpact')) fxSprite(G, 'lightImpact', d.x, d.y, 90 * (0.6 + 0.8 * u), { h: 90 * (0.6 + 0.8 * u) * 0.5, alpha: a });
+    }
+    if (d.kind === 'cosmic' && layer === 'ground' && fxArt('cosmos')) { // the island itself turns to stars
+      const a = easeOut(clamp01(t / 0.35)) * (1 - clamp01((t - d.life + 0.8) / 0.8)), w = ARENA.r * SC * 2.14;
+      fxSprite(G, 'cosmos', CX, CY, w, { h: w * SQ, spin: now * 0.12, alpha: 0.85 * a });
+    }
+    if (d.kind === 'pillar') { // a pillar of light from the sky
+      const p = { x: sx(d.wx), y: sy(d.wy) }, on = clamp01(t / 0.08), a = on * (1 - clamp01((t - 0.35) / 0.5)), wdt = d.big ? 34 : 20;
+      if (layer === 'ground' && fxArt('lightImpact')) fxSprite(G, 'lightImpact', p.x, p.y, (d.big ? 110 : 60) * (0.5 + 0.7 * easeOut(clamp01(t / 0.3))), { h: (d.big ? 110 : 60) * 0.5, alpha: a });
+      if (layer === 'sky' && fxArt('lightBeam')) fxSprite(G, 'lightBeam', p.x, p.y, wdt, { h: p.y + 30, anchor: 'bottom', alpha: a });
+      if (layer === 'sky' && t < 0.06 && d.big) { G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = 'rgba(255,240,200,.35)'; G.fillRect(-W, -H, W * 3, H * 3); G.restore(); }
+    }
+    if (d.kind === 'brahma') drawBrahma(m, d, t, now, layer);
+    if (d.kind === 'shiva') drawShivaTakes(m, d, t, now, layer);
+  }
+}
+// Two Brahmastras at once (owner, 2026-11-15): Shiva takes both back. The world goes dark and the game all but
+// stops; Shiva appears over the far bank; both arrows rise and drift toward each other; his third eye opens in a storm over the island and draws them
+// in; a flash, the eye closes, and the fight goes on.
+const SHV = { dur: 6, god: [0.2, 2.6], rise: [0.6, 3.2], pull: [3.2, 4.0], flash: 4.0, eye: 2.0 }; // Shiva appears first, then his eye opens
+function shivaArrow(d, i, t) {
+  const f = d.at[i], hover = { x: f.x, y: f.y - 64 }, meet = { x: CX + (f.x < CX ? -36 : 36), y: EYE.y + 34 };
+  if (t < SHV.rise[0]) return { x: hover.x, y: hover.y, rot: -Math.PI / 2, s: 1 };
+  if (t < SHV.rise[1]) { // a slow arc up toward the other arrow
+    const u = easeInOut((t - SHV.rise[0]) / (SHV.rise[1] - SHV.rise[0])), v = 1 - u, c = { x: hover.x + (meet.x - hover.x) * 0.1, y: meet.y - 30 };
+    const x = v * v * hover.x + 2 * v * u * c.x + u * u * meet.x, y = v * v * hover.y + 2 * v * u * c.y + u * u * meet.y;
+    return { x, y, rot: Math.atan2(v * (c.y - hover.y) + u * (meet.y - c.y), v * (c.x - hover.x) + u * (meet.x - c.x)), s: 1 };
+  }
+  const u = clamp01((t - SHV.pull[0]) / (SHV.pull[1] - SHV.pull[0])), e = u * u * u; // drawn into the eye, faster and faster
+  return { x: meet.x + (EYE.x - meet.x) * e, y: meet.y + (EYE.y - meet.y) * e, rot: Math.atan2(EYE.y - meet.y, EYE.x - meet.x), s: 1 - 0.85 * e };
+}
+function drawShivaTakes(m, d, t, now, layer) {
+  if (layer === 'ground') {
+    const dark = clamp01(t / 0.6) * (1 - clamp01((t - (SHV.dur - 0.9)) / 0.8)), deep = 0.55 + 0.25 * clamp01((t - SHV.god[1] + 0.4) / 0.6); // lighter while Shiva is there
+    if (dark > 0) { G.fillStyle = `rgba(4,6,20,${deep * dark})`; G.fillRect(-W, -H, W * 3, H * 3); }
+  }
+  if (layer === 'sky') { // the eye burns through the dark
+    const g = clamp01((t - SHV.eye - 0.4) / 0.6) * (1 - clamp01((t - SHV.flash - 0.4) / 0.6)), r = 70 * (1 + 0.08 * Math.sin(now * 6));
+    if (g > 0) { const eg = G.createRadialGradient(EYE.x, EYE.y, 0, EYE.x, EYE.y, r); eg.addColorStop(0, `rgba(255,140,60,${0.45 * g})`); eg.addColorStop(1, 'rgba(255,80,20,0)'); G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = eg; G.fillRect(EYE.x - r, EYE.y - r, r * 2, r * 2); G.restore(); }
+  }
+  if (layer === 'sky' && t < SHV.pull[1]) {
+    for (let i = 0; i < 2; i++) {
+      const on = clamp01((t - 0.1) / 0.5);
+      // the trail along the path it flew
+      const start = Math.max(SHV.rise[0], t - 0.8);
+      if (t > SHV.rise[0]) {
+        G.save(); G.globalCompositeOperation = 'lighter'; G.lineCap = 'round';
+        let q = shivaArrow(d, i, start);
+        for (let k = 1; k <= 16; k++) { const p = shivaArrow(d, i, start + (t - start) * (k / 16)), f = k / 16; G.strokeStyle = `rgba(255,220,150,${0.5 * f})`; G.lineWidth = 1 + 4 * f * p.s; G.beginPath(); G.moveTo(q.x, q.y); G.lineTo(p.x, p.y); G.stroke(); q = p; }
+        G.restore();
+      }
+      const a = shivaArrow(d, i, t), r = 20 * a.s, hg = G.createRadialGradient(a.x, a.y, 0, a.x, a.y, r);
+      hg.addColorStop(0, `rgba(255,240,190,${0.6 * on})`); hg.addColorStop(1, 'rgba(255,190,90,0)');
+      G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = hg; G.fillRect(a.x - r, a.y - r, r * 2, r * 2); G.restore();
+      fxSprite(G, 'brahmArrow', a.x, a.y, 66 * a.s, { rot: a.rot, alpha: on });
+    }
+    if (t > SHV.pull[0]) { // the eye's pull: streaks of light into it
+      const u = clamp01((t - SHV.pull[0]) / (SHV.pull[1] - SHV.pull[0]));
+      G.save(); G.globalCompositeOperation = 'lighter';
+      for (let k = 0; k < 10; k++) { const ang = hash01(k * 3) * Math.PI * 2 + now, r0 = 90 * (1 - ((now * 1.6 + hash01(k)) % 1)); G.strokeStyle = `rgba(180,220,255,${0.4 * u})`; G.lineWidth = 1; G.beginPath(); G.moveTo(EYE.x + Math.cos(ang) * r0, EYE.y + Math.sin(ang) * r0 * 0.5); G.lineTo(EYE.x + Math.cos(ang) * r0 * 0.6, EYE.y + Math.sin(ang) * r0 * 0.3); G.stroke(); }
+      G.restore();
+    }
+  }
+  if (layer === 'sky' && t > SHV.flash && t < SHV.flash + 0.8) { // swallowed: a burst of light from the eye
+    const u = (t - SHV.flash) / 0.8, r = 30 + 160 * easeOut(u), gr = G.createRadialGradient(EYE.x, EYE.y, 0, EYE.x, EYE.y, r);
+    gr.addColorStop(0, `rgba(255,255,245,${0.9 * (1 - u)})`); gr.addColorStop(0.4, `rgba(180,220,255,${0.5 * (1 - u)})`); gr.addColorStop(1, 'rgba(120,180,255,0)');
+    G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = gr; G.fillRect(EYE.x - r, EYE.y - r, r * 2, r * 2); G.restore();
+  }
+  if (layer === 'screen' && t > SHV.flash && t < SHV.flash + 0.15) { G.fillStyle = `rgba(230,240,255,${0.5 * (1 - (t - SHV.flash) / 0.15)})`; G.fillRect(-W, -H, W * 3, H * 3); }
+}
+
+// The Brahmastra, staged slowly (owner, 2026-11-15: "it ends both fighters; it must not feel rushed").
+//  0.0 invocation: the world goes dark, light gathers to the caster, the arrow forms above their head
+//  1.5 ascent: the arrow climbs into the sky on a column of light, the camera riding it
+//  3.1 birth: it bursts into a second sun, which swells until it fills the sky; the island burns orange, the ground shakes
+//  5.7 the breath: the sun draws in, the shaking stops, the edges go dark: silence
+//  6.2 the strike: light falls on the island; white-out, the two fighters black shapes that fall
+//  7.5 the white fades to an island under grey ash; the result comes up at BRAHMA_HOLD
+const B = { sunY: 58, rise: 1.5, born: 3.1, breath: 5.7, strike: TUNE.brahmastraFall - 0.4, impact: TUNE.brahmastraFall, whiteHold: 7.8, ash: 7.7 }; // impact: when the sim's sun lands
+export const BRAHMA_HOLD = 10; // s from a Brahmastra going off to the result screen
+export const BRAHMA_AFTER = BRAHMA_HOLD - TUNE.brahmastraFall; // ...of which this much comes after the match ends (its sun lands)
+export const BRAHMA_STRIKE = B.impact, BRAHMA_BORN = B.born;
+const easeInOut = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+const brahmaT = (now) => { const b = DIV.find((d) => d.kind === 'brahma'); return b ? { t: now - b.t0, pid: b.pid, hp0: b.hp0 } : null; };
+function brahmaArrow(d, t) { // hovers over the caster, then flies one arc (a curve up and over) into the middle of the sky, facing along it
+  const c = scr(d), hover = { x: c.x, y: c.y - 64 + 2 * Math.sin(t * 5), rot: -Math.PI / 2 };
+  if (t < B.rise) return hover;
+  const u = easeInOut(clamp01((t - B.rise) / (B.born - B.rise))), v = 1 - u;
+  const p0 = hover, p1 = { x: hover.x + (CX - hover.x) * 0.15, y: B.sunY - 40 }, p2 = { x: CX, y: B.sunY };
+  const x = v * v * p0.x + 2 * v * u * p1.x + u * u * p2.x, y = v * v * p0.y + 2 * v * u * p1.y + u * u * p2.y;
+  const tx = v * (p1.x - p0.x) + u * (p2.x - p1.x), ty = v * (p1.y - p0.y) + u * (p2.y - p1.y);
+  return { x, y, rot: Math.atan2(ty, tx) };
+}
+function brahmaCam(d, now) { // the camera: in on the caster, then a slow, steady pull back to the whole arena as the arrow flies (no tracking: no sway)
+  const t = now - d.t0, c = scr(d), u = easeInOut(clamp01((t - B.rise) / (B.born - B.rise)));
+  return { x: c.x + (CX - c.x) * u, y: c.y - 34 + (H / 2 - c.y + 34) * u, z: 1.25 - 0.25 * u };
+}
+function brahmaRumble(t) { // a low tremor while the sun swells, still for the breath, one hard hit on impact
+  if (t < B.born) return 0;
+  if (t < B.breath) return 0.25 + 0.75 * clamp01((t - B.born) / (B.breath - B.born));
+  if (t < B.impact) return 0;
+  return 4 * (1 - clamp01((t - B.impact) / 0.9));
+}
+function sunSize(t) {
+  if (t < B.born) return 0;
+  const g = easeInOut(clamp01((t - B.born) / (B.breath - B.born))), full = 24 + 200 * g;
+  if (t < B.breath) return full;
+  return full * (1 - 0.18 * easeOut(clamp01((t - B.breath) / (B.strike - B.breath)))); // it draws in before it falls
+}
+function drawBrahma(m, d, t, now, layer) {
+  const c = scr(d), sunX = CX, sunY = B.sunY;
+  if (layer === 'heaven') { // the second sun rises behind the island and fills the sky
+    const sz = sunSize(t), sunA = t < B.strike ? 1 : 0; // (from the strike it is drawn falling, in front)
+    if (sz > 0 && sunA > 0) { // the second sun, behind the island: the island's shape is cut out of it
+      const pulse = 1 + 0.035 * Math.sin(now * 11), rx = ARENA.r * SC * 1.03, ry = ARENA.r * SC * SQ * 1.03 + 3;
+      G.save(); G.beginPath(); G.rect(-W, -H, W * 3, H * 3); G.ellipse(CX, CY + 2, rx, ry, 0, 0, Math.PI * 2); G.clip('evenodd');
+      G.save(); G.globalCompositeOperation = 'lighter';
+      ell(sunX, sunY, sz * 2.2, sz * 1.5, `rgba(255,170,90,${0.25 * sunA})`); ell(sunX, sunY, sz * 1.3, sz * 1.0, `rgba(255,235,190,${0.3 * sunA})`); // the sky behind burns
+      G.restore();
+      G.restore();
+    }
+    return;
+  }
+  if (layer === 'ground') {
+    const dark = clamp01(t / 1.0) * (1 - clamp01((t - B.born) / 1.2)); // night falls
+    if (dark > 0) { G.fillStyle = `rgba(2,2,10,${0.85 * dark})`; G.fillRect(-W, -H, W * 3, H * 3); }
+    const warm = clamp01((t - B.born) / (B.breath - B.born)) * (1 - clamp01((t - B.impact) / 0.3)); // the island burns under the second sun
+    if (warm > 0) {
+      G.fillStyle = `rgba(150,60,10,${0.3 * warm})`; G.fillRect(-W, -H, W * 3, H * 3);
+      G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = `rgba(255,170,80,${0.14 * warm})`; G.fillRect(-W, -H, W * 3, H * 3); G.restore();
+    }
+    const aura = clamp01(t / 1.2) * (1 - clamp01((t - B.born) / 0.6)); // light gathers under the caster
+    if (aura > 0) {
+      G.save(); G.globalCompositeOperation = 'lighter'; ell(c.x, c.y, 34 + 4 * Math.sin(now * 7), 12, `rgba(255,215,130,${0.5 * aura})`); G.restore();
+      if (fxArt('whiteRing')) { const w = 76 * (1 + 0.06 * Math.sin(now * 8)); fxSprite(G, 'whiteRing', c.x, c.y, w, { h: w * 0.42, alpha: 0.8 * aura }); }
+    }
+    if (t > B.born && t < B.impact && fxArt('whiteRing')) { // the mark where it will fall, growing
+      const g = clamp01((t - B.born) / (B.breath - B.born)), w = 80 + 300 * g;
+      fxSprite(G, 'whiteRing', CX, CY, w, { h: w * 0.42, alpha: 0.55 * g * (0.75 + 0.25 * Math.sin(now * 10)) });
+    }
+    if (t > B.impact && t < B.impact + 1.2 && fxArt('whiteRing')) { const u = clamp01((t - B.impact) / 1.0), w = 60 + 900 * easeOut(u); fxSprite(G, 'whiteRing', CX, CY, w, { h: w * 0.42, alpha: 1 - u }); }
+    if (t > B.ash) { G.fillStyle = `rgba(62,58,54,${0.62 * clamp01((t - B.ash) / 0.8)})`; G.fillRect(-W, -H, W * 3, H * 3); } // after: grey under ash
+  }
+  if (layer === 'sky') {
+    if (t > 0.15 && !d.gather) { // motes of light drawn in to the caster
+      d.gather = true;
+      burst(30, () => {
+        const a = rnd(0, Math.PI * 2), r = rnd(60, 120), L = rnd(0.7, 1.1), y0 = c.y - 40;
+        return { kind: 'spark', t0: now + rnd(0, 1.2), life: L, x: c.x + Math.cos(a) * r, y: y0 + Math.sin(a) * r * 0.6, vx: -Math.cos(a) * r / L, vy: -Math.sin(a) * r * 0.6 / L, g: 0, size: rnd(1.4, 2.6), color: ['#fff1c0', '#ffd27a'][Math.floor(rnd(0, 2))], add: true };
+      });
+    }
+    if (t > B.rise && t < B.born + 0.9) { // its trail follows the arc it flew: brightest at the arrow, fading behind it
+      const end = Math.min(t, B.born), fade = 1 - clamp01((t - B.born) / 0.9), n = 24, start = Math.max(B.rise, end - 0.9);
+      G.save(); G.globalCompositeOperation = 'lighter'; G.lineCap = 'round';
+      let q = brahmaArrow(d, start);
+      for (let k = 1; k <= n; k++) {
+        const p = brahmaArrow(d, start + (end - start) * (k / n)), f = (k / n) * fade;
+        G.strokeStyle = `rgba(255,200,110,${0.35 * f})`; G.lineWidth = 2 + 6 * f; G.beginPath(); G.moveTo(q.x, q.y); G.lineTo(p.x, p.y); G.stroke();
+        G.strokeStyle = `rgba(255,250,230,${0.8 * f})`; G.lineWidth = 0.6 + 1.2 * f; G.stroke();
+        q = p;
+      }
+      G.restore();
+    }
+    if (t > 0.2 && t < B.born + 0.05) { // the arrow: forms above the caster, then climbs
+      const a = brahmaArrow(d, t), on = clamp01((t - 0.2) / 0.8), glow = 18 + 5 * Math.sin(now * 9) + 10 * clamp01((t - B.rise) / 1.6);
+      const hg = G.createRadialGradient(a.x, a.y, 0, a.x, a.y, glow); hg.addColorStop(0, `rgba(255,240,190,${0.6 * on})`); hg.addColorStop(1, 'rgba(255,190,90,0)');
+      G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = hg; G.fillRect(a.x - glow, a.y - glow, glow * 2, glow * 2); G.restore();
+      fxSprite(G, 'brahmArrow', a.x, a.y, 66, { rot: a.rot, alpha: on });
+    }
+    const glow = clamp01((t - B.born) / 1.5) * (1 - clamp01((t - B.impact) / 0.3)); // the second sun's light falls on the island and the fighters
+    if (glow > 0) { const r = G.createRadialGradient(CX, B.sunY, 20, CX, B.sunY, W * 0.8); r.addColorStop(0, `rgba(255,230,170,${0.45 * glow})`); r.addColorStop(1, 'rgba(255,150,60,0)'); G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = r; G.fillRect(-W, -H, W * 3, H * 3); G.restore(); }
+    if (t > B.born && t < B.born + 0.6) { // its birth: a burst of light where the arrow was
+      const u = (t - B.born) / 0.6, r = 20 + 220 * easeOut(u), gr = G.createRadialGradient(sunX, sunY, 0, sunX, sunY, r);
+      gr.addColorStop(0, `rgba(255,255,240,${0.9 * (1 - u)})`); gr.addColorStop(0.35, `rgba(255,220,150,${0.5 * (1 - u)})`); gr.addColorStop(1, 'rgba(255,180,90,0)');
+      G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = gr; G.fillRect(sunX - r, sunY - r, r * 2, r * 2); G.restore();
+    }
+    if (t > B.born + 0.5 && !d.embers) { // embers lift off the burning island
+      d.embers = true;
+      burst(46, () => { const a = rnd(0, Math.PI * 2), r = Math.sqrt(rnd(0, 1)) * ARENA.r * SC; return { kind: 'spark', t0: now + rnd(0, 2.2), life: rnd(1.4, 2.4), x: CX + Math.cos(a) * r, y: CY + Math.sin(a) * r * SQ, vx: rnd(-8, 8), vy: rnd(-45, -20), g: -6, size: rnd(1.2, 2.6), color: ['#ffb347', '#ff7a2a', '#ffe0a0'][Math.floor(rnd(0, 3))], add: true }; });
+    }
+    if (t > B.born && t < B.strike) { const sz = sunSize(t); fxSprite(G, 'sun2', sunX, sunY, sz * (1 + 0.035 * Math.sin(now * 11)), { spin: now * 0.22 }); } // the second sun, high over the island
+    if (t >= B.strike && t < B.impact + 0.05) { // it falls: the sun drops out of the sky onto the middle of the island
+      const u = clamp01((t - B.strike) / (B.impact - B.strike)), e = u * u, y = sunY + (CY - 10 - sunY) * e, sz = sunSize(B.strike) * (1 - 0.55 * e);
+      G.save(); G.globalCompositeOperation = 'lighter';
+      const tr = G.createLinearGradient(0, sunY - 40, 0, y); tr.addColorStop(0, 'rgba(255,220,150,0)'); tr.addColorStop(1, `rgba(255,240,200,${0.6 * u})`);
+      G.fillStyle = tr; G.fillRect(CX - sz * 0.25, sunY - 40, sz * 0.5, y - sunY + 40); // its streak
+      const hg = G.createRadialGradient(CX, y, 0, CX, y, sz * 0.8); hg.addColorStop(0, 'rgba(255,220,150,.45)'); hg.addColorStop(1, 'rgba(255,180,90,0)'); G.fillStyle = hg; G.fillRect(CX - sz, y - sz, sz * 2, sz * 2); G.restore();
+      fxSprite(G, 'sun2', CX, y, sz, { spin: now * 0.6 });
+    }
+    if (t > B.ash && fxArt('ash') && !d.ash) { d.ash = true; burst(50, () => ({ kind: 'sprite', name: 'ash', t0: now + rnd(0, 2.2), life: rnd(2.4, 3.4), x: rnd(0, W), y: rnd(-30, 50), vx: rnd(-12, 12), vy: rnd(14, 28), g: 0, vr: rnd(-1, 1), size: rnd(28, 54), alpha: 0.85 })); }
+  }
+  if (layer === 'screen') {
+    if (t > B.born && t < B.born + 0.22) { G.fillStyle = `rgba(255,250,235,${0.55 * (1 - (t - B.born) / 0.22)})`; G.fillRect(-W, -H, W * 3, H * 3); } // the birth flash
+    const hush = clamp01((t - B.breath) / 0.3) * (1 - clamp01((t - B.strike) / 0.05)); // the breath: the edges go dark
+    if (hush > 0) {
+      const v = G.createRadialGradient(CX, H / 2, H * 0.3, CX, H / 2, W * 0.7); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(0,0,0,${0.75 * hush})`);
+      G.fillStyle = v; G.fillRect(-W, -H, W * 3, H * 3);
+    }
+    const white = clamp01((t - B.impact) / 0.1) * (1 - clamp01((t - B.whiteHold) / 1.0)); // white-out, the fighters black shapes against it
+    if (white > 0) {
+      G.fillStyle = `rgba(255,252,240,${0.97 * white})`; G.fillRect(-W, -H, W * 3, H * 3);
+      if ('filter' in G) for (const p of m.players) { G.save(); G.filter = 'brightness(0)'; G.globalAlpha = white; drawFighter(m, p, now); G.restore(); }
+    }
+  }
+}
+
 // Hits on a block or a meditation barrier, from the sim's events (main.js passes them in): show every hit.
 export function fxEvent(e, m, now) {
   if (!useArt || !m) return;
+  divineEvent(e, m, now);
   if (e.type === 'blocked') {
     const w = m.walls.find((q) => q.x === e.x && q.y === e.y), L = w && WALLFX.look.get(w);
     if (!L) return;
@@ -562,16 +945,30 @@ export function fxEvent(e, m, now) {
 
 // Walls the sim has just removed (broken or timed out) linger a moment so they can shatter / snap.
 let FX_MATCH = null;
+// Draw the big effect images once, invisibly, as a match starts: the browser uploads them to the GPU then,
+// instead of stalling the first time Shiva's Tandava (or a divine weapon) needs them.
+let warmed = false;
+function warmArt() {
+  if (warmed || !useArt) return;
+  warmed = true;
+  G.save(); G.globalAlpha = 0.002;
+  const big = [ART.lavaFloor, ART.lavaCliff, ...Object.values(ART.gods || {}).flatMap((g) => [g?.img, g?.fg]), ...Object.values(ART.scenes || {}), ...Object.values(ART.sceneLayers || {}).flatMap((l) => [l?.bg, l?.fg])];
+  for (const img of big) if (img && (img.width || img.naturalWidth)) G.drawImage(img, 0, 0, 1, 1); // gods, scenes: the first boon used no longer stalls
+  const seen = new Set();
+  for (const f of Object.values(ART.fx)) if (f?.canvas && !seen.has(f.canvas)) { seen.add(f.canvas); G.drawImage(f.canvas, 0, 0, 1, 1); }
+  G.restore();
+}
 const WALLFX = { prev: [], ghosts: [], peak: new WeakMap(), look: new WeakMap(), hit: new WeakMap(), life: 0.5 };
 let m0 = null; // the match being drawn (wallGhosts needs to know who is attacking)
 function wallGhosts(walls, now) {
   for (const w of WALLFX.prev) {
     if (walls.includes(w)) continue;
     const L = WALLFX.look.get(w);
-    if (w.dead && L && w.look !== 'hill' && fxArt('arrow1')) { // every arrow still standing snaps; the stumps linger
+    const broke = w.dead && w.cap <= 1e-9; // dead from hits, not from its time running out (that also sets dead)
+    if (broke && L && w.look !== 'hill' && fxArt('arrow1')) { // every arrow still standing snaps; the stumps linger
       for (const a of volleyOf.get(w)?.arrows || []) if (!a.snapped && now >= a.at) snapArrow(w, a, now, Math.sign(m0.players[1 - w.owner].x - w.x) || 1);
       WALLFX.ghosts.push({ ghost: true, w, x: w.x, y: w.y, t0: now });
-    } else if (w.dead && L) shatterWall(w, L, now); // broken: it bursts / snaps apart
+    } else if (broke && L) shatterWall(w, L, now); // broken: it bursts / snaps apart
     else WALLFX.ghosts.push({ ghost: true, w, x: w.x, y: w.y, t0: now }); // its time ran out: it just fades
   }
   WALLFX.prev = [...walls];
@@ -591,7 +988,7 @@ function drawWallArt(w, now, gone = null) {
   const flash = 1 - clamp01((now - (WALLFX.hit.get(w) ?? -9)) / 0.25), jolt = flash * Math.sin(now * 80) * 1.2; // a hit: it flares and jolts
   const dy = liftAt(w.x, w.y);
   if (w.look === 'hill' && fxArt('yl1')) { // the yantra assembles layer by layer (art/fx_yantra_layers.png)
-    const s = Math.max(38, len * 1.05) / YANTRA.h;
+    const s = Math.min(54, Math.max(32, len * 0.7)) / YANTRA.h; // capped: a big one cluttered the screen
     drawYantraLayers(w, x + jolt, y, s, Math.max(0.8, side), now, fade, flash);
     if (!gone) WALLFX.look.set(w, { name: names[3], x, y: y + dy, s, ay: YANTRA.ay, side, h: 440 * s, layers: true });
   } else if (w.look === 'hill') { // the yantra: upright teal light, breathing
@@ -729,7 +1126,7 @@ function barrierState(p, now) {
   if (e && now >= e.t0 && now - e.t0 < MED.endTime) return { bs: e.bs, age: 99, end: (now - e.t0) / MED.endTime };
   return null;
 }
-const SHRINE = { upp: 0.22, feet: 0.79, ground: 0.94 }, FIRE = { upp: 0.19, mid: 0.664 };
+const SHRINE = { upp: 0.165, feet: 0.79, ground: 0.94 }, FIRE = { upp: 0.19, mid: 0.664 };
 // Meditation just ended: a broken shrine collapses into falling stone; a broken fire ring blows out into smoke.
 function barrierEnds(p, e, now) {
   const at = MED.pos[p.id];
@@ -893,6 +1290,11 @@ const VICTORY = { siddhan: 'cast', veeran: 'cast' };
 function drawEnd(m, p, x, y, now) {
   const P = POSES[p.ch.id], a = anim[p.id];
   if (!P || !ART.sheets[p.ch.id]?.act) return false;
+  const bt = brahmaT(now);
+  if (bt && bt.t < B.impact) { // a Brahmastra is coming: both still stand, the caster with the hand raised
+    a.doneAt = null;
+    return p.id === bt.pid ? drawSprite(G, p.ch.id, 'act', P[VICTORY[p.ch.id]], x, y, p.face.x < 0) : drawSprite(G, p.ch.id, 'walk', 0, x, y, p.face.x < 0); // the other just stands
+  }
   if (a.doneAt == null) a.doneAt = now;
   const t = now - a.doneAt, flip = p.face.x < 0, won = m.result?.winner === p.id;
   if (won) {
@@ -914,6 +1316,7 @@ function drawEnd(m, p, x, y, now) {
 }
 
 function drawProjectile(pr0, now) {
+  if (useArt && drawDivineShot(pr0, now)) return;
   const pr = { ...pr0, r: Z(pr0.r) };
   const x = sx(pr.x), y = sy(pr.y) - 6, a = Math.atan2(pr.vy * SQ, pr.vx), ca = Math.cos(a), sa = Math.sin(a);
   if (pr.shape === 'orb') { // the mage's mantra bolt: a glowing teal orb with a short tail
@@ -1006,17 +1409,19 @@ function poseOf(m, p) {
 
 // fxNow: the clock the effects were stamped with (the fight clock, which stops during pauses and scenes)
 export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = [null, null]) {
-  if (m !== FX_MATCH) { FX_MATCH = m; WALLFX.prev = []; WALLFX.ghosts = []; MED.last = [null, null]; MED.end = [null, null]; MED.hit = [null, null]; PARTS.length = 0; } // a new match starts clean
+  if (m !== FX_MATCH) { warmArt(); FX_MATCH = m; WALLFX.prev = []; WALLFX.ghosts = []; MED.last = [null, null]; MED.end = [null, null]; MED.hit = [null, null]; PARTS.length = 0; DIV.length = 0; DR.freeze = 0; DR.slow = null; DR.cam = null; DR.dim = null; DR.shake = []; } // a new match starts clean
   trackMotion(m);
   chasm = m.arenaChange?.kind === 'chasm' ? m.arenaChange : null;
   let sh = 0; // screen shake from power moves landing
   for (const f of fx) if (f.kind === 'shake') sh += f.amp * Math.max(0, 1 - (fxNow - f.t0) / f.life);
+  sh += dramaShake(now);
   G.save();
   if (sh) G.translate(Math.sin(now * 83) * sh, Math.cos(now * 67) * sh * 0.7);
-  const cam = sceneCamera(m); // a power-up zooms in on the caster
+  const cam = sceneCamera(m) || divineCamera(now); // a power-up zooms in on the caster; a divine weapon on its moment
   if (cam) { G.translate(CX, H / 2); G.scale(cam.z, cam.z); G.translate(-cam.fx, -cam.fy); }
   drawBackdrop(now);
   if (m.scene) sceneSky(m);
+  drawHeaven(m, now);
   for (const f of fx) if (f.kind === 'god') drawGod(f, fxNow); // a god appearing in the sky (small and medium boons)
   drawArena();
   drawChasm(m, now);
@@ -1033,6 +1438,7 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   }
   for (const u of m.units) { ell(sx(u.x), sy(u.y) - 4, Z(u.r), Z(u.r), '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
   for (const f of fx) if (f.ground) drawFx(f, fxNow);
+  drawDivine(m, now, 'ground');
   if (m.scene?.name === 'Thousand-Arm Form') {
     const p = m.players[m.scene.pid];
     drawSignatureHalo(sx(p.x), sy(p.y) - 18, m.scene.t);
@@ -1043,9 +1449,11 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   drawParts(now, true);
   for (const o of order) if (o.ch) drawFighter(m, o, now); else lifted(o, () => drawWall(o, now));
   drawParts(now, false);
+  drawDivine(m, now, 'sky');
   for (const pr of m.projectiles) lifted(pr, () => drawProjectile(pr, now));
   for (const f of fx) if (!f.ground) drawFx(f, fxNow);
   if (m.scene) sceneAura(m, now);
+  drawDivine(m, now, 'screen');
   G.restore();
   if (!m.scene) drawHud(m, tags, hints);
   else sceneTitle(m);
@@ -1281,8 +1689,9 @@ function drawHud(m, tags, hints = [null, null]) {
     G.font = `8px ${FONT}`; const nw = G.measureText(p.ch.name).width;
     txt(tags[p.id], X(46 + nw + 8), 6, tags[p.id] === 'CPU' ? '#b8b0c8' : '#fff', al);
     // health: red trail for what was just lost, then the colour bar
-    hpShown[p.id] = p.hp > hpShown[p.id] ? p.hp : Math.max(p.hp, hpShown[p.id] - (m.phase === 'done' ? 60 : 30) * dt);
-    const bx = X(46, 114), k = Math.max(0, p.hp / 100), kt = hpShown[p.id] / 100;
+    const bh = brahmaT(DR_NOW), hp = bh && bh.t < B.impact ? bh.hp0[p.id] : p.hp; // a Brahmastra: nobody falls until its sun lands
+    hpShown[p.id] = hp > hpShown[p.id] ? hp : Math.max(hp, hpShown[p.id] - (m.phase === 'done' ? 60 : 30) * dt);
+    const bx = X(46, 114), k = Math.max(0, hp / 100), kt = hpShown[p.id] / 100;
     box(bx - 1, 15, 116, 10, 3, '#0d0812', '#5a4a2a');
     const fill = (from, to, c1, c2) => {
       if (to <= from) return;
@@ -1290,10 +1699,10 @@ function drawHud(m, tags, hints = [null, null]) {
       gg.addColorStop(0, c1); gg.addColorStop(1, c2); box(x0, 16, 114 * (to - from), 8, 2, gg);
     };
     fill(k, kt, '#ff8a7a', '#c0302a');
-    const col = p.hp > 50 ? ['#8af07a', '#2e9c3a'] : p.hp > 25 ? ['#ffe07a', '#d09a1a'] : ['#ff7a5a', '#b8241a'];
+    const col = hp > 50 ? ['#8af07a', '#2e9c3a'] : hp > 25 ? ['#ffe07a', '#d09a1a'] : ['#ff7a5a', '#b8241a'];
     fill(0, k, ...col);
     R(right ? bx + 114 * (1 - k) : bx, 16, 114 * k, 1.5, 'rgba(255,255,255,.35)');
-    txt(`${Math.max(0, Math.ceil(p.hp))}%`, X(164), 16, '#fff', al);
+    txt(`${Math.max(0, Math.ceil(hp))}%`, X(164), 16, '#fff', al);
     // power: gold, marked every 10%
     box(bx - 1, 28, 116, 5, 2, '#0d0812', '#5a4a2a');
     const pg = G.createLinearGradient(0, 29, 0, 32); pg.addColorStop(0, '#fff1a0'); pg.addColorStop(1, '#e0a21a');
@@ -1782,6 +2191,7 @@ export function drawTutorial(v, now) {
 // t = seconds since the match ended: first the call (K.O. / TIME!) over the knockout, then the result fades in.
 export function drawResult(m, sel, t = 9) {
   const r0 = m.result;
+  if (r0.reason === 'brahmastra' && ART.fx.sun2) { t -= BRAHMA_AFTER; if (t < 0) return; } // let the second sun play out first
   if (t < 1.6) {
     const e = easeOut(clamp01(t / 0.25)), word = { ko: 'K.O.', double: 'DOUBLE K.O.', time: 'TIME!', brahmastra: 'BRAHMASTRA' }[r0.reason] || 'K.O.';
     G.save(); G.translate(CX, 130); G.scale(1 + 1.5 * (1 - e), 1 + 1.5 * (1 - e)); G.globalAlpha = Math.min(1, e * 1.2) * (t > 1.3 ? (1.6 - t) / 0.3 : 1);

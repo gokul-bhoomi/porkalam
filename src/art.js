@@ -42,7 +42,7 @@ function keyOut(img) {
   const g = c.getContext('2d', { willReadFrequently: true });
   g.drawImage(img, 0, 0);
   const d = g.getImageData(0, 0, c.width, c.height), px = d.data;
-  const k = [px[0], px[1], px[2]]; // the key colour is whatever the top-left corner is
+  const c0 = [px[0], px[1], px[2]], k = c0[0] > 200 && c0[2] > 200 && c0[1] < 90 ? c0 : [255, 0, 255]; // the key colour is the top-left corner, if that is magenta (art can fill the corner)
   for (let i = 0; i < px.length; i += 4) {
     const dist = Math.abs(px[i] - k[0]) + Math.abs(px[i + 1] - k[1]) + Math.abs(px[i + 2] - k[2]);
     const magentaish = px[i] > 200 && px[i + 2] > 200 && px[i + 1] < 90; // anti-aliased edge pixels (not the pink shawl)
@@ -150,7 +150,10 @@ export async function loadArt(base = '') {
   if (crack) Object.assign(ART.fx, cutFx(crack, ['tandavaCrack']));
   // Shiva's Tandava lava (ChatGPT, 2026-11-15): a tileable molten floor, and the torn cliff face on magenta
   const [lavaFloor, lavaCliff] = await Promise.all([loadImg(base + 'art/lava_floor.png'), loadImg(base + 'art/lava_cliff.png')]);
-  if (lavaFloor) ART.lavaFloor = lavaFloor;
+  if (lavaFloor) { // decoded now into a canvas, not lazily on the first Tandava (that stalled the game ~1 s)
+    const c = document.createElement('canvas'); c.width = lavaFloor.width; c.height = lavaFloor.height;
+    c.getContext('2d').drawImage(lavaFloor, 0, 0); ART.lavaFloor = c;
+  }
   if (lavaCliff) ART.lavaCliff = keyOut(lavaCliff).c;
   const ele = await loadImg(base + 'art/fx_elephant.png'); // single sprite: the Gaja Arrow's war elephant
   if (ele) Object.assign(ART.fx, cutFx(ele, ['elephant']));
@@ -176,6 +179,15 @@ export async function loadArt(base = '') {
     cellSheet('art/fx_shrine_big.png', ['shrinePlatform', 'shrinePlatformHurt', 'shrineRoof', 'shrineRoofHurt'], null, 1),
     cellSheet('art/fx_shrine_pillar.png', ['pillar', 'pillarCracked', 'pillarCracked2', 'pillarStump', 'pillarTop', 'kalasam', 'rubble1', 'rubble2'], null, 1),
     cellSheet('art/fx_yantra_layers.png', ['yl1', 'yl2', 'yl3', 'yl4', 'yl5', 'yl6'], null, 1),
+    // the divine weapons in the arena (2026-11-15)
+    cellSheet('art/fx_pashupata.png', ['trident1', 'trident2', 'thirdEye', 'lightning'], null, 1), // no despill: lightning is meant to be blue-white
+    cellSheet('art/fx_vel.png', ['vel', 'velTrail', 'velStuck', 'velBurst'], despill, 1),
+    cellSheet('art/fx_vishwa.png', ['cosmos', 'cosmicHand', 'lightBeam', 'lightImpact'], null, 1), // full resolution: the cosmos fills the sky
+    cellSheet('art/fx_brahma.png', ['brahmArrow', 'sun2', 'whiteRing', 'ash'], despillStrong, 1),
+    cellSheet('art/fx_storm.png', ['storm'], null, 1), // the sky for the divine weapons: whole images, full resolution
+    cellSheet('art/fx_sky_eye.png', ['skyEye'], null, 1),
+    cellSheet('art/fx_cosmos_sky.png', ['cosmosSky'], null, 1), // Vishwaroopam's sky, one wide sharp image
+    cellSheet('art/fx_cosmic_form.png', ['cosmicForm'], fadeBottom, 1),
   ]); // the richer crystal yantra (2026-11-15) replaces the first one
   ART.ready = true;
   return ART;
@@ -224,6 +236,25 @@ function fullCells(c, names, k = 0.5) {
   return out;
 }
 
+// Glowing art blends into the magenta behind it, leaving a pink fringe the key misses: fade out pixels that are
+// warm but much bluer than green (pink), and pull their blue back. Not for art that is meant to be violet.
+function despill(px, W, strong = false) {
+  const [min, span] = strong ? [8, 60] : [25, 110];
+  for (let i = 0; i < px.length; i += 4) {
+    if (!px[i + 3]) continue;
+    const r = px[i], g = px[i + 1], b = px[i + 2], over = b - g;
+    if (r > 150 && over > min) { px[i + 3] = Math.round(px[i + 3] * Math.max(0, 1 - over / span)); px[i + 2] = g; }
+    else if (strong && r > 110 && b > g) px[i + 2] = g; // fire is never pink: any blue above green is magenta bleed
+  }
+}
+const despillStrong = (px, W) => despill(px, W, true); // fire on magenta: its red-pink edge goes too
+
+// Fade the bottom of a picture to nothing (art cut off at the bottom edge, like the cosmic form at its chest).
+function fadeBottom(px, W) {
+  const H = px.length / 4 / W, from = Math.floor(H * 0.62);
+  for (let y = from; y < H; y++) { const a = 1 - (y - from) / (H - from); for (let x = 0; x < W; x++) px[(y * W + x) * 4 + 3] *= a * a; }
+}
+
 // The fire ring's sheet has painted sand inside the ring: clear it (flood fill from the middle of each cell) so the arena shows through.
 function clearRingSand(px, W) {
   const cells = W / 512, sand = (i) => px[i] > 200 && px[i + 1] > 115 && px[i + 1] < 215 && px[i + 2] > 25 && px[i + 2] < 135;
@@ -252,6 +283,7 @@ export function drawFx(g, name, x, y, w, o = {}) {
   g.translate(x, y);
   if (o.m) g.transform(o.m[0], o.m[1], o.m[2], o.m[3], 0, 0);
   if (o.rot) g.rotate(o.rot);
+  if (o.alpha != null) g.globalAlpha *= o.alpha;
   if (o.spin != null) { // a flat disc seen from above: spin it in its own plane, then squash it back into perspective
     const q = h / w;
     g.scale(1, q); g.rotate(o.spin);
@@ -261,9 +293,8 @@ export function drawFx(g, name, x, y, w, o = {}) {
     return true;
   }
   if (o.flip) g.scale(-1, 1);
-  if (o.alpha != null) g.globalAlpha *= o.alpha;
   g.imageSmoothingEnabled = true;
-  g.drawImage(f.canvas, f.x, f.y, f.w, f.h, -w / 2, o.anchor === 'bottom' ? -h : -h / 2, w, h);
+  g.drawImage(f.canvas, f.x, f.y, f.w, f.h, -w / 2, o.anchor === 'bottom' ? -h : o.anchor === 'top' ? 0 : -h / 2, w, h);
   g.restore();
   return true;
 }

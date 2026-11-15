@@ -579,12 +579,55 @@ test('class: Mage basic moves are mostly mid/long range, weak up close', () => {
 
 test('class: Brahmastra is a divine-weapon boon either class can earn; both fighters reach 0 = draw (owner change 2026-11-08)', () => {
   const b = findBoon('brahmastra');
-  assert.ok(b.divine && b.selfKO && b.cast >= 4.5 && b.cast <= 5.5);
+  // its cast is only a little slower than the other divine weapons' (owner, 2026-11-15: was about 5 s)
+  const others = Object.values(GODS).flatMap((g) => g.tiers[1] || []).filter((q) => q.divine && q.id !== 'brahmastra').map((q) => q.cast);
+  assert.ok(b.divine && b.selfKO && b.cast > Math.max(...others) && b.cast <= Math.max(...others) + 1);
   for (const c of [mage, warrior]) assert.equal(c.moves.cls.kind, 'meditate', `${c.name}'s class move is meditation`);
   const m = match({ k: { x: -90 }, r: { x: 90 } });
   m.players[K].cast = { move: b, slot: 'boon', t: 0, dir: null };
   run(m, [{}, {}], b.cast + TUNE.scene + 0.2);
+  assert.equal(m.result, null, 'it hangs in the sky first (owner, 2026-11-15)');
+  run(m, [{}, {}], TUNE.brahmastraFall);
   assert.deepEqual(m.result, { winner: null, reason: 'brahmastra' });
+});
+
+test('class: two Brahmastras: if the other had already started casting one, and it goes off while the first is in the sky, Shiva takes both back; nobody is hurt and the fight goes on (owner, 2026-11-15)', () => {
+  const b = findBoon('brahmastra');
+  const m = match({ k: { x: -90 }, r: { x: 90 } });
+  m.players[K].cast = { move: b, slot: 'boon', t: 0, dir: null };
+  run(m, [{}, {}], b.cast * 0.5);
+  m.players[R].cast = { move: b, slot: 'boon', t: 0, dir: null }; // the answer, before the first one goes off
+  run(m, [{}, {}], b.cast + TUNE.scene * 2 + 0.5);
+  assert.equal(m.result, null);
+  assert.equal(m.phase, 'fight');
+  for (const p of m.players) assert.equal(p.hp, 100);
+  assert.equal(events(m, 'shivaTakes').length, 1);
+});
+
+test('class: Brahmastra: whoever starts first has the advantage; once it is in the sky it is too late to start one to answer it (owner, 2026-11-15)', () => {
+  const b = findBoon('brahmastra');
+  const m = match({ k: { x: -90 }, r: { x: 90 } });
+  m.players[K].cast = { move: b, slot: 'boon', t: 0, dir: null };
+  run(m, [{}, {}], b.cast + TUNE.scene + 0.2);
+  assert.ok(m.brahma, 'the first is in the sky');
+  m.players[R].boon = { move: b, name: b.name, god: 'Brahma', godId: 'brahma', tier: 'divine' };
+  useBoon(m, R); // two specials while it falls: too late
+  run(m, [{}, {}], TUNE.brahmastraFall);
+  assert.deepEqual(m.result, { winner: null, reason: 'brahmastra' });
+  assert.equal(events(m, 'shivaTakes').length, 0);
+});
+
+test('class: Brahmastra: an answer pressed as the first one finishes casting is too late, even if the button combo resolves after its scene (owner, 2026-11-15)', () => {
+  const b = findBoon('brahmastra');
+  for (const late of [-0.04, 0, 0.05]) { // seconds after the first cast completes
+    const m = match({ k: { x: -90 }, r: { x: 90 } });
+    m.players[R].boon = { move: b, name: b.name, god: 'Brahma', godId: 'brahma', tier: 'divine' };
+    m.players[K].cast = { move: b, slot: 'boon', t: 0, dir: null };
+    run(m, [{}, {}], b.cast + late);
+    useBoon(m, R);
+    run(m, [{}, {}], TUNE.scene * 2 + TUNE.brahmastraFall + 1);
+    assert.deepEqual(m.result, { winner: null, reason: 'brahmastra' }, `pressed ${late} s after: too late`);
+  }
 });
 
 test('class: a Warrior has one weapon, and his attacks come from it', () => {

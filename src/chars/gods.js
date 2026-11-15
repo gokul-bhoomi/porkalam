@@ -24,7 +24,8 @@ export const GODS = {
     name: 'Brahma',
     tiers: [
       [{ id: 'kamandalu', name: 'Kamandalu', desc: 'HEALS 18% HEALTH', kind: 'heal', range: 'anywhere', cost: { power: 0 }, req: {}, cast: 0.5, damage: 0, knockback: 0, heal: 18 }],
-      [{ id: 'brahmastra', name: 'Brahmastra', desc: 'BOTH FIGHTERS FALL: THE MATCH IS A DRAW', kind: 'brahmastra', divine: true, scene: true, selfKO: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 5, damage: Infinity, knockback: 0 }],
+      // cast 5 -> 1.5 s (owner, 2026-11-15): only a little slower than the other divine weapons
+      [{ id: 'brahmastra', name: 'Brahmastra', desc: 'BOTH FIGHTERS FALL: THE MATCH IS A DRAW', kind: 'brahmastra', divine: true, scene: true, selfKO: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1.5, damage: Infinity, knockback: 0 }],
     ],
   },
   // Krishna joined as a boon god on 2026-11-08 (owner).

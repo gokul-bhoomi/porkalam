@@ -112,6 +112,7 @@ export function stepMatch(m, inputs = [{}, {}], dt = STEP) {
     m.prev = inputs.map((i) => ({ ...i }));
     return m;
   }
+  if (m.brahma && !holdBrahma(m, inputs, dt)) { m.prev = inputs.map((i) => ({ ...i })); return m; } // a Brahmastra is in the sky
   m.t += dt;
   m.timeLeft = Math.max(0, m.timeLeft - dt);
   m.strikes = [];
@@ -246,6 +247,7 @@ function lavaBurn(m, dt) {
 // ---------- 2. new moves ----------
 function newMoves(m, inputs, dt) {
   for (const p of m.players) {
+    if (m.brahma) break; // a Brahmastra just went off: from here on everyone is held (holdBrahma)
     const inp = inputs[p.id], prev = m.prev[p.id] || {}, pr = (b) => !!inp[b] && !prev[b];
     if (p.cast?.done) { const c = p.cast; p.cast = null; release(m, p, c); } // after the scene
     const act = chord(p, inp, ACTS.find(pr), dt);
@@ -359,8 +361,28 @@ function progressCast(m, p, inp, dt) {
   if (mv.charge ? !inp[c.slot] && c.t >= mv.cast - 1e-9 : c.t >= mv.cast - 1e-9) finishCast(m, p);
 }
 
+// A Brahmastra in the sky (TUNE.brahmastraFall s): both fighters are held and nothing else moves. Whoever started
+// first has the advantage: only a Brahmastra the other fighter had already started casting can still go off and
+// answer it; it's too late to start one now (owner, 2026-11-15). Returns true when its sun lands.
+function holdBrahma(m, inputs, dt) {
+  const b = m.brahma, o = m.players[1 - b.pid];
+  b.t += dt;
+  if (o.cast && !o.cast.answer) o.cast = null; // started too late
+  else if (o.cast?.done) { const c = o.cast; o.cast = null; release(m, o, c); }
+  else if (o.cast) progressCast(m, o, inputs[o.id], dt);
+  if (m.brahma !== b || b.t < TUNE.brahmastraFall - 1e-9) return false; // Shiva took it, or it is still falling
+  m.brahma = null;
+  for (const t of m.players) m.hits.push({ target: t, dmg: Infinity, kb: 0, absolute: true, from: null, src: 'Brahmastra' });
+  m.brahmastra = true;
+  return true;
+}
+
 function finishCast(m, p) {
   const c = p.cast;
+  if (c.move.kind === 'brahmastra') { // the cutoff for an answer: only a Brahmastra the other was already casting (owner, 2026-11-15)
+    const o = opponent(m, p);
+    if (o.cast?.move.kind === 'brahmastra' && o.cast.t > 0) o.cast.answer = true;
+  }
   if (c.move.scene) { // power move: the scene plays first, then the move goes off
     c.done = true;
     m.scene = { pid: p.id, name: c.move.name, t: 0, dur: TUNE.scene };
@@ -418,9 +440,13 @@ function release(m, p, c) {
       ev(m, 'tandava', { pid: p.id, x: cx, y: cy });
       break;
     }
-    case 'brahmastra': // both fighters reach 0 health at once: a draw
-      for (const t of m.players) m.hits.push({ target: t, dmg: Infinity, kb: 0, absolute: true, from: null, src: 'Brahmastra' });
-      m.brahmastra = true;
+    case 'brahmastra': // it rises and hangs in the sky (holdBrahma); when its sun lands both fighters reach 0 health: a draw
+      if (m.brahma) { // the answer to one already in the sky: Shiva takes both back, nobody is hurt and the fight goes on (owner, 2026-11-15)
+        ev(m, 'shivaTakes', { pid: p.id, other: m.brahma.pid });
+        m.brahma = null;
+        break;
+      }
+      m.brahma = { pid: p.id, t: 0 };
       break;
     case 'blink': {
       const d = c.dir || unitDir(p.x - o.x, p.y - o.y), R = ARENA.r - TUNE.fighterR;

@@ -44,6 +44,9 @@ export const TUNE = {
   // its weight against the other divine weapons (weight 1 each) by the caster's health.
   // (weights against 3 other divine weapons: about 5% above 35% health, 20% at 15-35%, 50% at 15% or less)
   brahmastraOdds: [{ hp: 15, w: 3 }, { hp: 35, w: 0.75 }, { hp: 100, w: 0.16 }],
+  // A Brahmastra hangs in the sky this long before its sun lands; both fighters are held. If the other fighter's
+  // Brahmastra was already being cast when the first finished casting, it still goes off, and Shiva takes both back (owner, 2026-11-15).
+  brahmastraFall: 6.6,
   // Recovery (ground rule 16, owner 2026-11-13: no spamming): after an attack goes off, its user can't start
   // another move for this many seconds. Not a cooldown: no move is locked, the fighter is briefly busy.
   // They can still walk and block. Blink and meditation are not attacks and have none.

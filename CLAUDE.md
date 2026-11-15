@@ -7,3 +7,4 @@ Porkalam is a 1v1 fighting game inspired by Tamil and Indian mythology. Its orig
 - The tech mirrors `../euro-rush`: plain ES modules, canvas, deterministic `src/sim.js` with a fixed 1/60 s step, and `npm run verify`.
 - Discuss design changes with the owner before building them.
 - Balance (ground rule 16): after changing a move, a fighter or the computer player, run `npm run hunt` (exploit hunter: simple plans and a random search against the computer; `-- --quick` for a fast pass) and `npm run balance`. Neither is in `verify` yet because both still report known problems.
+- Test mode: open the game with `?test` to go straight into a match with a panel that hands out any boon (options such as `&boon=brahmastra&refill=1` are listed at the top of `src/testmode.js`).
