@@ -21,7 +21,7 @@ export function createMatch({ seed = 1, time = TUNE.match.default, chars = ['sid
   return {
     seed, rand: rng(seed), t: 0, duration, timeLeft: duration, phase: 'fight', result: null, scene: null,
     players: chars.map((id, i) => makeFighter(CHARS[id], i)),
-    projectiles: [], strikes: [], areas: [], strikesDue: [], units: [], walls: [], arenaChange: null,
+    projectiles: [], strikes: [], areas: [], strikesDue: [], units: [], walls: [], arenaChange: null, rough: [],
     hits: [], events: [], prev: [{}, {}], nid: 1,
   };
 }
@@ -154,7 +154,7 @@ function movement(m, inputs, dt) {
       let mx = +inp.mx || 0, my = +inp.my || 0;
       const l = Math.hypot(mx, my);
       if (l > 1) { mx /= l; my /= l; }
-      const sp = (airborne(p) && p.air.kind === 'fly' ? p.air.speed : p.ch.speed) * TUNE.pace.move * (1 - (p.effects.slow?.mag || 0));
+      const sp = (airborne(p) && p.air.kind === 'fly' ? p.air.speed : p.ch.speed) * TUNE.pace.move * (1 - (p.effects.slow?.mag || 0)) * (onRough(m, p) ? 1 - TUNE.rough.slow : 1);
       p.x += mx * sp * dt; p.y += my * sp * dt;
     }
     p.x += p.kvx * dt; p.y += p.kvy * dt;
@@ -166,7 +166,7 @@ function movement(m, inputs, dt) {
     const d = Math.hypot(p.x, p.y);
     if (d > R) {
       const n = { x: p.x / d, y: p.y / d }, vn = p.kvx * n.x + p.kvy * n.y;
-      if (vn > TUNE.wallKb) { m.hits.push({ target: p, dmg: TUNE.wallDmg, kb: 0, src: 'wall', from: null }); ev(m, 'wall', { pid: p.id, x: p.x, y: p.y }); }
+      if (vn > TUNE.wallKb) { m.hits.push({ target: p, dmg: TUNE.wallDmg, kb: 0, src: 'wall', from: null }); ev(m, 'wall', { pid: p.id, x: p.x, y: p.y }); addRough(m, 'wet', n.x * R, n.y * R, TUNE.rough.wet.r, TUNE.rough.wet.life); }
       if (vn > 0) { p.kvx -= 1.3 * vn * n.x; p.kvy -= 1.3 * vn * n.y; }
       p.x = n.x * R; p.y = n.y * R;
     }
@@ -210,6 +210,22 @@ function movement(m, inputs, dt) {
   m.units = m.units.filter((u) => u.t > 0);
   lavaBurn(m, dt);
   if (m.arenaChange && (m.arenaChange.t -= dt) <= 0) m.arenaChange = null;
+  if (m.rough.length && m.rough[0].until <= m.t) m.rough = m.rough.filter((z) => z.until > m.t);
+}
+
+// Rough ground (ground rule 13, owner 2026-11-15): craters and wet sand slow anyone walking through them.
+function addRough(m, kind, x, y, r, life) {
+  const z = { kind, x, y, r, t0: m.t, until: m.t + life };
+  m.rough.push(z); m.rough.sort((a, b) => a.until - b.until);
+  if (m.rough.length > TUNE.rough.max) m.rough.shift(); // the oldest goes first
+  ev(m, 'rough', { kind, x, y, r });
+}
+export const onRough = (m, p) => !airborne(p) && m.rough.some((z) => Math.hypot(p.x - z.x, p.y - z.y) < z.r + TUNE.rough.feet);
+function roughFromHit(m, t, n) {
+  const R = TUNE.rough, srcs = n.srcs;
+  if (!(n.dmg > 0) || srcs.includes('Brahmastra') || srcs.includes('Thousand-Arm Form') || srcs.every((s) => s === 'Lava' || s === 'wall')) return;
+  if (srcs.some((s) => R.impact.moves.includes(s))) addRough(m, 'impact', t.x, t.y, R.impact.r, R.impact.life);
+  else if (n.dmg >= R.crater.minDmg) addRough(m, 'crater', t.x, t.y, Math.min(R.crater.maxR, R.crater.r + (Number.isFinite(n.dmg) ? n.dmg : 99) * R.crater.perDmg), R.crater.life);
 }
 
 // Ground rule 17: touching down ends jumping or flying, with a short landing pause.
@@ -656,6 +672,7 @@ function applyHits(m) {
       t.hp = clamp(t.hp - n.dmg + n.heal, 0, t.ch.health); // healing never goes above 100%
       if (n.dmg > 0) t.stats.taken += Number.isFinite(n.dmg) ? n.dmg : before;
       if (n.dmg > 0 || n.heal > 0) ev(m, 'hp', { pid: t.id, dmg: n.dmg, heal: n.heal, x: t.x, y: t.y, srcs: n.srcs });
+      roughFromHit(m, t, n);
       if (n.hit) { // ground rule 7: a hit that gets through breaks casting and meditation; the cost stays spent
         if (t.cast && !t.cast.done) { ev(m, 'broken', { pid: t.id, name: t.cast.move.name }); say(t, `${t.cast.move.name.toUpperCase()} BROKEN`); t.cast = null; }
         if (t.med) stopMed(m, t, 'MEDITATION BROKEN');

@@ -503,6 +503,41 @@ test('rule 13: nobody leaves the round arena, it never grows, and being knocked 
   assert.ok(!/ARENA\.r\s*[+\-*]?=/.test(src('sim.js')), 'the arena never grows');
 });
 
+test('rule 13: rough ground (owner, 2026-11-15): a heavy hit leaves a crater that slows walking through it for a while; light hits leave none', () => {
+  const hit = (m, dmg, src = 'test') => { m.hits.push({ target: m.players[R], dmg, kb: 0, src, from: null }); run(m, [{}, {}], STEP); };
+  const walked = (m, s = 0.3) => { const x0 = m.players[R].x; run(m, [{}, { mx: 1 }], s); return m.players[R].x - x0; };
+  const m = match({ k: { x: -90, y: 0 }, r: { x: 0, y: 0 } });
+  hit(m, 3);
+  assert.equal(m.rough.length, 0, 'a light hit leaves no crater');
+  hit(m, TUNE.rough.crater.minDmg);
+  assert.equal(m.rough.length, 1); assert.equal(m.rough[0].kind, 'crater');
+  const z = m.rough[0];
+  const n = match({ k: { x: -90, y: 0 }, r: { x: z.x - 2, y: 0 } }); // the same walk on untouched ground
+  m.players[R].x = z.x - 2;
+  const slow = walked(m, 0.05), free = walked(n, 0.05);
+  assert.ok(Math.abs(slow / free - (1 - TUNE.rough.slow)) < 0.02, `about ${TUNE.rough.slow * 100}% slower in the crater`);
+  assert.ok(TUNE.rough.slow > 0 && TUNE.rough.slow <= 0.35, 'it slows a bit, never stops you');
+  run(m, [{}, {}], TUNE.rough.crater.life + 0.1);
+  assert.equal(m.rough.length, 0, 'the ground settles: every crater has an end time');
+  // knocked into the river's edge: a wet patch; a power move: a big crater
+  const e = match({ k: { x: ARENA.r - 50, y: 0 }, r: { x: ARENA.r - 30, y: 0 } });
+  tap(e, K, 'a2'); run(e, [{}, {}], 1);
+  assert.ok(e.rough.some((q) => q.kind === 'wet'));
+  const p = match({ k: { x: -90, y: 0 }, r: { x: 0, y: 0 } });
+  hit(p, 35, 'Gaja Arrow');
+  assert.equal(p.rough[0].kind, 'impact'); assert.ok(p.rough[0].r > TUNE.rough.crater.maxR);
+});
+
+test('rule 13/17: rough ground slows only walking: a jump or a flight over it is not slowed', () => {
+  const m = match({ k: { x: -90, y: 0 }, r: { x: 0, y: 0 } });
+  m.rough.push({ kind: 'crater', x: 0, y: 0, r: 30, t0: 0, until: 99 });
+  const n = match({ k: { x: -90, y: 0 }, r: { x: 0, y: 0 } });
+  for (const q of [m, n]) { tap(q, R, 's2', { mx: 1 }); }
+  const dm = m.players[R].x, dn = n.players[R].x;
+  run(m, [{}, { mx: 1 }], 0.1); run(n, [{}, { mx: 1 }], 0.1);
+  assert.ok(Math.abs((m.players[R].x - dm) - (n.players[R].x - dn)) < 1e-6, 'a jumping warrior crosses at full speed');
+});
+
 // ---------- 14. Screen and controls ----------
 test('rule 14: every fighter uses the same button layout, fully playable on a controller', () => {
   assert.deepEqual(ACTIONS, BUTTONS);

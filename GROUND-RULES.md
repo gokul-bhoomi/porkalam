@@ -60,6 +60,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 
 ## 10. Traps (removed)
 - There are no traps: no trap buttons, no hidden traps, floor scuffs or water patches. (Removed by the owner on 2026-11-08 to keep the game simple.)
+- Rough ground (rule 13, owner 2026-11-15) is not a trap: nobody places it, it comes from hits everyone sees land, and it looks the same to both players.
 
 ## 11. Meditation, devotion and boons (owner, 2026-11-08)
 - Every fighter, of any class, can meditate (down + special 1). They can't move while meditating.
@@ -78,6 +79,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 - One round arena that fits on one screen and is always fully visible to both players.
 - Nobody can fall off. The edge is an invisible wall, and getting knocked into it costs health.
 - The arena never grows. (Its size was set 10% larger by the owner on 2026-11-08, for more room to move and plan.)
+- Rough ground (owner, 2026-11-15): a heavy hit (8% or more) leaves a crater where it lands, a power move (Gaja Arrow, Pashupatastra, Shakti Vel, Vishwaroopam) a big crater, and being knocked into the edge a wet patch. Walking through one is 30% slower while it lasts (craters 60 s, big craters 90 s, wet sand 20 s), then the ground settles. Jumping, flying and knockback are not slowed. It looks the same to both players, and it isn't an arena change (rule 12): there can be many at once.
 
 ## 14. Screen and controls
 - One shared screen, and nothing is hidden by the screen. Both power bars are visible.

@@ -8,6 +8,7 @@ import { createTutorial, startTutorial, nextLesson, frozen, beforeStep, afterSte
 import * as sound from './audio.js';
 import { createCpu, cpuInput, LEVELS, LEVEL_IDS } from './ai.js';
 import { createTestMode } from './testmode.js';
+import { damageEvent } from './damage.js';
 
 const cv = document.getElementById('screen');
 const ctx = cv.getContext('2d');
@@ -57,18 +58,11 @@ const go = (screen) => { S.screen = screen; S.sel = 0; S.screenAt = S.now; sound
 
 // power moves that break the arena when they land
 const POWER_MOVES = new Set(['Thousand-Arm Form', 'Gaja Arrow', 'Pashupatastra', 'Shakti Vel', 'Brahmastra', 'Vishwaroopam']);
-// what a hit shows in the arena: a power move shatters the island; heavy hits crack the sand; damage numbers
+// what a hit shows in the arena: a power move shatters the island; damage numbers (the marks on the sand: src/damage.js)
 function hitFx(e, shake) {
   const now = S.clock, add = (f) => S.fx.push({ t0: now, life: 0.8, ...f });
-  const crack = (x, y, size) => { // a crack in the sand that fades slowly; only the newest 16 stay
-    add({ kind: 'crack', x, y, size, seed: Math.floor(Math.random() * 1e6), life: 30, ground: true });
-    const cracks = S.fx.filter((f) => f.kind === 'crack');
-    if (cracks.length > 16) S.fx.splice(S.fx.indexOf(cracks[0]), 1);
-  };
   if (e.dmg > 0 && (e.srcs || []).some((s) => POWER_MOVES.has(s) && s !== 'Thousand-Arm Form')) { // a power move lands: the island shatters
     add({ kind: 'shatter', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 2.2 });
-    add({ kind: 'scar', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 60, ground: true }); // the fissures stay
-    for (let i = 0; i < 5; i++) { const a = Math.random() * Math.PI * 2, r = 12 + Math.random() * 40; crack(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, 0.9 + Math.random() * 0.6); }
     for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3; add({ kind: 'splash', x: Math.cos(a) * ARENA.r, y: Math.sin(a) * ARENA.r, life: 1.4, big: 2.6 }); }
     if (shake) add({ kind: 'shake', x: 0, y: 0, amp: 6, life: 0.9 });
     const own = ART.fx.storm && (e.srcs || []).some((s) => DRAMA_MOVES.has(s)); // the divine weapons stage their own impact (render.js)
@@ -76,19 +70,14 @@ function hitFx(e, shake) {
     sound.play('shatter2');
   }
   {
-    if (e.dmg >= 8 && !(e.srcs || []).includes('Thousand-Arm Form')) crack(e.x, e.y, Number.isFinite(e.dmg) ? Math.min(1.4, e.dmg / 25) : 1.6); // heavy hits break the sand
     if (e.dmg > 0) { add({ kind: 'pop', x: e.x, y: e.y, text: Number.isFinite(e.dmg) ? `-${Math.round(e.dmg * 10) / 10}` : 'X', color: '#ff6a5a' }); add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 }); }
     if (e.heal > 0) add({ kind: 'pop', x: e.x, y: e.y, text: `+${e.heal}`, color: '#7aff8a' });
   }
 }
 function onEvent(e, m) {
   fxEvent(e, m, S.now); // every hit on a block or a barrier shows (debris, flares)
+  damageEvent(e, m, S.clock); // craters, skids, splashes and burns on the sand (src/damage.js)
   const now = S.clock, add = (f) => S.fx.push({ t0: now, life: 0.8, ...f });
-  const crack = (x, y, size) => { // a crack in the sand that fades slowly; only the newest 16 stay
-    add({ kind: 'crack', x, y, size, seed: Math.floor(Math.random() * 1e6), life: 30, ground: true });
-    const cracks = S.fx.filter((f) => f.kind === 'crack');
-    if (cracks.length > 16) S.fx.splice(S.fx.indexOf(cracks[0]), 1);
-  };
   // ---- sounds ----
   const me = m.players[e.pid];
   if (e.type === 'cast' && e.slot === 'a1') sound.play(me?.ch.weapon === 'bow' ? 'bow' : 'bolt');
@@ -423,12 +412,26 @@ function timeScale() {
   if (t > 1.5) { S.slowmo = null; return 1; }
   return t < 1.0 ? 0.3 : 0.3 + 0.7 * ((t - 1.0) / 0.5);
 }
+// Smooth motion (2026-11-15): the game steps 60 times a second, but screens refresh at other rates and frames
+// arrive unevenly, so fighters and shots are drawn part of the way between the last two steps (by how far the
+// clock has got toward the next one). Drawing only: the true positions are put back straight after.
+let PREV = null;
+const movers = (m) => [...m.players, ...m.projectiles];
+function snapPrev() { PREV = S.screen === 'fight' && S.match ? new Map(movers(S.match).map((o) => [o, [o.x, o.y]])) : null; }
+function blended(draw) {
+  const m = S.match, k = Math.min(1, acc / STEP), saved = [];
+  if (S.screen === 'fight' && m && PREV && !DBG.paused) for (const o of movers(m)) {
+    const q = PREV.get(o); if (!q || Math.hypot(o.x - q[0], o.y - q[1]) > 20) continue; // a blink or a reset: no blending
+    saved.push([o, o.x, o.y]); o.x = q[0] + (o.x - q[0]) * k; o.y = q[1] + (o.y - q[1]) * k;
+  }
+  try { draw(); } finally { for (const [o, x, y] of saved) { o.x = x; o.y = y; } }
+}
 function frame(ts) {
   const gap = (ts - last) / 1000, dt = Math.min(0.1, Math.max(0, gap)); last = ts; S.now += dt;
   if (gap > 0.5) autoPause(); // frames came very late (throttled in the background): pause rather than crawl
   try {
-    if (!DBG.paused) { acc += dt * timeScale(); while (acc >= STEP) { update(STEP); acc -= STEP; } }
-    render();
+    if (!DBG.paused) { acc += dt * timeScale(); while (acc >= STEP) { snapPrev(); update(STEP); acc -= STEP; } }
+    blended(render);
     sound.tickMusic();
   } catch (e) { S.errors.push(String(e?.stack || e)); console.error(e); }
   requestAnimationFrame(frame);

@@ -55,4 +55,13 @@ export const TUNE = {
   // land: the pause after touching down; jump/fly specifics live on the moves themselves.
   air: { land: 0.2, chasmPush: 120 },
   scene: 2.5,           // dramatic scene length for power moves; the whole game pauses
+  // Rough ground (ground rule 13, owner 2026-11-15): a heavy hit leaves a crater, a power move a big crater, being
+  // knocked into the edge a wet patch. Walking through one is `slow` slower while it lasts (`life` s); jumping,
+  // flying and knockback aren't slowed. r = its radius in world units; a fighter is in it once their feet (`feet`) touch it.
+  rough: {
+    slow: 0.3, feet: 3, max: 30,
+    crater: { minDmg: 8, r: 8, perDmg: 0.15, maxR: 12, life: 60 },
+    impact: { r: 19, life: 90, moves: ['Gaja Arrow', 'Pashupatastra', 'Shakti Vel', 'Vishwaroopam'] },
+    wet: { r: 8, life: 20 },
+  },
 };

@@ -4,7 +4,7 @@
 // is lined up on the same foot baseline.
 import { RES } from './config.js';
 
-export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, gods: {}, cards: {}, title: null, arms: null, ready: false };
+export const ART = { arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, gods: {}, cards: {}, sand: {}, title: null, arms: null, ready: false };
 // Dramatic scene paintings (art/scene_<key>.png), drawn by drawScene in render.js.
 const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel', 'vishwaroopam', 'tandava'];
 // The boon gods, painted blessing (art/god_<name>.png, and the figure alone on magenta in god_<name>_fg.png).
@@ -188,9 +188,43 @@ export async function loadArt(base = '') {
     cellSheet('art/fx_sky_eye.png', ['skyEye'], null, 1),
     cellSheet('art/fx_cosmos_sky.png', ['cosmosSky'], null, 1), // Vishwaroopam's sky, one wide sharp image
     cellSheet('art/fx_cosmic_form.png', ['cosmicForm'], fadeBottom, 1),
+    sandSheet(base + 'art/fx_sand_hits.png', ['crater', 'impact', 'skid', 'scuff']), // marks the fight leaves on the sand (2026-11-15)
+    sandSheet(base + 'art/fx_sand_marks.png', ['foot', 'wet', 'glass', 'burn']),
   ]); // the richer crystal yantra (2026-11-15) replaces the first one
   ART.ready = true;
   return ART;
+}
+
+// Sand marks are painted on plain sand (#FDAB55), not on magenta. Each cell becomes two pictures measured against
+// that plain sand: `dark` (white where nothing changes, drawn with 'multiply') and `light` (black where nothing
+// changes, drawn with 'lighter'), so a mark darkens and brightens the real arena floor with no edge. The cell edges
+// fade to nothing, so the painted sand never shows as a square.
+async function sandSheet(file, names) {
+  const img = await loadImg(file);
+  if (!img) return;
+  const n = names.length, cw = img.width / n, out = 256, c = document.createElement('canvas');
+  c.width = out * n; c.height = out;
+  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, c.width, c.height);
+  const all = g.getImageData(0, 0, c.width, c.height).data;
+  names.forEach((name, i) => {
+    const px = (x, y) => (y * c.width + i * out + x) * 4, edge = [[], [], []];
+    for (let k = 0; k < out; k += 2) for (const [x, y] of [[k, 2], [k, out - 3], [2, k], [out - 3, k]]) for (let ch = 0; ch < 3; ch++) edge[ch].push(all[px(x, y) + ch]);
+    const base = edge.map((v) => v.sort((a, b) => a - b)[v.length >> 1]); // the plain sand around the mark
+    const mk = () => { const q = document.createElement('canvas'); q.width = q.height = out; return q; };
+    const dc = mk(), lc = mk(), dd = dc.getContext('2d').createImageData(out, out), ld = lc.getContext('2d').createImageData(out, out);
+    for (let y = 0; y < out; y++) for (let x = 0; x < out; x++) {
+      const r = Math.hypot(x - out / 2 + 0.5, y - out / 2 + 0.5) / (out / 2), f = Math.max(0, Math.min(1, (1 - r) / 0.12)); // fade over the outer edge
+      const s = px(x, y), o = (y * out + x) * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        const v = all[s + ch], b = Math.max(1, base[ch]);
+        dd.data[o + ch] = 255 - (255 - Math.min(255, (v / b) * 255)) * f;
+        ld.data[o + ch] = Math.max(0, v - b) * f;
+      }
+      dd.data[o + 3] = ld.data[o + 3] = 255;
+    }
+    dc.getContext('2d').putImageData(dd, 0, 0); lc.getContext('2d').putImageData(ld, 0, 0);
+    ART.sand[name] = { dark: dc, light: lc };
+  });
 }
 
 // Draw frame `i` of a fighter's walk or act sheet with its feet at (x, y). flip = facing left.

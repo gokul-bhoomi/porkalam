@@ -8,7 +8,7 @@ export default {
   id: 'siddhan', name: 'Mangulan', cls: 'mage', color: '#3fc7c0',
   health: 100,
   power: POWER,
-  speed: 42,
+  speed: 48, // 42 -> 48 (owner, 2026-11-15): a little faster, after rough ground slowed him
   bio: 'A slow but powerful young mystic who wins from range, with patience.',
   // the card (ground rule 16: every fighter spends the same budget across these five, 1-5 each)
   traits: { range: 3, speed: 2, defence: 5, control: 4, burst: 3 },

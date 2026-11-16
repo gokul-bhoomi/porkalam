@@ -5,6 +5,7 @@ import { ACTIONS, LABELS, KEYS, KEY_NAME, PAD, PAD_NAMES, REMAP } from './input.
 import { opponent, chargeOf, airborne } from './sim.js';
 import { ART, drawSprite, drawFx as fxSprite, drawPortrait, POSES, AIR_POSES } from './art.js';
 import { GODS as GODS_LIST } from './chars/gods.js';
+import { damageReset, damageTrack, drawDamage } from './damage.js';
 const fxArt = (name) => useArt && ART.fx[name];
 
 export const FONT = '"Press Start 2P", monospace';
@@ -1067,7 +1068,7 @@ function drawFighter(m, p, now) {
     if (m.phase === 'done' && drawEnd(m, p, x, y + 1, now)) { /* knockout / victory */ }
     else if (p.air && drawSprite(G, p.ch.id, 'air', airPose(p), x, y + 1, p.face.x < 0, 1 + 0.08 * Math.min(1, h / 13))) { /* jumping or flying (rule 17): a little bigger the higher, as if nearer */ }
     else if (pose == null || !drawSprite(G, p.ch.id, 'act', pose, x, y + 1, p.face.x < 0)) {
-      const moving = anim[p.id].moving, fps = moving ? 10 : 5, i = Math.floor(now * fps) % 4 + (moving ? 4 : 0);
+      const a = anim[p.id], i = a.moving ? Math.floor(a.stride) % 4 + 4 : Math.floor(now * 5) % 4; // walking: one frame per STRIDE walked, so the feet keep pace with the ground
       drawSprite(G, p.ch.id, 'walk', i, x, y + 1, p.face.x < 0);
     }
     top = y - ART_TOP;
@@ -1368,6 +1369,7 @@ function drawProjectile(pr0, now) {
 const anim = [0, 1].map(() => ({ x: 0, y: 0, moving: false, still: 0, hp: 100, cast: null, pose: null, until: 0 }));
 const ART_TOP = 58;
 let animMatch = null;
+const STRIDE = 6.5; // world units walked per frame of the walk cycle (2026-11-15: was a fixed 10 frames a second at any speed)
 function trackMotion(m) {
   const now = m.t; // match clock: poses freeze with the game
   if (animMatch !== m) { // a new match (rematch): forget the last one's poses, they were timed on its clock
@@ -1380,6 +1382,7 @@ function trackMotion(m) {
     if (m.phase !== 'done') a.doneAt = null;
     const d = Math.hypot(p.x - a.x, p.y - a.y), P = POSES[p.ch.id];
     if (d > 0.2) { a.moving = true; a.still = 0; } else if (++a.still > 4) a.moving = false;
+    if (d < 20) a.stride = (a.stride || 0) + d / STRIDE;
     a.x = p.x; a.y = p.y;
     // flinch only when hit (damage taken), not when paying a move's health cost, e.g. a signature
     if (P && p.stats.taken > a.taken + 0.01) { a.pose = P.hit; a.until = now + 0.3; }
@@ -1409,8 +1412,9 @@ function poseOf(m, p) {
 
 // fxNow: the clock the effects were stamped with (the fight clock, which stops during pauses and scenes)
 export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = [null, null]) {
-  if (m !== FX_MATCH) { warmArt(); FX_MATCH = m; WALLFX.prev = []; WALLFX.ghosts = []; MED.last = [null, null]; MED.end = [null, null]; MED.hit = [null, null]; PARTS.length = 0; DIV.length = 0; DR.freeze = 0; DR.slow = null; DR.cam = null; DR.dim = null; DR.shake = []; } // a new match starts clean
+  if (m !== FX_MATCH) { warmArt(); FX_MATCH = m; WALLFX.prev = []; WALLFX.ghosts = []; MED.last = [null, null]; MED.end = [null, null]; MED.hit = [null, null]; PARTS.length = 0; DIV.length = 0; DR.freeze = 0; DR.slow = null; DR.cam = null; DR.dim = null; DR.shake = []; damageReset(); } // a new match starts clean
   trackMotion(m);
+  damageTrack(m, fxNow); // footprints, skids, settled marks painted onto the floor (src/damage.js)
   chasm = m.arenaChange?.kind === 'chasm' ? m.arenaChange : null;
   let sh = 0; // screen shake from power moves landing
   for (const f of fx) if (f.kind === 'shake') sh += f.amp * Math.max(0, 1 - (fxNow - f.t0) / f.life);
@@ -1424,6 +1428,7 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   drawHeaven(m, now);
   for (const f of fx) if (f.kind === 'god') drawGod(f, fxNow); // a god appearing in the sky (small and medium boons)
   drawArena();
+  drawDamage(G, fxNow, 'ground'); // what the fight has done to the sand
   drawChasm(m, now);
   for (const a of m.areas) {
     const k = 1 - a.t / a.delay;
@@ -1449,6 +1454,7 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   drawParts(now, true);
   for (const o of order) if (o.ch) drawFighter(m, o, now); else lifted(o, () => drawWall(o, now));
   drawParts(now, false);
+  drawDamage(G, fxNow, 'air'); // sand thrown up
   drawDivine(m, now, 'sky');
   for (const pr of m.projectiles) lifted(pr, () => drawProjectile(pr, now));
   for (const f of fx) if (!f.ground) drawFx(f, fxNow);
@@ -1574,29 +1580,6 @@ function drawFx(f, now) {
           star(mx + Math.cos(a) * r, my - 28 + Math.sin(a) * r * 0.65 - dissolve * 12, 0.7 + dissolve, Math.sin(dissolve * Math.PI) * 0.6 * fade);
         }
       } else drawDivineImpact(tx, ty, age, fade);
-      break;
-    }
-    case 'crack': { // a fissure in the sand: a scorched dip, jagged branching cracks with a lit edge; fades late
-      const a = Math.min(1, (f.life - age) / 6), grow = Math.min(1, age / 0.12), sz = f.size * grow;
-      G.save(); G.beginPath(); G.ellipse(CX, CY, ARENA.r * SC, ARENA.r * SC * SQ, 0, 0, Math.PI * 2); G.clip(); // only on the sand
-      const dip = G.createRadialGradient(x, y, 0, x, y, Z(10) * sz);
-      dip.addColorStop(0, `rgba(80,40,15,${0.35 * a})`); dip.addColorStop(1, 'rgba(80,40,15,0)');
-      G.fillStyle = dip; G.beginPath(); G.ellipse(x, y, Z(10) * sz, Z(10) * sz * SQ, 0, 0, Math.PI * 2); G.fill();
-      const n = 4 + (f.seed % 4);
-      for (let i = 0; i < n; i++) {
-        let ang = (i / n) * Math.PI * 2 + hash(i, f.seed) * 0.9, px = x, py = y;
-        const len = Z(6 + hash(i, f.seed + 1) * 9) * sz, pts = [[px, py]];
-        for (let j = 1; j <= 5; j++) { ang += (hash(i * 7 + j, f.seed) - 0.5) * 1.3; px += Math.cos(ang) * len / 5; py += Math.sin(ang) * len / 5 * SQ; pts.push([px, py]); }
-        const path = () => { G.beginPath(); G.moveTo(pts[0][0], pts[0][1]); for (const [qx, qy] of pts.slice(1)) G.lineTo(qx, qy); };
-        G.lineCap = 'round'; G.lineJoin = 'round';
-        path(); G.strokeStyle = `rgba(255,228,180,${0.5 * a})`; G.lineWidth = 0.9; G.save(); G.translate(0, 0.45); G.stroke(); G.restore(); // lit lower lip
-        path(); G.strokeStyle = `rgba(55,26,10,${0.9 * a})`; G.lineWidth = 0.55 * (1.2 - 0.2 * sz); G.stroke();
-        if (hash(i, f.seed + 9) > 0.5) { // a small side branch
-          const [bx, by] = pts[2], ba = ang + (hash(i, f.seed + 3) > 0.5 ? 0.9 : -0.9);
-          G.beginPath(); G.moveTo(bx, by); G.lineTo(bx + Math.cos(ba) * len * 0.35, by + Math.sin(ba) * len * 0.35 * SQ); G.lineWidth = 0.4; G.stroke();
-        }
-      }
-      G.restore();
       break;
     }
     case 'splash': { // river water thrown up: droplets arc outward and fall, with a ring on the water
