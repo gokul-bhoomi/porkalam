@@ -28,7 +28,8 @@ export default {
       lift: 0.3, speed: 80, drain: 12 }, // drain 9 -> 12 (2026-11-14): about 11 s up from a full bar
     s3: { name: 'Blink', short: 'Short teleport', desc: 'Teleport a short way in the direction you hold (away from the opponent if none).', kind: 'blink', special: true, range: 'anywhere', cost: { power: 8 }, req: {}, cast: 0, damage: 0, knockback: 0, distance: 45 },
     sig: { name: 'Thousand-Arm Form', short: 'Whole arena, 35%', desc: 'A 2 s cast, then spectral arms strike across the whole arena: 35%. Costs 10% health.', kind: 'global', special: true, signature: true, scene: true, range: 'anywhere', cost: { power: 60, health: 10 }, req: {}, cast: 2, // 4 -> 2 s (owner, 2026-11-09)
-      damage: 35, knockback: 60, strikeDelay: 0.4 }, // the arms take 0.4 s to reach
+      damage: 35, knockback: 60, strikeDelay: 0.4, // the arms take 0.4 s to reach
+      travels: { radius: 15 } }, // owner, 2026-11-16: the halo flies at the opponent, so it can clash with what it meets on the way (rule 6)
     cls: { name: 'Meditation', short: 'Earn devotion for boons', desc: 'Sit behind a barrier and fill devotion, one segment at a time.', kind: 'meditate', range: 'anywhere', cost: { power: 2 }, req: {}, cast: 0, damage: 0, knockback: 0 },
   },
 };

@@ -98,9 +98,12 @@ function prescale(c, f, k) {
 }
 
 export async function loadArt(base = '') {
+  // ?arena=battlefield (or battlefield_big) tries another arena painting; each has its own floor fit json
+  const pick = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('arena')) || '';
+  const file = /^[a-z_]+$/.test(pick) ? 'arena_' + pick : 'arena';
   const [arena, fitJson] = await Promise.all([
-    loadImg(base + 'art/arena.png'),
-    fetch(base + 'art/arena.json').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    loadImg(base + `art/${file}.png`),
+    fetch(base + `art/${file}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
   ]);
   ART.arena = arena;
   ART.fit = { ...DEFAULT_FIT, ...(fitJson || {}) };

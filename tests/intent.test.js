@@ -280,6 +280,30 @@ test('rule 6: moves collide only when they touch on screen', () => {
   assert.equal(m.projectiles.length, 0);
 });
 
+test('rule 6: "touch on screen" uses the drawn size: long shots touch along their length (2026-11-16)', () => {
+  const m = match({ k: { x: -80, y: -50 }, r: { x: 80, y: 50 } });
+  // two arrows side by side, 4 apart, flying the same way: their hit circles (r 3) touch...
+  const arrow = (id, owner, x, y, vx) => ({ id, owner, shape: 'arrow', x, y, vx, vy: 0, r: 3, dmg: 5, kb: 0, life: 5, legs: 0, lt: 0, hitUnits: [] });
+  // ...but an arrow drawn 16 long meets one whose tip is 12 ahead of its centre, which the hit circles alone would miss
+  m.projectiles.push(arrow(1, K, 0, 0, 1e-6), arrow(2, R, 12, 0, -1e-6));
+  stepMatch(m);
+  assert.equal(m.projectiles.length, 0, 'the drawn arrows overlap, so they clash');
+});
+
+test('rule 6: the Thousand-Arm halo flies at the opponent and can clash on the way (owner, 2026-11-16)', () => {
+  const sig = mage.moves.sig;
+  assert.ok(sig.travels, 'the Thousand-Arm Form travels');
+  const m = match({ k: { x: -90, y: 0 }, r: { x: 90, y: 0 } });
+  // the halo leaving the mage, and an equal-strength Gaja Arrow coming the other way
+  m.strikesDue.push({ id: 900, owner: K, name: sig.name, t: sig.strikeDelay, T: sig.strikeDelay, from: { x: -90, y: 0 }, to: { x: 75, y: 0 }, x: -90, y: 0, vx: 1, vy: 0, r: sig.travels.radius, dmg: 35, kb: 0, src: sig.name, travels: true });
+  m.projectiles.push({ id: 901, owner: R, shape: 'elephant', x: 60, y: 0, vx: -260, vy: 0, r: 8, dmg: 35, kb: 0, life: 2, legs: 0, lt: 0, hitUnits: [], hitWalls: [] });
+  run(m, [{}, {}], 0.6);
+  assert.ok(events(m, 'clash').length >= 1, 'they met');
+  assert.ok(events(m, 'armsBroken').length === 1, 'the halo broke');
+  assert.equal(m.players[R].hp, 100, 'equal strength: neither lands');
+  assert.equal(m.players[K].hp, 100);
+});
+
 test('rule 6: higher damage wins and still hits, reduced by the weaker move; equal damage cancels both', () => {
   const m = match({ k: { x: -80, y: 0 }, r: { x: 80, y: 0 } });
   m.projectiles.push({ id: 1, owner: K, x: 0, y: 0, vx: 0, vy: 0, r: 3, dmg: 12, kb: 0, life: 5, legs: 0, lt: 0, hitUnits: [] });
