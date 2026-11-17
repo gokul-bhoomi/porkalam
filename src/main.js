@@ -107,6 +107,7 @@ function onEvent(e, m) {
     hitFx(e, !(ART.fx.sun2 && (e.srcs || []).includes('Brahmastra'))); // (the second sun stages its own shaking, render.js)
   }
   if (e.type === 'clash') add({ kind: 'clash', x: e.x, y: e.y, life: 0.4 });
+  if (e.type === 'armsBroken') for (const f of S.fx) if (f.kind === 'arms' && f.pid === e.pid && !f.broken) { f.broken = now - f.t0; f.life = f.broken + 0.35; } // the halo lost a clash: it stops and fades where it was
   if (e.type === 'swing') { const p = m.players[e.pid]; add({ kind: 'swing', x: p.x, y: p.y, a: Math.atan2(p.face.y, p.face.x), life: 0.2 }); }
   if (e.type === 'barrier') add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'medStop' && m.players[e.pid].msg?.text === 'BARRIER BROKEN') add({ kind: 'boom', x: m.players[e.pid].x, y: m.players[e.pid].y, life: 0.5, ground: true });
@@ -117,8 +118,8 @@ function onEvent(e, m) {
     const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
     if (e.name === 'Thousand-Arm Form') { // a serene jade-and-gold halo glides forward as one painted formation
       const o = m.players[1 - e.pid];
-      add({ kind: 'arms', part: 'fan', ground: true, x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 }); // drawn behind the fighters
-      add({ kind: 'arms', part: 'palms', x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 });          // drawn in front
+      add({ kind: 'arms', part: 'fan', pid: e.pid, ground: true, x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 }); // drawn behind the fighters
+      add({ kind: 'arms', part: 'palms', pid: e.pid, x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 });          // drawn in front
       shake(0.7, 0.22); // a light accent; the golden impact ripples are drawn with the hands
     }
     if (e.name === 'Gaja Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }

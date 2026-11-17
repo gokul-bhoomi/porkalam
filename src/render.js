@@ -1515,7 +1515,7 @@ function drawSignatureHalo(cx, cy, age, releasing = false, fade = 1) {
   const reveal = releasing ? 1 : easeOut(clamp01(age / 0.95));
   if (useArt && ART.fx.divineHalo) {
     // Preserve the approved painting's soft shading and outward-curving blessing arms.
-    fxSprite(G, 'divineHalo', cx, cy + 28, 174 * reveal, { anchor: 'bottom', alpha: fade * reveal });
+    fxSprite(G, 'divineHalo', cx, cy + 18, 112 * reveal, /* 174 -> 112 (owner, 2026-11-16: too big) */ { anchor: 'bottom', alpha: fade * reveal });
     return;
   }
   drawDivineMandala(cx, cy, reveal, fade);
@@ -1564,22 +1564,22 @@ function drawFx(f, now) {
       const fade = 1 - clamp01((age - f.life + 0.4) / 0.4);
       if (f.part === 'fan') {
         const face = tx >= cx ? 1 : -1, gap = Math.min(64, Math.abs(tx - cx) * 0.35);
-        const travel = smooth(age / 0.4), hitX = tx - face * gap;
+        const at = f.broken ?? age, travel = smooth(at / 0.4), hitX = tx - face * gap; // a broken halo stays where it lost
         // Continue along the attack's world-space direction, including diagonal and vertical attacks.
         const dx = f.tx - f.x, dy = f.ty - f.y, distance = Math.hypot(dx, dy);
         const ux = distance > 0 ? dx / distance : face, uy = distance > 0 ? dy / distance : 0;
         const dot = f.tx * ux + f.ty * uy;
         const toEdge = Math.max(0, -dot + Math.sqrt(Math.max(0, dot * dot + ARENA.r ** 2 - f.tx ** 2 - f.ty ** 2)));
         const exitX = sx(f.tx + ux * (toEdge + 90 / SC)), exitY = sy(f.ty + uy * (toEdge + 90 / SC)) - 18;
-        const carry = smooth((age - 0.4) / 0.9), dissolve = smooth((carry - 0.2) / 0.8);
+        const carry = smooth((at - 0.4) / 0.9), dissolve = smooth((carry - 0.2) / 0.8);
         const mx = cx + (hitX - cx) * travel + (exitX - hitX) * carry;
         const my = cy + (ty - cy) * travel + (exitY - ty) * carry;
         drawSignatureHalo(mx, my, age, true, fade * (1 - dissolve));
         if (dissolve > 0 && dissolve < 1) for (let i = 0; i < 14; i++) {
-          const a = i / 14 * Math.PI * 2, r = 28 + dissolve * 55;
-          star(mx + Math.cos(a) * r, my - 28 + Math.sin(a) * r * 0.65 - dissolve * 12, 0.7 + dissolve, Math.sin(dissolve * Math.PI) * 0.6 * fade);
+          const a = i / 14 * Math.PI * 2, r = 18 + dissolve * 35;
+          star(mx + Math.cos(a) * r, my - 18 + Math.sin(a) * r * 0.65 - dissolve * 12, 0.7 + dissolve, Math.sin(dissolve * Math.PI) * 0.6 * fade);
         }
-      } else drawDivineImpact(tx, ty, age, fade);
+      } else if (f.broken == null) drawDivineImpact(tx, ty, age, fade); // no impact if it never landed
       break;
     }
     case 'splash': { // river water thrown up: droplets arc outward and fall, with a ring on the water

@@ -426,7 +426,7 @@ function release(m, p, c) {
         const a = base + (n > 1 ? (i - (n - 1) / 2) * mv.spread : 0), cx = Math.cos(a), cy = Math.sin(a);
         m.projectiles.push({
           id: m.nid++, owner: p.id, name: mv.name, shape: mv.shape, x: p.x + cx * TUNE.fighterR, y: p.y + cy * TUNE.fighterR,
-          vx: cx * mv.speed * TUNE.pace.shot, vy: cy * mv.speed * TUNE.pace.shot, r: mv.radius, dmg, kb: mv.knockback, life: mv.life, legs: mv.legs ? mv.legs - 1 : 0,
+          vx: cx * mv.speed * TUNE.pace.shot, vy: cy * mv.speed * TUNE.pace.shot, r: mv.radius, dmg, dmg0: dmg, kb: mv.knockback, life: mv.life, legs: mv.legs ? mv.legs - 1 : 0,
           legTime: mv.legTime || 0, lt: 0, effect: mv.effect || null, divine: !!mv.divine, boon: c.slot === 'boon', reach: isBasic(mv) ? RANGES[rangeOf(mv)][1] : Infinity, flown: 0, seek: c.slot === 'boon', falloff: c.slot === 'boon' ? null : mv.falloff || null, k: 1, pierceBlock: !!mv.pierceBlock || c.slot === 'boon', pierceUnits: !!mv.pierceUnits, hitUnits: [], hitWalls: [], quick,
         });
       }
@@ -442,7 +442,11 @@ function release(m, p, c) {
       m.areas.push({ id: m.nid++, owner: p.id, x: o.x, y: o.y, r: mv.radius, t: mv.delay, delay: mv.delay, dmg: mv.damage, kb: mv.knockback });
       break;
     case 'global': // across the whole arena, landing when the strike reaches (strikeDelay s), so it matches what's drawn
-      m.strikesDue.push({ owner: p.id, t: mv.strikeDelay || 0, from: { x: p.x, y: p.y }, dmg: mv.damage, kb: mv.knockback, src: mv.name, divine: !!mv.divine });
+      if (mv.travels) { // it flies from the caster to just short of the opponent (as drawn), and can meet shots on the way
+        const dx = o.x - p.x, dy = o.y - p.y, d = Math.hypot(dx, dy) || 1, gap = Math.min(15, d * 0.35), T = mv.strikeDelay || STEP;
+        m.strikesDue.push({ id: m.nid++, owner: p.id, name: mv.name, t: T, T, from: { x: p.x, y: p.y }, to: { x: o.x - dx / d * gap, y: o.y - dy / d * gap },
+          x: p.x, y: p.y, vx: dx / T, vy: dy / T, r: mv.travels.radius, dmg: mv.damage, kb: mv.knockback, src: mv.name, divine: !!mv.divine, travels: true });
+      } else m.strikesDue.push({ owner: p.id, t: mv.strikeDelay || 0, from: { x: p.x, y: p.y }, dmg: mv.damage, kb: mv.knockback, src: mv.name, divine: !!mv.divine });
       break;
     case 'tandava': { // Shiva's Tandava: the island splits along a line between the fighters (ground rule 12)
       const n = unitDir(o.x - p.x, o.y - p.y), cx = (p.x + o.x) / 2, cy = (p.y + o.y) / 2;
@@ -560,18 +564,48 @@ function absorb(m, w, dmg) {
 }
 
 // ---------- 3. clashes ----------
+// Rule 6 says moves collide when they touch ON SCREEN, so a clash uses the size the shot is drawn at (render.js
+// drawProjectile), not its small hit size against a fighter, which stays as it is (dodging is unchanged).
+// Long shapes (arrows, spears, the Gaja elephant) are a capsule along the flight line: [half-length, half-thickness]
+// in world units. Round ones are a circle. (2026-11-16: the elephant was drawn ~7x longer than it collided, so
+// specials seemed to fly through each other.)
+const CLASH_SHAPE = {
+  arrow: (p) => [7, 3], spear: (p) => [8, 3], elephant: (p) => [22, 12], tiger: (p) => [19, 10],
+  chakra: (p) => [0, p.r * 1.4], fire: (p) => [6, p.r], notes: (p) => [0, 5.5], wave: (p) => [0, p.r * 1.2],
+  orb: (p) => [0, p.r * 1.3 * (1 + Math.max(0, p.dmg0 - 4) / 9)],
+};
+function clashBody(b) {
+  const f = b.shape && CLASH_SHAPE[b.shape], k = b.boon ? 1.5 : 1;
+  const [h, r] = f ? f(b) : [0, b.r];
+  const sp = Math.hypot(b.vx || 0, b.vy || 0), dx = sp ? b.vx / sp : 1, dy = sp ? b.vy / sp : 0;
+  return { a: { x: b.x - dx * h * k, y: b.y - dy * h * k }, b: { x: b.x + dx * h * k, y: b.y + dy * h * k }, r: Math.max(b.r, r * k) };
+}
+function segSegDist(a, b, c, d) {
+  const cr = (o, p, q) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+  const d1 = cr(a, b, c), d2 = cr(a, b, d), d3 = cr(c, d, a), d4 = cr(c, d, b);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return 0;
+  return Math.min(segDist(a, c, d), segDist(b, c, d), segDist(c, a, b), segDist(d, a, b));
+}
+const touching = (a, b) => { const p = clashBody(a), q = clashBody(b); return segSegDist(p.a, p.b, q.a, q.b) <= p.r + q.r; };
 function clashes(m) {
-  const bodies = [...m.projectiles, ...m.strikes];
+  const flying = m.strikesDue.filter((s) => s.travels && !s.dead);
+  for (const s of flying) { // where the halo is right now (eased like the drawing in render.js)
+    const u = clamp(1 - s.t / s.T, 0, 1), e = u * u * (3 - 2 * u);
+    s.x = s.from.x + (s.to.x - s.from.x) * e; s.y = s.from.y + (s.to.y - s.from.y) * e;
+  }
+  const bodies = [...m.projectiles, ...m.strikes, ...flying];
   for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
     const a = bodies[i], b = bodies[j];
-    if (a.owner === b.owner || a.dead || b.dead || Math.hypot(a.x - b.x, a.y - b.y) > a.r + b.r) continue; // only when they touch
+    if (a.owner === b.owner || a.dead || b.dead || !touching(a, b)) continue; // only when they touch on screen
     if (a.quick && b.quick) continue; // two quick basic shots fly past each other (owner, 2026-11-14)
     ev(m, 'clash', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, a: a.name, b: b.name });
     if (a.dmg > b.dmg) { a.dmg -= b.dmg; b.dead = true; }
     else if (b.dmg > a.dmg) { b.dmg -= a.dmg; a.dead = true; }
     else { a.dead = b.dead = true; }
   }
+  for (const s of flying) if (s.dead) ev(m, 'armsBroken', { pid: s.owner, x: s.x, y: s.y }); // the halo lost: it never lands
   m.projectiles = m.projectiles.filter((pr) => !pr.dead);
+  m.strikesDue = m.strikesDue.filter((s) => !s.dead);
 }
 
 function collectHits(m) {
@@ -616,7 +650,7 @@ function collectHits(m) {
   }
   m.areas = m.areas.filter((a) => !a.dead);
   for (const s of m.strikesDue) { // whole-arena strikes, once they arrive
-    if ((s.t -= STEP) > 1e-9) continue;
+    if (s.dead || (s.t -= STEP) > 1e-9) continue;
     s.dead = true;
     const p = m.players[s.owner], o = opponent(m, p);
     for (const t of [o, ...m.units.filter((u) => u.owner !== s.owner)]) m.hits.push({ target: t, dmg: s.dmg, kb: s.kb, from: s.from, src: s.src, divine: s.divine, by: s.owner });
