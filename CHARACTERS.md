@@ -19,7 +19,7 @@ A young wandering mystic-sorcerer: saffron and indigo robes, rudraksha beads, a 
 | Spinning chakra | Anywhere | Medium (18 power; was 30, owner 2026-11-14) | Homing disc, medium damage: his answer to a fast opponent at range |
 | Fly (replaced the binding chant, owner 2026-11-14) | Anywhere | Small to take off, then power every second | Press to rise (0.3 s), press again to land. Flies fast and still attacks. Melee and arrow rain miss him; shots still hit (ground rule 17) |
 | Blink | Anywhere | Small | Short teleport |
-| Signature: Thousand-Arm Form | Anywhere | Very large + health | Power-up in the arena. Large damage across the whole arena |
+| Signature: Thousand-Arm Form | Anywhere | Very large + health | A halo of spectral arms rushes toward the marked circle and deals 35% to opponents still inside when it arrives |
 | Meditation | n/a | Time | Fills devotion behind a barrier |
 
 ## Kanalan (Warrior, bow)

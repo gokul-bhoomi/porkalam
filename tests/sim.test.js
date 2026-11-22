@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMatch, stepMatch, airborne } from '../src/sim.js';
-import { TUNE, ARENA } from '../src/config.js';
+import { STEP, TUNE, ARENA } from '../src/config.js';
 import { CHARS } from '../src/chars/index.js';
 import { findBoon } from '../src/chars/gods.js';
 import { rng } from '../src/util.js';
@@ -79,12 +79,19 @@ test('blink with no direction goes away from the opponent and stays inside the a
   assert.ok(m.players[K].x < -90 && Math.hypot(m.players[K].x, m.players[K].y) <= ARENA.r);
 });
 
-test('Thousand-Arm Form hits across the whole arena after its scene', () => {
+test('Thousand-Arm Form deals damage on the step the arms land, with its own effect', () => {
   const m = match({ k: { x: -100, y: 0, power: 100 }, r: { x: 100, y: 0 } });
   tap(m, K, 'sig'); run(m, [{}, {}], mage.moves.sig.cast + TUNE.scene + 0.1);
   assert.equal(m.players[R].hp, 100, 'not yet: the arms are still reaching');
-  run(m, [{}, {}], mage.moves.sig.strikeDelay);
+  while (m.strikesDue.length && m.strikesDue[0].t > STEP + 1e-9) stepMatch(m);
+  assert.equal(m.players[R].hp, 100, 'the opponent is unharmed just before contact');
+  assert.equal(events(m, 'armsLand').length, 0);
+  stepMatch(m);
   assert.equal(m.players[R].hp, 100 - mage.moves.sig.damage, 'the arms land');
+  const [impact] = events(m, 'armsLand');
+  assert.equal(impact.x, 100);
+  assert.equal(impact.t, events(m, 'hp').find((e) => e.pid === R).t);
+  assert.equal(events(m, 'rain').length, 0, 'the arms do not spawn arrows');
   assert.equal(m.players[K].hp, 100 - mage.moves.sig.cost.health);
 });
 

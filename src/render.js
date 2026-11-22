@@ -1810,14 +1810,10 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
     ell(sx(a.x), sy(a.y), Z(a.r) * k, Z(a.r) * SQ * k, 'rgba(255,74,58,.3)');
   }
   for (const s of m.strikesDue) if (s.land && !s.dead) { // Thousand-Arm Form: where the arms will come down, filling in as they come
-    const k = 1 - s.t / s.T, w = Z(s.land) * 2.2;
-    if (fxArt('danger')) {
-      fxSprite(G, 'danger', sx(s.to.x), sy(s.to.y), w, { h: w * SQ, alpha: 0.6 + 0.4 * Math.abs(Math.sin(now * 10)) });
-      fxSprite(G, 'danger', sx(s.to.x), sy(s.to.y), w * k, { h: w * k * SQ, alpha: 0.5 });
-    } else {
-      ring(sx(s.to.x), sy(s.to.y), Z(s.land), Z(s.land) * SQ, '#ffd36a', 1);
-      ell(sx(s.to.x), sy(s.to.y), Z(s.land) * k, Z(s.land) * SQ * k, 'rgba(255,211,106,.3)');
-    }
+    const k = clamp01(1 - s.t / s.T), r = Z(s.land);
+    ring(sx(s.to.x), sy(s.to.y), r, r * SQ, '#ffd36a', 1);
+    ell(sx(s.to.x), sy(s.to.y), r * k, r * SQ * k, 'rgba(255,211,106,.3)');
+    drawSignatureHalo(sx(s.x), sy(s.y) - 18, 0, true);
   }
   for (const u of m.units) if (!u.hazard) { ell(sx(u.x), sy(u.y) - 4, Z(u.r), Z(u.r), '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
   for (const f of fx) if (f.ground) drawFx(f, fxNow);
@@ -1908,10 +1904,7 @@ function drawSignatureHalo(cx, cy, age, releasing = false, fade = 1) {
     drawSignaturePalm(ex, ey, h.size * open, fade, side < 0);
   }
 }
-function drawDivineImpact(tx, ty, age, fade) {
-  const t = age - 0.4;
-  if (t < 0 || t > 0.62) return;
-  G.save(); G.globalAlpha *= fade;
+function drawDivineImpact(tx, ty, t) {
   for (let i = 0; i < 3; i++) {
     const k = clamp01((t - i * 0.045) / 0.42);
     if (k <= 0 || k >= 1) continue;
@@ -1922,7 +1915,6 @@ function drawDivineImpact(tx, ty, age, fade) {
     G.save(); G.translate(tx + Math.cos(a) * r, ty + Math.sin(a) * r - t * 12); G.rotate(a);
     G.fillStyle = `rgba(255,236,167,${(1 - t / 0.62) * 0.8})`; G.beginPath(); G.ellipse(0, 0, 2.3, 0.8, 0, 0, Math.PI * 2); G.fill(); G.restore();
   }
-  G.restore();
 }
 
 function drawFx(f, now) {
@@ -1944,27 +1936,23 @@ function drawFx(f, now) {
   }
   switch (f.kind) {
     case 'shake': case 'god': break;
-    case 'arms': { // the painted halo strikes, carries through to the far bank, then dissolves
-      const cx = x, cy = y - 18, tx = sx(f.tx), ty = sy(f.ty) - 18;
-      const fade = 1 - clamp01((age - f.life + 0.4) / 0.4);
-      if (f.part === 'fan') {
-        const face = tx >= cx ? 1 : -1, gap = Math.min(64, Math.abs(tx - cx) * 0.35);
-        const at = f.broken ?? age, travel = smooth(at / 0.4), hitX = tx - face * gap; // a broken halo stays where it lost
-        // Continue along the attack's world-space direction, including diagonal and vertical attacks.
-        const dx = f.tx - f.x, dy = f.ty - f.y, distance = Math.hypot(dx, dy);
-        const ux = distance > 0 ? dx / distance : face, uy = distance > 0 ? dy / distance : 0;
-        const dot = f.tx * ux + f.ty * uy;
-        const toEdge = Math.max(0, -dot + Math.sqrt(Math.max(0, dot * dot + ARENA.r ** 2 - f.tx ** 2 - f.ty ** 2)));
-        const exitX = sx(f.tx + ux * (toEdge + 90 / SC)), exitY = sy(f.ty + uy * (toEdge + 90 / SC)) - 18;
-        const carry = smooth((at - 0.4) / 0.9), dissolve = smooth((carry - 0.2) / 0.8);
-        const mx = cx + (hitX - cx) * travel + (exitX - hitX) * carry;
-        const my = cy + (ty - cy) * travel + (exitY - ty) * carry;
-        drawSignatureHalo(mx, my, age, true, fade * (1 - dissolve));
-        if (dissolve > 0 && dissolve < 1) for (let i = 0; i < 14; i++) {
-          const a = i / 14 * Math.PI * 2, r = 18 + dissolve * 35;
-          star(mx + Math.cos(a) * r, my - 18 + Math.sin(a) * r * 0.65 - dissolve * 12, 0.7 + dissolve, Math.sin(dissolve * Math.PI) * 0.6 * fade);
-        }
-      } else if (f.broken == null) drawDivineImpact(tx, ty, age, fade); // no impact if it never landed
+    case 'armsBroken':
+      drawSignatureHalo(x, y - 18, age, true, 1 - k);
+      break;
+    case 'armsImpact':
+      drawDivineImpact(x, y - 18, age);
+      break;
+    case 'armsCarry': { // the halo carries through to the far bank and dissolves
+      const dir = unitDir2(f.vx, f.vy), dot = f.x * dir.x + f.y * dir.y;
+      const toEdge = Math.max(0, -dot + Math.sqrt(Math.max(0, dot * dot + ARENA.r ** 2 - f.x ** 2 - f.y ** 2)));
+      const carry = smooth(k), dissolve = smooth((carry - 0.2) / 0.8);
+      const distance = (toEdge + 90 / SC) * carry;
+      const mx = sx(f.x + dir.x * distance), my = sy(f.y + dir.y * distance) - 18;
+      drawSignatureHalo(mx, my, age, true, 1 - dissolve);
+      if (dissolve > 0 && dissolve < 1) for (let i = 0; i < 14; i++) {
+        const a = i / 14 * Math.PI * 2, r = 18 + dissolve * 35;
+        star(mx + Math.cos(a) * r, my - 18 + Math.sin(a) * r * 0.65 - dissolve * 12, 0.7 + dissolve, Math.sin(dissolve * Math.PI) * 0.6);
+      }
       break;
     }
     case 'splash': { // river water thrown up: droplets arc outward and fall, with a ring on the water

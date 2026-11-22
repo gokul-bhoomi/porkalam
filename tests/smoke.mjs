@@ -158,11 +158,20 @@ await check('a signature move plays its scene, pauses the game, then lands', asy
     const during = d.snapshot();
     d.setInput(1, { mx: -1 }); d.step(30);
     const still = d.snapshot();
-    d.setInput(1, {}); d.step(60 * 3);
-    return { during, still, after: d.snapshot() };
+    d.setInput(1, {});
+    const m = d.match();
+    for (let i = 0; i < 180 && !m.strikesDue.length; i++) d.step(1);
+    const strike = m.strikesDue[0];
+    if (!strike) throw new Error('the arms never launched');
+    d.step(Math.round(strike.t * 60) - 1);
+    const beforeImpact = d.snapshot();
+    d.step(1);
+    return { during, still, beforeImpact, after: d.snapshot() };
   });
   expect(s.during.match.scene === 'Thousand-Arm Form', `no scene: ${s.during.match.scene}`);
   expect(s.still.match.players[1].x === s.during.match.players[1].x, 'the game did not pause during the scene');
+  expect(s.beforeImpact.match.players[1].hp === 100 && !s.beforeImpact.fx.includes('armsImpact'), 'the impact played before the arms landed');
+  expect(s.after.fx.includes('armsImpact') && !s.after.fx.includes('rain'), 'expected the arms impact effect');
   expect(s.after.match.players[1].hp === 65, `Thousand-Arm Form did not land: hp ${s.after.match.players[1].hp}`);
 });
 

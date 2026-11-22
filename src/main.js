@@ -112,7 +112,7 @@ function onEvent(e, m) {
   if (e.type === 'boon') { sound.play('boon', e.tier === 'divine'); sound.duck(0.2, 2.4); }
   if (e.type === 'boonUsed' && e.tier !== 'divine') sound.play('powerLand');
   if (e.type === 'scene') { sound.play('powerUp'); sound.duck(0.15, 2.6); }
-  if (e.type === 'release' && POWER_MOVES.has(e.name)) sound.play('powerLand');
+  if (e.type === 'release' && POWER_MOVES.has(e.name)) sound.play(e.name === 'Thousand-Arm Form' ? 'whoosh' : 'powerLand');
   if (e.type === 'shivaTakes') { sound.duck(0.03, 6); sound.play('boon', true); setTimeout(() => sound.play('medFull'), 2000); setTimeout(() => sound.play('powerLand'), 4000); } // Shiva takes both Brahmastras back: his arrival, a gong as the eye opens, a boom as it swallows them
   if (e.type === 'end' && e.reason === 'brahmastra' && ART.fx.sun2) { sound.play('ko'); sound.play('powerLand'); } // the boom as the second sun lands
   else if (e.type === 'end') { sound.play(e.reason === 'ko' || e.reason === 'double' || e.reason === 'brahmastra' ? 'ko' : 'tick'); if (e.winner != null) setTimeout(() => sound.play('win'), 1200); }
@@ -120,7 +120,12 @@ function onEvent(e, m) {
     hitFx(e, !(ART.fx.sun2 && (e.srcs || []).includes('Brahmastra'))); // (the second sun stages its own shaking, render.js)
   }
   if (e.type === 'clash') add({ kind: 'clash', x: e.x, y: e.y, life: 0.4 });
-  if (e.type === 'armsBroken') for (const f of S.fx) if (f.kind === 'arms' && f.pid === e.pid && !f.broken) { f.broken = now - f.t0; f.life = f.broken + 0.35; } // the halo lost a clash: it stops and fades where it was
+  if (e.type === 'armsBroken') add({ kind: 'armsBroken', x: e.x, y: e.y, ground: true, life: 0.35 });
+  if (e.type === 'armsLand') {
+    add({ kind: 'armsCarry', x: e.x, y: e.y, vx: e.vx, vy: e.vy, ground: true, life: 0.9 });
+    add({ kind: 'armsImpact', x: e.x, y: e.y, life: 0.62 });
+    sound.play('powerLand');
+  }
   if (e.type === 'swing') { const p = m.players[e.pid]; add({ kind: 'swing', x: p.x, y: p.y, a: Math.atan2(p.face.y, p.face.x), life: 0.2 }); }
   if (e.type === 'barrier') add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'medStop' && m.players[e.pid].msg?.text === 'BARRIER BROKEN') add({ kind: 'boom', x: m.players[e.pid].x, y: m.players[e.pid].y, life: 0.5, ground: true });
@@ -139,12 +144,6 @@ function onEvent(e, m) {
   if (e.type === 'blink') add({ kind: 'trail', x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'release') { // power moves land with a bang in the arena, right after their scene
     const p = m.players[e.pid], shake = (amp, life) => add({ kind: 'shake', x: 0, y: 0, amp, life });
-    if (e.name === 'Thousand-Arm Form') { // a serene jade-and-gold halo glides forward as one painted formation
-      const o = m.players[1 - e.pid];
-      add({ kind: 'arms', part: 'fan', pid: e.pid, ground: true, x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 }); // drawn behind the fighters
-      add({ kind: 'arms', part: 'palms', pid: e.pid, x: p.x, y: p.y, tx: o.x, ty: o.y, life: 1.6 });          // drawn in front
-      shake(0.7, 0.22); // a light accent; the golden impact ripples are drawn with the hands
-    }
     if (e.name === 'Gaja Arrow') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,140,60', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Shakti Vel') { add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '255,200,90', r: 60 }); shake(3, 0.4); }
     if (e.name === 'Pashupatastra') { if (!ART.fx.trident1) add({ kind: 'bolt', x: p.x, y: p.y, life: 0.5 }); add({ kind: 'shock', x: p.x, y: p.y, life: 0.6, color: '170,220,255', r: 60 }); shake(3, 0.4); }

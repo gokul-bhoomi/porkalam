@@ -919,7 +919,8 @@ function segSegDist(a, b, c, d) {
 const touching = (a, b) => { const p = clashBody(a), q = clashBody(b); return segSegDist(p.a, p.b, q.a, q.b) <= p.r + q.r; };
 function clashes(m) {
   const flying = m.strikesDue.filter((s) => s.travels && !s.dead);
-  for (const s of flying) { // where the halo is right now (eased like the drawing in render.js)
+  for (const s of flying) { // advance the halo before resolving contact on this step
+    s.t -= STEP;
     const u = clamp(1 - s.t / s.T, 0, 1), e = u * u * (3 - 2 * u);
     s.x = s.from.x + (s.to.x - s.from.x) * e; s.y = s.from.y + (s.to.y - s.from.y) * e;
   }
@@ -980,11 +981,12 @@ function collectHits(m) {
   }
   m.areas = m.areas.filter((a) => !a.dead);
   for (const s of m.strikesDue) { // whole-arena strikes, once they arrive
-    if (s.dead || (s.t -= STEP) > 1e-9) continue;
+    if (!s.travels) s.t -= STEP;
+    if (s.dead || s.t > 1e-9) continue;
     s.dead = true;
     const p = m.players[s.owner], o = opponent(m, p);
     const caught = (t) => !s.land || Math.hypot(t.x - s.to.x, t.y - s.to.y) <= s.land + (t.r ?? FR); // a landing spot only catches who is in it
-    if (s.land) ev(m, 'rain', { x: s.to.x, y: s.to.y, r: s.land });
+    if (s.land) ev(m, 'armsLand', { x: s.to.x, y: s.to.y, vx: s.vx, vy: s.vy });
     for (const t of [o, ...m.units.filter((u) => u.owner !== s.owner)]) if (caught(t) && !(t === o && o.effects.invuln)) m.hits.push({ target: t, dmg: s.dmg, kb: s.kb, from: s.land ? s.to : s.from, src: s.src, divine: s.divine, by: s.owner });
   }
   m.strikesDue = m.strikesDue.filter((s) => !s.dead);
