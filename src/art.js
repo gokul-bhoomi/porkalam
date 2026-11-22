@@ -129,7 +129,9 @@ function prescale(c, f, k) {
 export async function loadArt(base = '') {
   // ?arena=battlefield (or battlefield_big) tries another arena painting; each has its own floor fit json
   const pick = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('arena')) || '';
-  const file = /^[a-z_]+$/.test(pick) ? 'arena_' + pick : 'arena';
+  const warOff = typeof location !== 'undefined' && new URLSearchParams(location.search).get('war') === '0';
+  // the live battlefield (owner 2026-11-21): the painting without armies, so the war in src/war.js happens behind the arena
+  const file = pick === 'battlefield' && !warOff ? 'arena_battlefield_live' : /^[a-z_]+$/.test(pick) ? 'arena_' + pick : 'arena';
   ART.theme = pick === 'battlefield' ? 'battlefield' : 'river'; // the arena's world: river water, or a dry battlefield (no water effects)
   ARENA.r = ARENA.sizes[ART.theme]; // each arena has its own size (owner, 2026-11-16)
   const [arena, fitJson] = await Promise.all([
@@ -244,10 +246,11 @@ export async function loadArt(base = '') {
   ]); // the richer crystal yantra (2026-11-15) replaces the first one
   if (ART.theme === 'battlefield') { // calm life over the battlefield painting (owner 2026-11-16: whole bobbing armies looked fake): banners, smoke, dust, arrow volleys
     const nums = (p, n) => Array.from({ length: n }, (_, i) => p + (i + 1));
-    const rows = (file, prefix, n, cols = 1, fade = 0) => loadImg(base + file).then((img) => { // n rows (x cols) of frames
+    const rows = (file, prefix, n, cols = 1, fade = 0, strong = false) => loadImg(base + file).then((img) => { // n rows (x cols) of frames; strong = also clear magenta bleed from dust
       if (!img) return;
       const { c, d } = keyOut(img), rh = c.height / n, cw = c.width / cols;
       dePink(d.data);
+      if (strong) despill(d.data, c.width, true);
       if (fade) for (let y = 0; y < c.height; y++) { // soften the bottom of every row so the band melts into the ground
         const k = Math.min(1, (rh - (y % rh)) / (rh * fade));
         if (k < 1) for (let x = 0; x < c.width; x++) d.data[(y * c.width + x) * 4 + 3] *= k;
@@ -261,6 +264,14 @@ export async function loadArt(base = '') {
       rows('art/bf_dust_band.png', 'dustBand', 8, 1, 0.45), // its flat bottom edge fades out
       rows('art/bf_banner_tiger16.png', 'tigerFlag', 2, 8), // 16 small-step frames each (8-frame ones looked wobbly)
       rows('art/bf_banner_fish16.png', 'fishFlag', 2, 8),
+      // the live war (owner 2026-11-21, art/prompts_battlefield_live.txt): frame strips src/war.js plays; a missing one = placeholder shapes
+      rows('art/war_run_tiger.png', 'runT', 1, 8), rows('art/war_run_fish.png', 'runF', 1, 8),
+      rows('art/war_elephant_charge.png', 'eleC', 1, 12, 0, true),
+      rows('art/war_stagger_fall.png', 'stag', 1, 16), rows('art/war_horse_gallop.png', 'horse', 1, 8),
+      rows('art/war_duel.png', 'duel', 1, 12), rows('art/war_arrow_land.png', 'arrowL', 1, 12),
+      rows('art/war_cavalry_fish.png', 'cavF', 1, 8), rows('art/war_chariot.png', 'chariot', 1, 8),
+      rows('art/war_stagger_fall_fish.png', 'stagF', 1, 16), rows('art/war_elephant_fall.png', 'eleF', 1, 12, 0, true), rows('art/war_elephant_swing.png', 'eleS', 1, 12, 0, true),
+      rows('art/war_spear.png', 'spear', 1, 8), rows('art/war_dust.png', 'dustW', 1, 12, 0, true),
     ]);
     steady(nums('smokeCol', 8));
     steady(nums('tigerFlag', 16), false); steady(nums('fishFlag', 16), false); // the poles are already fixed in the art; the cloth would fool a sideways fix

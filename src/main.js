@@ -21,6 +21,8 @@ const S = {
   screen: 'title', minutes: 5, bestOf: 1, series: null, mode: '1p', side: 0, level: 'normal', row: 0, cpu: null, match: null, paused: false, sel: 0, now: 0, clock: 0, fx: [], banner: null, errors: [], pads: 0,
   seed: Number(qs.get('seed')) || 1 + Math.floor(Math.random() * 1e6), screenAt: 0,
 };
+// review aids for the battlefield hazards: ?war=busy (short gaps), ?warhaz=elephant (only that kind)
+const HAZ_TEST = qs.get('war') === 'busy' || qs.get('warhaz') ? { busy: qs.get('war') === 'busy', kind: qs.get('warhaz') } : null;
 const DBG = { paused: qs.get('pause') === '1', override: [null, null], menu: [] };
 // ?test: straight into a match with a panel to hand out any boon (src/testmode.js)
 const TEST = createTestMode(qs, {
@@ -50,7 +52,7 @@ function startMatch() {
   S.offer = null;
   const seed = S.seed++;
   setSeries(S.series);
-  S.match = createMatch({ seed, time: S.tutorial ? TUNE.match.max : S.minutes * 60, chars: S.chars || ['siddhan', 'veeran'] });
+  S.match = createMatch({ seed, time: S.tutorial ? TUNE.match.max : S.minutes * 60, chars: S.chars || ['siddhan', 'veeran'], arena: S.tutorial ? 'river' : ART.theme, hazardTest: HAZ_TEST });
   S.cpu = S.mode === '1p' && !S.tutorial ? createCpu(1 - S.side, S.level, seed) : null; // the computer plays the other fighter
   Object.assign(S, { screen: 'fight', paused: false, fx: [], banner: null, sel: 0, screenAt: S.now });
   S.tut = null;

@@ -7,10 +7,12 @@
 //   &refill=1                     give the boon back a moment after it is used, to repeat it quickly
 //   &chars=veeran,siddhan         which fighters (P1,P2)
 //   &minutes=9                    match length
+//   &arena=battlefield            the battlefield: the panel then also has buttons that send each arena hazard in at once
 // Only a testing aid: nothing here changes the game rules.
 import { GODS } from './chars/gods.js';
 import { CHARS } from './chars/index.js';
 import { TUNE } from './config.js';
+import { forceHazard } from './sim.js';
 
 const TIER_NAMES = ['small', 'divine'];
 const BOONS = Object.entries(GODS).flatMap(([godId, g]) => g.tiers.flatMap((t, ti) => t.map((b) => ({ b, godId, god: g.name, tier: TIER_NAMES[ti] }))));
@@ -70,6 +72,14 @@ export function createTestMode(qs, api) {
   const cpu = el('label', 'display:flex;gap:4px;align-items:center;cursor:pointer', box);
   const cc = el('input', null, cpu); cc.type = 'checkbox'; cc.checked = T.cpu; cc.onchange = () => { T.cpu = cc.checked; back(); };
   el('span', null, cpu, 'P2 computer');
+  // the battlefield's arena hazards, on demand (owner 2026-11-22); only shown when the match has them (?arena=battlefield)
+  const haz = el('span', 'display:flex;gap:4px;align-items:center', box);
+  el('span', 'margin-left:6px;opacity:.8', haz, 'Hazard:');
+  for (const [k, label] of [['arrows', 'Arrows'], ['soldier', 'Soldier'], ['spear', 'Spear'], ['horse', 'Horse'], ['elephant', 'Elephant']]) {
+    const b = el('button', btnCss, haz, label); b.onclick = () => { const m = api.match(); if (m) forceHazard(m, k); back(); };
+  }
+  const showHaz = () => { haz.style.display = api.match()?.haz ? 'flex' : 'none'; requestAnimationFrame(showHaz); };
+  showHaz();
   button('Restart', () => T.start());
   button('Hide', () => { box.style.display = 'none'; });
   return T;

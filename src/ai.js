@@ -71,6 +71,8 @@ export function cpuInput(m, cpu, dt) {
       const th = incoming(m, p);
       if (th && cpu.r() < cpu.L.dodge) { cpu.hold = {}; cpu.holdT = 0; cpu.gap = 3 * dt; cpu.dodge = dodgeDir(p, th, cpu.r, cpu.L); cpu.dodgeT = 0.45; return Object.assign(out, steer(m, cpu, p, o, d, dt)); }
     }
+    // a hazard is coming at it (it noticed the warning): let go of the charge or wall and get out of the way
+    if (hazardMoves(m, cpu, p)) { cpu.hold = {}; cpu.holdT = 0; cpu.gap = 3 * dt; return Object.assign(out, steer(m, cpu, p, o, d, dt)); }
     // a wall is no use against a move that goes through any block: stop building it and deal with the draw instead
     if (cpu.hold.block && o.cast && !o.cast.done && o.cast.move.pierceBlock && cpu.r() < 0.3 + 0.7 * cpu.L.plan) { cpu.hold = {}; cpu.holdT = 0; cpu.think = 0; return Object.assign(out, steer(m, cpu, p, o, d, dt)); }
     cpu.holdT -= dt;
@@ -111,6 +113,7 @@ function decide(m, cpu, p, o, d) {
     if (cpu.medProg == null || prog > cpu.medProg + 1e-6) { cpu.medProg = prog; cpu.medStuck = 0; }
     else cpu.medStuck += L.react;
     const stop = { buttons: { block: true }, time: 0.05 };
+    if (hazardMoves(m, cpu, p)) { cpu.medProg = cpu.medHp = null; cpu.medWait = 2; return stop; } // an elephant is coming: get up
     if (p.med.barrier < 8 && incoming(m, p) && R() < L.block) return { buttons: { block: true }, time: 0.7 };
     if (cpu.medHp == null) cpu.medHp = p.hp;
     // some of every hit leaks through the barrier (rule 11): sitting under fire costs health, so get up and fight
@@ -136,6 +139,20 @@ function decide(m, cpu, p, o, d) {
   const oReach = o.ch.moves.a2.reach || 46;
   if (flyS && p.air?.kind === 'fly' && airborne(p)) { // flying: come down when it's safe again, or the power runs low
     if (p.power < 10 || (d > oReach + 70 && R() < 0.3)) return { buttons: { [flyS]: true }, time: 0.05 };
+  }
+  // a horse or elephant is about to run it down and a sidestep won't clear its path in time: hop over it, take off or
+  // blink out (those all leave the ground or the lane: rule 17 / the hazard note), if it noticed the warning
+  const hz = m.haz?.cur?.unit;
+  if (hz && cpu.hazSeen && cpu.hazId === m.haz.cur.id && !airborne(p) && R() < 0.4 + 0.6 * L.dodge) {
+    const sp = Math.hypot(hz.vx, hz.vy) || 1, ux = hz.vx / sp, uy = hz.vy / sp, rx = p.x - hz.x, ry = p.y - hz.y;
+    const along = rx * ux + ry * uy, side = Math.abs(rx * uy - ry * ux), C = TUNE.hazard[hz.hazard];
+    const tHit = along / sp, clear = C.r + TUNE.fighterR + (C.swing?.reach || 0) - side; // how far it must move to be out of reach
+    if (along > 0 && tHit < 0.55 && clear > p.ch.speed * TUNE.pace.move * Math.max(0.05, tHit - 0.1)) {
+      const blinkS = ['s1', 's2', 's3'].find((sl) => mv[sl]?.kind === 'blink'), out = { mx: -uy * Math.sign(rx * uy - ry * ux || 1), my: ux * Math.sign(rx * uy - ry * ux || 1) };
+      if (jumpS && can(mv[jumpS])) return { buttons: { [jumpS]: true, ...out }, time: 0.05 };
+      if (blinkS && can(mv[blinkS])) return { buttons: { [blinkS]: true, ...out }, time: 0.05 };
+      if (flyS && can(mv[flyS]) && !p.air) return { buttons: { [flyS]: true }, time: 0.05 };
+    }
   }
   // Shiva's Tandava: standing in the lava on the sunk half hurts, so jump or fly across (the only way over)
   const ch = m.arenaChange;
@@ -388,6 +405,34 @@ function steer(m, cpu, p, o, d, dt) {
     const ad = Math.hypot(p.x - a.x, p.y - a.y);
     if (ad < a.r + 6) { const l = ad || 1; x += ((p.x - a.x) / l) * 2; y += ((p.y - a.y) / l) * 2; }
   }
+  const hz = hazardPush(m, cpu, p); x += hz.x; y += hz.y; // get out of the way of the battlefield's hazards
   const l = Math.hypot(x, y);
   return l > 1 ? { mx: x / l, my: y / l } : l < 0.15 ? { mx: 0, my: 0 } : { mx: x, my: y };
+}
+
+const hazardMoves = (m, cpu, p) => { const h = hazardPush(m, cpu, p); return Math.hypot(h.x, h.y) > 0.5; };
+// The battlefield's hazards (ground rule 12 note) warn first, and a player who notices the warning steps aside:
+// out from under the arrow shadows and the staggering soldier, off the spear's line, out of the horse's or
+// elephant's lane. Whether it notices at all depends on skill, and it only reacts after its reaction time.
+function hazardPush(m, cpu, p) {
+  const h = m.haz?.cur, out = { x: 0, y: 0 };
+  if (!h || airborne(p)) return out;
+  if (cpu.hazId !== h.id) { cpu.hazId = h.id; cpu.hazSeen = cpu.r() < 0.3 + 0.7 * cpu.L.dodge; cpu.hazAt = h.age + cpu.L.react * (0.7 + cpu.r() * 0.6); }
+  if (!cpu.hazSeen || h.age < cpu.hazAt) return out;
+  const C = TUNE.hazard[h.kind], FR = TUNE.fighterR;
+  const away = (x, y, r, w) => { const dx = p.x - x, dy = p.y - y, dd = Math.hypot(dx, dy); if (dd < r) { const l = dd || 1; out.x += (dx / l) * w; out.y += (dy / l) * w; } };
+  const offLine = (x0, y0, x1, y1, r, w) => { // step out of a straight path, to whichever side is nearer
+    const lx = x1 - x0, ly = y1 - y0, L2 = lx * lx + ly * ly || 1, t = ((p.x - x0) * lx + (p.y - y0) * ly) / L2;
+    if (t < 0 || t > 1) return; // already behind it, or it won't come this far
+    const cx = x0 + lx * t, cy = y0 + ly * t, dx = p.x - cx, dy = p.y - cy, dd = Math.hypot(dx, dy);
+    if (dd >= r) return;
+    const n = dd > 1e-6 ? { x: dx / dd, y: dy / dd } : { x: -ly / Math.sqrt(L2), y: lx / Math.sqrt(L2) };
+    const inward = n.x * -p.x + n.y * -p.y >= 0 || Math.hypot(p.x, p.y) < ARENA.r * 0.6 ? 1 : -1; // don't get pinned on the edge
+    out.x += n.x * inward * w; out.y += n.y * inward * w;
+  };
+  if (h.kind === 'arrows') { for (const a of h.pts) if (!a.done) away(a.x, a.y, C.r + FR + 6, 2.5); }
+  else if (h.kind === 'soldier') { if (!h.landed) away(h.x1, h.y1, C.r + FR + 10, 2.5); }
+  else if (h.kind === 'spear') { if (!h.dead) offLine(h.x ?? h.x0, h.y ?? h.y0, h.x1, h.y1, C.r + FR + 8, 3.5); }
+  else { const u = h.unit; if (u || h.age < h.warn) offLine(u ? u.x : h.x0, u ? u.y : h.y0, h.x1, h.y1, C.r + FR + 10 + (C.swing?.reach || 0), 3.5); } // the elephant's tusks reach beyond its body
+  return out;
 }
