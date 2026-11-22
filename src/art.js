@@ -4,9 +4,9 @@
 // is lined up on the same foot baseline.
 import { RES, ARENA } from './config.js';
 
-export const ART = { theme: 'river', arena: null, fit: null, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, gods: {}, cards: {}, sand: {}, title: null, arms: null, ready: false };
+export const ART = { theme: 'river', arena: null, fit: null, arenas: {}, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, gods: {}, cards: {}, sand: {}, title: null, arms: null, ready: false };
 // Dramatic scene paintings (art/scene_<key>.png), drawn by drawScene in render.js.
-const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel', 'vishwaroopam', 'tandava'];
+const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel', 'vishwaroopam', 'tandava', 'manthan'];
 // The boon gods, painted blessing (art/god_<name>.png, and the figure alone on magenta in god_<name>_fg.png).
 const GOD_ART = ['shiva', 'murugan', 'brahma', 'krishna', 'narada'];
 
@@ -126,20 +126,33 @@ function prescale(c, f, k) {
   };
 }
 
+// Switch the arena: its painting and floor fit, its world (river water or dry battlefield) and its size. The renderer
+// then lines the view up again (fitView). Unknown names fall back to the river.
+export const ARENA_IDS = ['river', 'battlefield'];
+export function setArena(theme) {
+  ART.theme = theme === 'battlefield' ? 'battlefield' : 'river'; // the arena's world: river water, or a dry battlefield (no water effects)
+  ARENA.r = ARENA.sizes[ART.theme]; // each arena has its own size (owner, 2026-11-16)
+  const a = ART.arenas[ART.theme];
+  ART.arena = a?.img || null; ART.fit = a?.fit || { ...DEFAULT_FIT };
+}
 export async function loadArt(base = '') {
   // ?arena=battlefield (or battlefield_big) tries another arena painting; each has its own floor fit json
   const pick = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('arena')) || '';
   const warOff = typeof location !== 'undefined' && new URLSearchParams(location.search).get('war') === '0';
   // the live battlefield (owner 2026-11-21): the painting without armies, so the war in src/war.js happens behind the arena
-  const file = pick === 'battlefield' && !warOff ? 'arena_battlefield_live' : /^[a-z_]+$/.test(pick) ? 'arena_' + pick : 'arena';
-  ART.theme = pick === 'battlefield' ? 'battlefield' : 'river'; // the arena's world: river water, or a dry battlefield (no water effects)
-  ARENA.r = ARENA.sizes[ART.theme]; // each arena has its own size (owner, 2026-11-16)
-  const [arena, fitJson] = await Promise.all([
-    loadImg(base + `art/${file}.png`),
-    fetch(base + `art/${file}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-  ]);
-  ART.arena = arena;
-  ART.fit = { ...DEFAULT_FIT, ...(fitJson || {}) };
+  // both arenas load now, so a player can pick one on the match setup screen (owner 2026-11-22); ?arena= picks the
+  // first one (and another painting can still be tried for either world, e.g. ?arena=battlefield_big)
+  const files = { river: 'arena', battlefield: warOff ? 'arena_battlefield' : 'arena_battlefield_live' };
+  const custom = /^[a-z_]+$/.test(pick) && !files[pick] ? 'arena_' + pick : null;
+  if (custom) files[pick.startsWith('battlefield') ? 'battlefield' : 'river'] = custom;
+  await Promise.all(Object.entries(files).map(async ([theme, file]) => {
+    const [img, fitJson] = await Promise.all([
+      loadImg(base + `art/${file}.png`),
+      fetch(base + `art/${file}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]);
+    if (img) ART.arenas[theme] = { img, fit: { ...DEFAULT_FIT, ...(fitJson || {}) } };
+  }));
+  setArena(pick.startsWith('battlefield') ? 'battlefield' : 'river');
   for (const [id, src] of Object.entries(SHEETS)) {
     const [walkImg, actImg, airImg] = await Promise.all([loadImg(base + src.walk), loadImg(base + src.act), src.air ? loadImg(base + src.air) : null]);
     if (!walkImg) continue;
@@ -187,6 +200,10 @@ export async function loadArt(base = '') {
     if (img) ART.gods[g] = { img, fg: fg ? keyOut(fg).c : null };
   }));
   await Promise.all(Object.keys(SHEETS).map(async (id) => { const c = await loadImg(`${base}art/card_${id}.png`); if (c) ART.cards[id] = c; })); // character-select cards
+  { // Shiva drinking the Halahala (Samudra Manthan's end)
+    const img = await loadImg(base + 'art/manthan_shiva.png');
+    if (img) ART.manthanShiva = { img };
+  }
   ART.title = await loadImg(base + 'art/title.png'); // the title screen key art
   if (ART.sceneLayers.siddhan_sig) ART.arms = cutArms(ART.sceneLayers.siddhan_sig.bg); // the Thousand-Arm Form's spirit, for the arena
   const fxImgs = await Promise.all(FX_SHEETS.map((f) => loadImg(base + f)));
@@ -241,10 +258,16 @@ export async function loadArt(base = '') {
     cellSheet('art/fx_sky_eye.png', ['skyEye'], null, 1),
     cellSheet('art/fx_cosmos_sky.png', ['cosmosSky'], null, 1), // Vishwaroopam's sky, one wide sharp image
     cellSheet('art/fx_cosmic_form.png', ['cosmicForm'], fadeBottom, 1),
+    // Samudra Manthan (ChatGPT, 2026-11-22): the churning sky, the poison, the treasures, Mount Mandara, Vasuki
+    cellSheet('art/manthan_sky.png', ['manthanSky'], null, 1),
+    cellSheet('art/manthan_fx.png', ['poisonBubble', 'poisonBurst', 'poisonDrop', 'blueBurst'], null, 1),
+    cellSheet('art/manthan_treasures.png', ['kamadhenu', 'airavata', 'amritPot', 'treasureLight'], null, 1),
+    cellSheet('art/manthan_mandara.png', ['mandara1', 'mandara2', 'mandara3', 'mandara4'], null, 1),
+    cellSheet('art/manthan_vasuki.png', ['vasukiHead', 'vasukiBody1', 'vasukiBody2', 'vasukiTail'], null, 1),
     sandSheet(base + 'art/fx_sand_hits.png', ['crater', 'impact', 'skid', 'scuff']), // marks the fight leaves on the sand (2026-11-15)
     sandSheet(base + 'art/fx_sand_marks.png', ['foot', 'wet', 'glass', 'burn']),
   ]); // the richer crystal yantra (2026-11-15) replaces the first one
-  if (ART.theme === 'battlefield') { // calm life over the battlefield painting (owner 2026-11-16: whole bobbing armies looked fake): banners, smoke, dust, arrow volleys
+  { // the battlefield's own art (loaded whichever arena comes first): calm life over the painting (owner 2026-11-16: whole bobbing armies looked fake): banners, smoke, dust, arrow volleys
     const nums = (p, n) => Array.from({ length: n }, (_, i) => p + (i + 1));
     const rows = (file, prefix, n, cols = 1, fade = 0, strong = false) => loadImg(base + file).then((img) => { // n rows (x cols) of frames; strong = also clear magenta bleed from dust
       if (!img) return;
@@ -267,11 +290,11 @@ export async function loadArt(base = '') {
       // the live war (owner 2026-11-21, art/prompts_battlefield_live.txt): frame strips src/war.js plays; a missing one = placeholder shapes
       rows('art/war_run_tiger.png', 'runT', 1, 8), rows('art/war_run_fish.png', 'runF', 1, 8),
       rows('art/war_elephant_charge.png', 'eleC', 1, 12, 0, true),
-      rows('art/war_stagger_fall.png', 'stag', 1, 16), rows('art/war_horse_gallop.png', 'horse', 1, 8),
+      rows('art/war_fallen_tiger.png', 'stag', 4, 4), rows('art/war_horse_gallop.png', 'horse', 1, 8),
       rows('art/war_duel.png', 'duel', 1, 12), rows('art/war_arrow_land.png', 'arrowL', 1, 12),
       rows('art/war_cavalry_fish.png', 'cavF', 1, 8), rows('art/war_chariot.png', 'chariot', 1, 8),
-      rows('art/war_stagger_fall_fish.png', 'stagF', 1, 16), rows('art/war_elephant_fall.png', 'eleF', 1, 12, 0, true), rows('art/war_elephant_swing.png', 'eleS', 1, 12, 0, true),
-      rows('art/war_spear.png', 'spear', 1, 8), rows('art/war_dust.png', 'dustW', 1, 12, 0, true),
+      rows('art/war_fallen_fish.png', 'stagF', 4, 4), rows('art/war_elephant_fall.png', 'eleF', 1, 12, 0, true), rows('art/war_elephant_swing.png', 'eleS', 1, 12, 0, true),
+      rows('art/war_spear_hd.png', 'spear', 8), rows('art/war_dust.png', 'dustW', 1, 12, 0, true),
     ]);
     steady(nums('smokeCol', 8));
     steady(nums('tigerFlag', 16), false); steady(nums('fishFlag', 16), false); // the poles are already fixed in the art; the cloth would fool a sideways fix

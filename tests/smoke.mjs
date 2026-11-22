@@ -63,19 +63,28 @@ await check('menus: pick a 7 minute match, choose a fighter on the select screen
     const d = window.__game.debug;
     d.pause(); d.press('confirm'); d.step(1);
     const setup = d.snapshot().screen;
-    // rows (1 player): players, cpu level, length
+    // rows (1 player): players, cpu level, arena, length
     d.press('down'); d.step(1); d.press('right'); d.step(1);          // CPU level normal -> hard
+    d.press('down'); d.step(1); d.press('right'); d.step(1); const arena = window.__game.debug.snapshot().arena; // river -> battlefield
     d.press('down'); d.step(1); d.press('right'); d.step(1); d.press('right', 1); d.step(1); // 5 -> 7 minutes
     d.press('confirm'); d.step(1);
     const select = d.snapshot().screen;
     d.press('down'); d.step(1); const boons = window.__game.boonsPage; d.press('up'); d.step(1); // the boons page opens and closes
     d.press('right'); d.step(1);                                       // choose Kanalan
+    d.press('confirm'); d.step(1);                                     // lock in Kanalan
+    const cpuPick = d.snapshot().screen;
+    d.press('back'); d.step(1); const unlocked = !window.__game.locked[0]; // back goes to your own pick
     d.press('confirm'); d.step(1);
-    return { setup, select, boons, snap: d.snapshot() };
+    d.press('left'); d.step(1);                                        // the CPU gets Mangulan
+    d.press('confirm'); d.step(1);
+    return { setup, select, boons, arena, cpuPick, unlocked, chars: window.__game.chars, snap: d.snapshot() };
   });
   expect(s.setup === 'setup' && s.select === 'select', `expected setup then select, got ${s.setup} ${s.select}`);
   expect(s.boons === true, 'the boons page did not open');
+  expect(s.cpuPick === 'select' && s.unlocked, `after locking your fighter you pick the CPU's, and back undoes your pick (${s.cpuPick}, ${s.unlocked})`);
+  expect(String(s.chars) === 'veeran,siddhan', `you chose Kanalan and gave the CPU Mangulan, got ${s.chars}`);
   expect(s.snap.screen === 'fight' && s.snap.match.duration === 420, `expected a 7 minute fight, got ${s.snap.screen} ${s.snap.match?.duration}`);
+  expect(s.arena === 'battlefield' && s.snap.arena === 'battlefield', `the arena row picks the battlefield and the match is played there (${s.arena}, ${s.snap.arena})`);
   expect(s.snap.mode === '1p' && s.snap.level === 'hard' && s.snap.cpu === 1, `expected 1 player vs a hard CPU: ${JSON.stringify(s.snap)}`);
   expect(s.snap.match.players[0].name === 'Kanalan' && s.snap.match.players[1].name === 'Mangulan', `expected you as Kanalan vs a CPU Mangulan: ${s.snap.match.players.map((p) => p.name)}`);
 });
@@ -193,6 +202,25 @@ await check('time-up shows the result, and rematch starts a new match', async ()
   expect(after.phase === 'fight' && after.timeLeft > 50, `no rematch: ${after.phase}`);
 });
 
+await check('tournament: whoever lost the match picks the next arena', async () => {
+  await open('?seed=5&pause=1');
+  const first = await game(() => {
+    const d = window.__game.debug; d.start({ minutes: 1, bestOf: 3 });
+    d.set(0, { hp: 80 }); d.match().timeLeft = 0.5; d.step(40); // P2 wins on time: P1 lost
+    d.resume(); return d.snapshot().arena;
+  });
+  await page.waitForTimeout(2600); // the TIME! call plays before the menu takes input
+  const s = await game(() => {
+    const d = window.__game.debug; d.pause();
+    d.press('confirm'); d.step(1); // NEXT MATCH
+    const pick = d.snapshot().screen;
+    d.press('down', 0); d.step(1); d.press('confirm', 0); d.step(1); // the loser (P1) picks the other arena
+    const after = d.snapshot(); d.resume(); return { pick, after };
+  });
+  expect(s.pick === 'arena', `the loser's arena pick should come up, got ${s.pick}`);
+  expect(s.after.screen === 'fight' && s.after.arena !== first && s.after.series.round === 2, `match 2 on the arena the loser picked (${first} -> ${s.after.arena}, ${s.after.screen})`);
+});
+
 await check('pause menu (Escape) stops the clock', async () => {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
@@ -223,7 +251,7 @@ await check('the Codex art loads: arena plus 8 frames for each fighter, and ?gre
   const a = await game(() => window.__game.art);
   expect(a.arena, 'arena.png did not load');
   expect(a.frames.siddhan === 8 && a.frames.veeran === 8 && a.actions.siddhan === 8 && a.actions.veeran === 8, `frames: ${JSON.stringify(a)}`);
-  expect(a.fx === 105, `expected 104 effect sprites (two sheets of 8, the war elephant, 8 legacy hands, 2 circle hands, 2 halo hands, 1 divine halo, the Tandava crack, 4 stages each of yantra, arrow volley, shrine, fire ring, 8 flame frames, 4 smoke frames, 8 single-arrow parts, 4 shrine platform / roof, 8 pillar pieces, 6 yantra layers, 16 divine weapon pieces, storm, sky eye, cosmic form), got ${a.fx}`);
+  expect(a.fx === 330, `expected 330 effect sprites (the battlefield's own art now always loads, so it can be picked: two sheets of 8, the war elephant, 8 legacy hands, 2 circle hands, 2 halo hands, 1 divine halo, the Tandava crack, 4 stages each of yantra, arrow volley, shrine, fire ring, 8 flame frames, 4 smoke frames, 8 single-arrow parts, 4 shrine platform / roof, 8 pillar pieces, 6 yantra layers, 16 divine weapon pieces, storm, sky eye, cosmic form, and Samudra Manthan's 17: sky, 4 poison, 4 treasures, 4 Mandara frames, 4 Vasuki pieces), got ${a.fx}`);
   expect(a.scenes >= 5, `expected the power-up sky paintings, got ${a.scenes}`);
   expect(a.gods === 5, `expected the 5 boon givers (Narada joined 2026-11-21), got ${a.gods}`);
   expect(a.sceneLayers >= 2, `expected the spirit-form layers for both signatures, got ${a.sceneLayers}`);
@@ -353,7 +381,7 @@ await check('no text overlaps or runs off screen on any menu page', async () => 
     shot('select: Mangulan'); d.press('right'); d.step(1); shot('select: Kanalan');
     d.press('down'); d.step(1); shot('boons page'); d.press('up'); d.step(1);
     d.press('up'); d.step(1); shot('controls page'); d.press('up'); d.step(1);
-    d.press('confirm'); d.step(1); // into the fight (Kanalan vs CPU Mangulan)
+    d.press('confirm'); d.step(1); shot('select: CPU pick'); d.press('left'); d.step(1); d.press('confirm'); d.step(1); // into the fight (Kanalan vs CPU Mangulan)
     d.step(30); shot('fight HUD');
     const m = d.match(); m.players[0].devotion = 8; d.setInput(0, { s1: true, s2: true }); d.step(1); d.setInput(0, {}); d.step(40); shot('boon card + held boon tag');
     d.press('pause'); d.step(1); shot('pause menu');

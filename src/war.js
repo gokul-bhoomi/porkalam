@@ -46,7 +46,9 @@ const MAN_A = 46; // a man's height in the arena, screen px (the fighters' heigh
 const ARROW_CELL = 62; // owner 2026-11-22: the arrows looked unintentionally tiny; a war arrow is about half a man's height
 // a common soldier in the arena, standing height in screen px. The art lies about 2.2x longer than it stands (dropped spear
 // and all), so this is set by the body on the ground: ~55 px long next to the 46 px fighters (owner 2026-11-22: "still huge" at 36)
-const SOLDIER_A = 25;
+// a war spear is longer than a man is tall (owner 2026-11-22: at 44 it looked like an arrow); the cell is a bit longer than the spear
+const SPEAR_W = 70; // art/war_spear_hd.png: the spear fills almost the whole cell
+const SOLDIER_A = 42; // art/war_fallen_tiger.png (2026-11-22, sharper redraw) has real proportions: a 42 px man lies about 66 px long
 
 
 const ARMY = [
@@ -201,6 +203,21 @@ function chariot(len, ph, army) {
   G.strokeStyle = '#4a3018'; lw(len * 0.03); G.beginPath(); G.arc(-len * 0.24, -len * 0.15, len * 0.15, 0, Math.PI * 2); G.stroke();
   G.save(); G.translate(-len * 0.24, -len * 0.4); soldier(len * 0.4, army, 'fight', ph); G.restore();
 }
+// the arena's hazard arrows use the same painted arrows as Kanalan's block (art/fx_arrow_parts.png, owner 2026-11-22:
+// the old strip looked low quality next to the players' arrows). Same size and anchor as render.js drawVolley:
+// the cell point (256, 0.89 of its height) is where the arrow goes into the sand. `to` = how much of it shows (from the top).
+const ARROW_LEN = 36;
+function realArrow(kind, x, y, rot, flip, alpha = 1, to = 1) {
+  const f = ART.fx['arrow' + (kind + 1)];
+  if (!f) return false;
+  const upp = ARROW_LEN / 400, dw = 512 * upp * f.w / f.h, dh = 512 * upp;
+  G.save(); G.globalAlpha *= alpha; G.translate(x, y); G.rotate(rot); if (flip) G.scale(-1, 1);
+  G.imageSmoothingEnabled = true;
+  G.drawImage(f.canvas, f.x, f.y, f.w, f.h * to, -dw / 2, -0.89 * dh, dw, dh * to);
+  G.restore();
+  return true;
+}
+const arrowKind = (p) => Math.floor((((Math.sin(p.x * 12.9898 + p.y * 78.233) * 43758.5453) % 1) + 1) % 1 * 4);
 function arrow(x, y, ang, len, a = 1) {
   G.save(); G.globalAlpha *= a; G.translate(x, y); G.rotate(ang);
   stroke('#5a3a1e', Math.max(0.5, len * 0.07), [-len, 0, 0, 0]); stroke('#cfcfcf', Math.max(0.6, len * 0.12), [0, 0, len * 0.15, 0]);
@@ -271,18 +288,21 @@ export function warDrawGround(g, V, m) {
     if (f.kind === 'horse' && figure(f.rider ? 'cavF' : 'horse', 0, V.sx(f.x), V.sy(f.y) + 2, MAN_A * (f.rider ? TALL.cavF : TALL.horse), f.vx < 0, fade * (1 - k * 0.3))) continue;
     at(V.sx(f.x), V.sy(f.y), f.vx < 0, () => { G.globalAlpha *= fade; G.rotate(k * Math.PI / 2 * 0.9); if (f.kind === 'elephant') elephant(72, 0, f.army); else horse(52, 0, f.army ? '#d8d0c0' : '#6b4a2e', f.army, f.rider); });
   }
-  const h = m.haz.cur;
-  if (h) {
+  for (const h of m.haz.list) {
     if (h.kind === 'arrows') {
       for (const p of h.pts) {
         if (p.gone) continue; // shot down before it landed
         const x = V.sx(p.x), y = V.sy(p.y), t = h.age - h.warn - p.d;
         if (t < 0) { const k = Math.min(1, h.age / h.warn); blob(x, y, 3 + 6 * k, (3 + 6 * k) * V.SQ, `rgba(40,10,0,${0.15 + 0.35 * k})`); } // the shadow grows as it comes down
-        else if (t > 0.2) { const al = Math.min(1, (h.life - h.age) / 1); if (!strip('arrowL', 1, 0, x, y + 2, ARROW_CELL, h.side < 0, al, t < 0.8 ? 4 + Math.min(4, Math.floor((t - 0.2) * 8)) : 11)) arrow(x, y, -Math.PI / 2 - h.side * 0.5 + p.tilt, 9, al); } // strikes, quivers, then stuck in the sand
+        else if (t > 0.2) { // stuck in the sand: it shudders as it goes in, then stands still until it fades
+          const al = Math.min(1, (h.life - h.age) / 1), q = Math.sin((t - 0.2) * 55) * 0.09 * Math.max(0, 1 - (t - 0.2) / 0.35);
+          if (t < 0.45) dust(x, y + 1, 5 + (t - 0.2) * 20, (0.45 - t) * 3, p.x); // a puff of sand where it went in
+          if (!realArrow(arrowKind(p), x, y + 2, -h.side * 0.3 + p.tilt * 0.4 + q, h.side < 0, al) && !strip('arrowL', 1, 0, x, y + 2, ARROW_CELL, h.side < 0, al, 11)) arrow(x, y, -Math.PI / 2 - h.side * 0.5 + p.tilt, 9, al);
+        }
       }
     } else if (h.kind === 'horse' || h.kind === 'elephant') {
-      const big = h.kind === 'elephant', w = TUNE.hazard[h.kind].r * 2, a = h.age < h.warn ? 0.12 + 0.14 * Math.abs(Math.sin(h.age * 8)) : Math.max(0, 0.2 - (h.age - h.warn) * 0.2);
-      if (a > 0) { G.strokeStyle = `rgba(255,80,40,${a})`; lw(w * V.SC * V.SQ * 0.8); G.beginPath(); G.moveTo(V.sx(h.x0), V.sy(h.y0)); G.lineTo(V.sx(h.x1), V.sy(h.y1)); G.stroke(); } // the lane it will run along
+      // its warning is the dust and the drumming hooves, no red lane across the sand (owner 2026-11-22: didn't want it)
+      const big = h.kind === 'elephant';
       if (h.age < h.warn + 0.5) { // dust rising where it will come in: billows up through the warning, then thins as it bursts through
         const fr = h.age < h.warn ? Math.min(7, Math.floor(h.age / h.warn * 8)) : 8 + Math.min(3, Math.floor((h.age - h.warn) * 8));
         if (!strip('dustW', 1, 0, V.sx(h.x0 * 0.85), V.sy(h.y0 * 0.85) + 4, big ? 64 : 46, false, 0.9, fr)) dust(V.sx(h.x0 * 0.85), V.sy(h.y0 * 0.85), big ? 26 : 16, Math.min(1, h.age / 0.4) * (big ? 1 : 0.8), h.id);
@@ -299,13 +319,14 @@ export function warDrawGround(g, V, m) {
 // hazards standing up in the arena, each with a world y so the renderer sorts them in with the fighters
 export function warActors(V, m) {
   if (!m.haz) return [];
-  const out = [], h = m.haz.cur;
-  if (h?.kind === 'arrows') {
+  const out = [];
+  for (const h of m.haz.list) {
+  if (h.kind === 'arrows') {
     for (const p of h.pts) {
       const t = h.age - h.warn - p.d;
-      if (!p.gone && t >= 0 && t <= 0.2) out.push({ y: p.y, warDraw: (g) => { G = g; const k = t / 0.2; if (strip('arrowL', 1, 0, V.sx(p.x) - h.side * 24 * (1 - k), V.sy(p.y) + 2 - 50 * (1 - k), ARROW_CELL, h.side < 0, 1, Math.min(3, Math.floor(k * 4)))) return; const x = V.sx(p.x) - h.side * 30 * (1 - k), y = V.sy(p.y) - 60 * (1 - k); arrow(x, y, Math.atan2(60, h.side * 30), 10); } });
+      if (!p.gone && t >= 0 && t <= 0.2) out.push({ y: p.y, warDraw: (g) => { G = g; const k = t / 0.2; if (realArrow(arrowKind(p), V.sx(p.x) - h.side * 28 * (1 - k), V.sy(p.y) + 2 - 80 * (1 - k), -h.side * (0.3 + 0.25 * (1 - k)) + p.tilt * 0.4, h.side < 0, 1, 0.86)) return; if (strip('arrowL', 1, 0, V.sx(p.x) - h.side * 24 * (1 - k), V.sy(p.y) + 2 - 50 * (1 - k), ARROW_CELL, h.side < 0, 1, Math.min(3, Math.floor(k * 4)))) return; const x = V.sx(p.x) - h.side * 30 * (1 - k), y = V.sy(p.y) - 60 * (1 - k); arrow(x, y, Math.atan2(60, h.side * 30), 10); } });
     }
-  } else if (h?.kind === 'soldier' && !h.landed) {
+  } else if (h.kind === 'soldier' && !h.landed) {
     out.push({ y: h.age < h.warn ? h.y0 : h.y1, warDraw: (g) => {
       G = g; G.save(); G.lineCap = 'round';
       const flip = h.x0 > 0; // he backs into the arena, facing the fight he came out of
@@ -314,11 +335,12 @@ export function warActors(V, m) {
       else { const k = Math.min(1, (h.age - h.warn) / h.fall), x = h.x0 + (h.x1 - h.x0) * (0.25 + 0.75 * k), y = h.y0 + (h.y1 - h.y0) * (0.25 + 0.75 * k); if (!figure(STAG[h.army], 6 + Math.min(4, Math.floor(k * 5)), V.sx(x), V.sy(y) + 3, SOLDIER_A, !flip)) at(V.sx(x), V.sy(y), !flip, () => { G.rotate(-k * Math.PI / 2); soldier(42, h.army, 'stand', 0); }); }
       G.restore();
     } });
-  } else if (h?.kind === 'spear' && h.age >= h.warn && !h.dead) {
+  } else if (h.kind === 'spear' && h.age >= h.warn && !h.dead) {
     out.push({ y: h.y, warDraw: (g) => {
       G = g; const ang = Math.atan2(V.sy(h.y1) - V.sy(h.y0), V.sx(h.x1) - V.sx(h.x0)), k = Math.floor(m.t * 16) % 8;
-      if (!ART.fx.spear1 || !drawFx(G, 'spear' + (k + 1), V.sx(h.x), V.sy(h.y) - 14, 44, { rot: ang })) arrow(V.sx(h.x), V.sy(h.y) - 14, ang, 22);
+      if (!ART.fx.spear1 || !drawFx(G, 'spear' + (k + 1), V.sx(h.x), V.sy(h.y) - 14, SPEAR_W, { rot: ang })) arrow(V.sx(h.x), V.sy(h.y) - 14, ang, 22);
     } });
+  }
   }
   for (const b of m.rough) if (b.kind === 'body') out.push({ y: b.y, warDraw: (g) => { // a fallen soldier: solid, so he sorts in with the fighters
     G = g;
@@ -327,7 +349,7 @@ export function warActors(V, m) {
   } });
   for (const u of m.units) if (u.hazard) out.push({ y: u.y, warDraw: (g) => {
     G = g; G.save(); G.lineCap = 'round';
-    const big = u.hazard === 'elephant', flip = u.vx < 0, x = V.sx(u.x), y = V.sy(u.y), ph = m.t * (big ? 4 : 18) + u.id, c = m.haz.cur;
+    const big = u.hazard === 'elephant', flip = u.vx < 0, x = V.sx(u.x), y = V.sy(u.y), ph = m.t * (big ? 4 : 18) + u.id, c = m.haz.list.find((z) => z.unit === u);
     // owner 2026-11-22 (going out felt weird): off the sand it fades, coming in out of its dust and going out over the rim,
     // instead of striding over the war behind at full size and then vanishing
     const al = Math.max(0, Math.min(1, (ARENA.r * 1.28 - Math.hypot(u.x, u.y)) / (ARENA.r * 0.22)));

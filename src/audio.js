@@ -100,11 +100,12 @@ function brass(t, d = 1.2, peak = 0.12, s = 0) { // a low horn blast
 const BPM = 148;
 const ROOTS = [0, -4, -2, 0, 0, -4, -7, -5]; // one bar each: Dm Bb C Dm | Dm Bb Gm Am (semitones from D)
 let step = 0, nextStep = 0, hot = false;
-export function setMusic(mode, final = false) { // 'menu', 'fight', or null; final = the last stretch of a fight
-  hot = mode === 'fight' && final;
+export function setMusic(mode, final = false) { // 'menu', 'fight', 'manthan' or null; final = the last stretch of a fight (for 'manthan': Shiva's moment)
+  hot = (mode === 'fight' || mode === 'manthan') && final;
   if (mode === musicMode) return;
+  if (mode === 'manthan' || musicMode === 'manthan') step = 0; // the churning's theme starts (and the fight's comes back) on a downbeat
   musicMode = mode; musicOn = !!mode;
-  musicLevel = mode === 'fight' ? 0.5 : mode === 'menu' ? 0.4 : 0;
+  musicLevel = mode === 'fight' ? 0.5 : mode === 'manthan' ? 0.6 : mode === 'menu' ? 0.4 : 0;
   if (ctx) musicBus.gain.setTargetAtTime(musicLevel, ctx.currentTime, 0.6);
 }
 export function duck(amount = 0.25, time = 1.6) {
@@ -122,7 +123,12 @@ const M = {
   boom: (t, v = 1) => { osc('sine', 90, t, 0.002, 1.0 * v, 1.1, musicBus, { glide: 34, gt: 0.25 }); noise(t, 0.5, 0.25 * v, musicBus, { type: 'lowpass', f: 400 }); },
   bass: (t, f, d, peak) => { osc('sawtooth', f, t, 0.003, peak, d, musicBus, { lp: [1400, 220, 6] }); osc('square', f / 2, t, 0.003, peak * 0.4, d, musicBus, { lp: [400] }); },
   drone: (t, d) => { for (const s of [0, 7]) osc('sawtooth', hz(s), t, 0.3, 0.035, d, musicBus, { lp: [520] }); },
+  // Samudra Manthan's theme: a dark Phrygian drone (D with the Eb above rubbing against it) and a deep swelling pad
+  darkDrone: (t, d) => { for (const s of [0, 1, 7]) osc('sawtooth', hz(s, -1), t, 0.6, s === 1 ? 0.02 : 0.045, d, musicBus, { lp: [380] }); },
+  pad: (t, d, root) => { for (const s of [0, 3, 7]) for (const det of [-9, 0, 8]) osc('sawtooth', hz(root + s, 0), t, d * 0.4, 0.018, d * 0.7, musicBus, { detune: det, lp: [420, 700, 1] }); },
+  war: (t, v = 1) => { osc('sine', 70, t, 0.002, 1.1 * v, 1.6, musicBus, { glide: 30, gt: 0.4 }); noise(t, 0.7, 0.3 * v, musicBus, { type: 'lowpass', f: 300 }); },
 };
+const DARK = [0, 1, 0, -2]; // D, Eb, D, C: one per two bars
 export function tickMusic() {
   if (!ctx || ctx.state !== 'running' || !musicOn) return;
   const now = ctx.currentTime;
@@ -130,6 +136,22 @@ export function tickMusic() {
   while (nextStep < now + 0.2) {
     const t = nextStep, sd = 60 / (BPM * (hot ? 1.07 : 1)) / 4; // one sixteenth
     const s = step % 128, i = s % 16, root = ROOTS[Math.floor(s / 16)], fight = musicMode === 'fight';
+    if (musicMode === 'manthan') { // the ocean is churned: slow and immense, war drums heaving like the pull on Vasuki
+      const r = DARK[Math.floor(s / 32) % 4];
+      if (i === 0) { M.darkDrone(t, sd * 16); if (s % 32 === 0) M.pad(t, sd * 32, r); }
+      if (hot) { // Shiva drinks: almost silence, a slow heartbeat
+        if (i === 0) M.war(t, 0.7);
+        if (i === 3) M.war(t, 0.45);
+      } else {
+        if (i === 0 || i === 8) M.war(t, i === 0 ? 1 : 0.75);
+        if (i === 6 || i === 14) M.thavil(t, 0.6);
+        if (i === 11) M.thavil(t, 0.4);
+        if (s % 32 >= 28) M.parai(t, 0.35 + (s % 32 - 28) * 0.15); // a roll into every heave
+        if (i === 0 || i === 8) M.bass(t, hz(r, 0), sd * 7, 0.2);
+      }
+      nextStep += sd; step++;
+      continue;
+    }
     if (i === 0) M.drone(t, sd * 16);
     if (fight) {
       if (i === 0 || i === 8 || i === 10) M.kick(t);

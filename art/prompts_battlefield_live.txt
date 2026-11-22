@@ -65,3 +65,8 @@ war_stagger_fall (tiger) + war_stagger_fall_fish, war_horse_gallop, war_cavalry_
 war_chariot, war_elephant_charge, war_elephant_fall, war_arrow_land, war_spear, war_dust.
 Not made: #3 duel fall (the loser uses the stagger_fall frames), a tiger horseman, a horse falling (a killed horse fades).
 Known: a faint pink tint in the elephant-fall dust (magenta key).
+REDRAWN SHARPER (2026-11-22, owner: the fallen soldier and spear looked low quality next to the fighters):
+war_fallen_tiger.png / war_fallen_fish.png replace war_stagger_fall(_fish).png: same 16-frame stagger-fall-lie animation,
+one 1536x1024 image as a 4x4 grid (cells 384x256) instead of a 2048x128 strip, so each frame has ~3x the pixels.
+war_spear_hd.png replaces war_spear.png: 8 frames stacked as 8 rows (cells 1536x128), a heavy spear with a leaf blade,
+gold collar, red tassel and no feathers (at 44 px it read as an arrow; now drawn 70 px long).

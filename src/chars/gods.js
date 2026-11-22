@@ -35,7 +35,29 @@ export const GODS = {
     name: 'Krishna',
     tiers: [
       [], // Flute charm (2026-11-08) and Sudarshana Chakra (2026-11-14: Mangulan already has a chakra) removed
-      [{ id: 'vishwaroopam', name: 'Vishwaroopam', short: '40% DAMAGE, WHOLE ARENA', desc: '40% DAMAGE ACROSS THE WHOLE ARENA', kind: 'global', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 40, knockback: 60, strikeDelay: 0.4 }],
+      [{ id: 'vishwaroopam', name: 'Vishwaroopam', short: '40% DAMAGE, WHOLE ARENA', desc: '40% DAMAGE ACROSS THE WHOLE ARENA', kind: 'global', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 40, knockback: 60, strikeDelay: 0.4 },
+        // Samudra Manthan (owner, 2026-11-22): the churning of the ocean. An arena change (ground rule 12) that works on
+        // any arena: it turns into the milky ocean for `time` s, then the same arena comes back. Vishnu (as the turtle
+        // Kurma) holds Mount Mandara up in the middle (solid), and gods and asuras pull the serpent Vasuki round it:
+        // - the island spins (`spin`), switching direction every `flip` s; everyone slides with it, the caster too,
+        //   and jumping or flying is no escape (owner 2026-11-22: a power on the scale of Brahmastra)
+        // - Halahala poison bubbles drift in straight lines at the opponent (`bubbles`): shoot them or dodge them
+        //   (they reach any height); each that hits leaves a poison mark
+        // - one random treasure rises (`treasure`); the first fighter to touch it gets it: Kamadhenu heals, Airavata
+        //   charges the other fighter, the Amrit pot cancels the next hit
+        // - at the end Shiva rises and drinks the poison: the game pauses for his scene (`drink` s, ground rule 4),
+        //   then the Halahala burns the opponent for a sure `burst.sure` (through any barrier or wall, at any
+        //   height) and every mark bursts for `burst.per` more (owner 2026-11-22: a Brahmastra-scale power should
+        //   hit hard: about 45% against a good dodger, 65% against one who stands still)
+        { id: 'manthan', name: 'Samudra Manthan', short: '30%+ DAMAGE: THE OCEAN CHURNS', desc: 'THE OCEAN IS CHURNED: THE ISLAND SPINS, POISON DRIFTS AT THE OPPONENT (4% AND A MARK EACH: SHOOT OR DODGE IT), A TREASURE RISES FOR WHOEVER TOUCHES IT FIRST, THEN SHIVA DRINKS THE POISON: 30% TO THE OPPONENT AND 4% MORE FOR EVERY MARK', kind: 'manthan', divine: true, scene: true, range: 'anywhere', cost: { power: 0 }, req: {}, cast: 1, damage: 4, knockback: 0,
+          time: 12.5, mountain: 16, spin: { from: 1.6, to: 8, speed: 0.4, flip: 2.1 },
+          bubbles: { from: 2.4, to: 7.4, every: 0.85, speed: 50, radius: 6, life: 7 },
+          treasure: { at: 4.2, until: 8, grab: 14, heal: 15, charge: 12, chargeKb: 220, amrit: 10 },
+          shiva: 9, drink: 3.5, burst: { per: 4, sure: 30, pour: 1.3, gap: 0.35 } }],
+          // the beats (fight time): 0-1.6 the ocean rises and Mandara crashes down; 1.6 the pull begins; 2.4 the
+          // poison erupts; 4.2 the treasure; 8-9 the churning stops and the storm gathers; 9 Shiva rises and drinks
+          // (his scene, `drink` s, game paused); then he pours the poison down (`pour` s), the sure hit lands and the
+          // marks burst `gap` s apart; the arena comes back at `time`
     ],
   },
   // Narada joined as a boon giver (owner, 2026-11-21): the travelling sage who stirs up mischief. His boon scrambles

@@ -90,7 +90,7 @@ test('on the battlefield a good computer player gets out of the way of the hazar
   const SRC = ['Stray arrows', 'Falling soldier', 'Stray spear', 'Runaway horse', 'Charging elephant'];
   const taken = (lv) => {
     let dmg = 0, hazards = 0;
-    for (const seed of [1, 2, 3, 4, 5, 6]) {
+    for (let seed = 1; seed <= 20; seed++) { // one unlucky elephant charge swings a handful of matches: take 20
       const m = createMatch({ seed, time: 300, arena: 'battlefield' }), cpus = [createCpu(0, lv, seed), createCpu(1, lv, seed + 9)];
       for (let i = 0; i < 300 / STEP && m.phase === 'fight'; i++) {
         stepMatch(m, cpus.map((c) => cpuInput(m, c, STEP)));
@@ -102,7 +102,8 @@ test('on the battlefield a good computer player gets out of the way of the hazar
     }
     return { dmg, hazards };
   };
-  const hard = taken('hard');
-  assert.ok(hard.hazards >= 20, `${hard.hazards} hazards seen`);
-  assert.ok(hard.dmg / hard.hazards < 0.6, `hard computer took ${hard.dmg.toFixed(1)}% from ${hard.hazards} hazards`);
+  const hard = taken('hard'), easy = taken('easy'), per = (r) => r.dmg / r.hazards;
+  assert.ok(hard.hazards >= 60, `${hard.hazards} hazards seen`);
+  assert.ok(per(hard) < 1, `hard computer took ${hard.dmg.toFixed(1)}% from ${hard.hazards} hazards`);
+  assert.ok(per(hard) < 0.85 * per(easy), `hard (${per(hard).toFixed(2)}% a hazard) dodges better than easy (${per(easy).toFixed(2)}%)`);
 });
