@@ -85,3 +85,24 @@ test('at each level the computer Mage and the computer Warrior are about equally
     assert.ok(k / n >= 0.3 && k / n <= 0.7, `${lv}: the Mage won ${Math.round((100 * k) / n)}% of CPU-vs-CPU matches`);
   }
 });
+
+test('on the battlefield a good computer player gets out of the way of the hazards (it reads the warnings)', () => {
+  const SRC = ['Stray arrows', 'Falling soldier', 'Stray spear', 'Runaway horse', 'Charging elephant'];
+  const taken = (lv) => {
+    let dmg = 0, hazards = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const m = createMatch({ seed, time: 300, arena: 'battlefield' }), cpus = [createCpu(0, lv, seed), createCpu(1, lv, seed + 9)];
+      for (let i = 0; i < 300 / STEP && m.phase === 'fight'; i++) {
+        stepMatch(m, cpus.map((c) => cpuInput(m, c, STEP)));
+        for (const e of m.events.splice(0)) {
+          if (e.type === 'hazard') hazards++;
+          if (e.type === 'hp' && e.dmg > 0 && e.srcs.some((s) => SRC.includes(s))) dmg += e.dmg;
+        }
+      }
+    }
+    return { dmg, hazards };
+  };
+  const hard = taken('hard');
+  assert.ok(hard.hazards >= 20, `${hard.hazards} hazards seen`);
+  assert.ok(hard.dmg / hard.hazards < 0.6, `hard computer took ${hard.dmg.toFixed(1)}% from ${hard.hazards} hazards`);
+});

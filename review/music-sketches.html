@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Porkalam Music Sketches</title>
+<style>
+  :root { --bg:#14100d; --card:#211a15; --line:#3a2e25; --text:#f1e6d8; --muted:#b09c88; --accent:#e0a43a; --hot:#d9502e; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, sans-serif; padding:24px 16px 48px; }
+  main { max-width:760px; margin:0 auto; }
+  h1 { margin:0 0 4px; font-size:28px; letter-spacing:.02em; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:14px; }
+  .card.playing { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  h2 { margin:0; font-size:19px; flex:1; min-width:200px; }
+  .tag { color:var(--accent); font-size:13px; font-weight:600; }
+  .card p { margin:8px 0 0; color:var(--muted); font-size:14.5px; }
+  button { font:inherit; font-weight:600; border:0; border-radius:8px; padding:10px 16px; cursor:pointer; background:var(--accent); color:#1b1206; min-height:44px; }
+  button.secondary { background:transparent; color:var(--text); border:1px solid var(--line); }
+  button.hot { background:var(--hot); color:#fff; }
+  button[aria-pressed="true"] { background:var(--hot); color:#fff; border-color:var(--hot); }
+  .controls { margin:22px 0 10px; }
+  .controls h3 { font-size:15px; margin:0 0 8px; color:var(--muted); font-weight:600; }
+  .note { color:var(--muted); font-size:13.5px; margin-top:18px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Porkalam music sketches</h1>
+  <p class="sub">Three directions for the fight music, about 25 seconds per loop. All three play the same tune so you can compare the sound. Everything is synthesized, with no audio files.</p>
+
+  <div class="card" data-sketch="A">
+    <div class="row"><h2>A · Thavil mass</h2><span class="tag">146 BPM</span><button>Play</button></div>
+    <p>Tamil film fight music: fast thavil and parai drums, a brass lead, and a drone underneath.</p>
+  </div>
+  <div class="card" data-sketch="B">
+    <div class="row"><h2>B · Arcade raga</h2><span class="tag">152 BPM</span><button>Play</button></div>
+    <p>A 90s arcade fighter sound: punchy octave synth bass, an FM brass lead, an arpeggio, and gated kick and snare.</p>
+  </div>
+  <div class="card" data-sketch="C">
+    <div class="row"><h2>C · Hybrid (A + B)</h2><span class="tag">148 BPM</span><button>Play</button></div>
+    <p>Arcade bass and backbeat for drive, thavil fills on top, and the brass lead.</p>
+  </div>
+
+  <div class="controls">
+    <h3>Raga (changes the tune, bass and chords)</h3>
+    <div class="row" id="ragas">
+      <button class="secondary" data-raga="natabhairavi" aria-pressed="true">Natabhairavi · dark</button>
+      <button class="secondary" data-raga="kiravani" aria-pressed="false">Kiravani · dramatic</button>
+      <button class="secondary" data-raga="hindolam" aria-pressed="false">Hindolam · mystic</button>
+      <button class="secondary" data-raga="maya" aria-pressed="false">Mayamalavagowla · old</button>
+    </div>
+  </div>
+  <div class="controls">
+    <h3>Layers</h3>
+    <div class="row">
+      <button class="secondary" id="leadBtn" aria-pressed="false">Lead tune</button>
+      <button class="secondary" id="arpBtn" aria-pressed="false">Arpeggio (Arcade raga)</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <h3>Reactive bits (try while a sketch is playing)</h3>
+    <div class="row">
+      <button class="secondary" id="intensity" aria-pressed="false">Final round / low health</button>
+      <button class="secondary" id="round">"Round 1… Fight!" sting</button>
+      <button class="hot" id="ko">K.O.</button>
+    </div>
+  </div>
+  <p class="note">Final round speeds the music up a little, adds busier drums and doubles the lead an octave up. K.O. cuts the music dead and plays a hit with a gong tail.</p>
+</main>
+
+<script>
+// ---------- audio graph ----------
+let ctx, master, bus, verbSend;
+function init() {
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
+  master = ctx.createGain(); master.gain.value = 0.8;
+  comp.connect(master); master.connect(ctx.destination);
+  bus = ctx.createGain(); bus.gain.value = 1; bus.connect(comp);
+  // small room reverb from decaying noise
+  const len = ctx.sampleRate * 1.6, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+  const verb = ctx.createConvolver(); verb.buffer = ir;
+  verbSend = ctx.createGain(); verbSend.gain.value = 0.22; verbSend.connect(verb); verb.connect(comp);
+}
+let noiseBuf;
+function noiseBuffer() {
+  if (noiseBuf) return noiseBuf;
+  noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return noiseBuf;
+}
+function out(node, wet = 0) { node.connect(bus); if (wet) { const g = ctx.createGain(); g.gain.value = wet; node.connect(g); g.connect(verbSend); } }
+const hz = s => 293.66 * Math.pow(2, s / 12); // semitones from D4
+
+function env(g, t, a, peak, d, hold = 0) {
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + a);
+  if (hold) g.gain.setValueAtTime(peak, t + a + hold);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + a + hold + d);
+}
+function tone(t, f, type, peak, dur, { a = 0.003, to = null, glide = 0.08, lp = null, wet = 0 } = {}) {
+  const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type;
+  o.frequency.setValueAtTime(f, t); if (to) o.frequency.exponentialRampToValueAtTime(to, t + glide);
+  let n = o;
+  if (lp) { const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(lp[0], t); if (lp[1]) fl.frequency.exponentialRampToValueAtTime(lp[1], t + dur); fl.Q.value = lp[2] || 1; o.connect(fl); n = fl; }
+  n.connect(g); env(g, t, a, peak, dur); out(g, wet);
+  o.start(t); o.stop(t + a + dur + 0.05);
+}
+function noise(t, peak, dur, type, f, q = 1, wet = 0) {
+  const s = ctx.createBufferSource(); s.buffer = noiseBuffer();
+  const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+  const g = ctx.createGain(); s.connect(fl); fl.connect(g); env(g, t, 0.001, peak, dur); out(g, wet);
+  s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
+}
+
+// ---------- instruments ----------
+const drums = {
+  thavilLow: (t, v = 1) => { tone(t, 170, 'sine', 0.75 * v, 0.28, { to: 68, glide: 0.07 }); noise(t, 0.12 * v, 0.03, 'lowpass', 900); },
+  thavilSlap: (t, v = 1) => { noise(t, 0.32 * v, 0.06, 'bandpass', 2600, 2.2, 0.3); tone(t, 620, 'triangle', 0.08 * v, 0.04); },
+  parai: (t, v = 1) => { noise(t, 0.42 * v, 0.1, 'highpass', 1400, 0.8, 0.5); tone(t, 330, 'triangle', 0.12 * v, 0.06, { to: 220 }); },
+  kick: (t, v = 1) => { tone(t, 150, 'sine', 0.9 * v, 0.3, { to: 42, glide: 0.09 }); tone(t, 1200, 'square', 0.04 * v, 0.01); },
+  snare: (t, v = 1) => { noise(t, 0.38 * v, 0.14, 'bandpass', 1900, 0.9, 0.6); tone(t, 210, 'triangle', 0.18 * v, 0.07, { to: 160 }); },
+  hat: (t, v = 1) => noise(t, 0.09 * v, 0.03, 'highpass', 7500),
+  boom: (t, v = 1) => { tone(t, 90, 'sine', 1.0 * v, 1.1, { to: 34, glide: 0.25 }); noise(t, 0.25 * v, 0.5, 'lowpass', 400, 1, 0.6); },
+};
+
+// nadaswaram-style reed: glides in from the previous note (a gamaka), vibrato on held notes
+function reed(t, f, dur, from, peak = 0.13, wet = 0.35) {
+  const g = ctx.createGain(), bp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter(), sh = ctx.createWaveShaper();
+  const curve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curve[i] = Math.tanh(1.1 * x); } sh.curve = curve;
+  bp.type = 'peaking'; bp.frequency.value = 1100; bp.gain.value = 3; bp.Q.value = 0.8;
+  lp.type = 'lowpass'; lp.frequency.value = Math.min(2200, f * 4); lp.Q.value = 0.5;
+  const lfo = ctx.createOscillator(), lfoG = ctx.createGain(); lfo.frequency.value = 5.6;
+  lfoG.gain.setValueAtTime(0, t); if (dur > 0.25) lfoG.gain.linearRampToValueAtTime(f * 0.018, t + dur);
+  lfo.connect(lfoG);
+  for (const [type, det, lvl] of [['sawtooth', 0, 0.35], ['triangle', 5, 0.55], ['sine', -5, 0.35]]) {
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.type = type; o.detune.value = det; og.gain.value = lvl;
+    o.frequency.setValueAtTime(from || f, t);
+    if (from && from !== f) o.frequency.setTargetAtTime(f, t, 0.025);
+    lfoG.connect(o.frequency); o.connect(og); og.connect(sh); o.start(t); o.stop(t + dur + 0.1);
+  }
+  sh.connect(bp); bp.connect(lp); lp.connect(g);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak * 1.15, t + 0.035);
+  g.gain.setValueAtTime(peak, t + Math.max(0.02, dur - 0.04)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.05);
+  out(g, wet); lfo.start(t); lfo.stop(t + dur + 0.1);
+}
+function squareLead(t, f, dur, peak = 0.07) {
+  tone(t, f, 'square', peak * 0.6, dur * 0.9, { a: 0.012, lp: [1800, 900, 0.5], wet: 0.25 });
+  tone(t, f, 'triangle', peak * 1.3, dur * 0.9, { a: 0.012, wet: 0.25 });
+}
+// FM brass (90s arcade style): a sine carrier bent by a sine modulator at the same pitch.
+// The modulation flares at the attack (the brassy "blat") then settles; notes slide in from the last one (gamaka).
+function fmBrass(t, f, dur, from, peak = 0.13) {
+  const g = ctx.createGain(), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4500;
+  const lfo = ctx.createOscillator(), lfoG = ctx.createGain(); lfo.frequency.value = 5.8; lfo.connect(lfoG);
+  lfoG.gain.setValueAtTime(0, t); if (dur > 0.3) { lfoG.gain.setValueAtTime(0, t + 0.15); lfoG.gain.linearRampToValueAtTime(f * 0.014, t + dur); }
+  const end = t + dur + 0.08;
+  for (const [det, lvl] of [[0, 0.7], [9, 0.3]]) {
+    const car = ctx.createOscillator(), mod = ctx.createOscillator(), modG = ctx.createGain(), cg = ctx.createGain();
+    car.detune.value = det; mod.detune.value = det; cg.gain.value = lvl;
+    for (const o of [car, mod]) {
+      o.frequency.setValueAtTime(from || f, t);
+      if (from && from !== f) o.frequency.setTargetAtTime(f, t, 0.028);
+      lfoG.connect(o.frequency);
+    }
+    modG.gain.setValueAtTime(0, t);
+    modG.gain.linearRampToValueAtTime(f * 3.0, t + 0.035);
+    modG.gain.setTargetAtTime(f * 1.4, t + 0.035, 0.1);
+    modG.gain.setTargetAtTime(0, t + dur, 0.03);
+    mod.connect(modG); modG.connect(car.frequency); car.connect(cg); cg.connect(lp);
+    car.start(t); mod.start(t); car.stop(end); mod.stop(end);
+  }
+  lp.connect(g);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + 0.03);
+  g.gain.setTargetAtTime(peak * 0.8, t + 0.03, 0.15);
+  g.gain.setTargetAtTime(0.0001, t + dur, 0.03);
+  out(g, 0.3); lfo.start(t); lfo.stop(end);
+}
+function synthBass(t, f, dur, peak = 0.2) { tone(t, f, 'sawtooth', peak, dur, { lp: [1400, 220, 6] }); tone(t, f / 2, 'square', peak * 0.4, dur, { lp: [400] }); }
+function drone(t, dur) { for (const s of [-24, -17]) tone(t, hz(s), 'sawtooth', 0.035, dur, { a: 0.3, lp: [520] }); }
+
+// ---------- the tune (Mayamalavagowla on D: D Eb F# G A Bb C# D) ----------
+// [step in 16ths, length in 16ths, semitones from D4]; 8 bars = 128 steps
+const MELODY = [
+  [0,2,7],[2,1,8],[3,1,7],[4,2,4],[6,2,5],[8,6,7],[14,2,8],
+  [16,3,12],[19,1,11],[20,2,8],[22,2,7],[24,2,5],[26,2,4],[28,2,1],[30,2,0],
+  [32,2,7],[34,1,8],[35,1,7],[36,2,4],[38,2,5],[40,6,7],[46,2,8],
+  [48,2,12],[50,2,13],[52,4,16],[56,2,13],[58,2,12],[60,2,11],[62,2,12],
+  [64,1,0],[65,1,0],[66,2,1],[68,1,0],[69,1,0],[70,2,4],[72,2,5],[74,2,4],[76,4,1],
+  [80,1,7],[81,1,7],[82,2,8],[84,1,7],[85,1,7],[86,2,11],[88,2,12],[90,2,11],[92,4,8],
+  [96,2,12],[98,2,11],[100,2,8],[102,2,7],[104,2,8],[106,2,7],[108,2,5],[110,2,4],
+  [112,2,5],[114,2,4],[116,2,1],[118,10,0],
+];
+const MEL = new Map(MELODY.map(n => [n[0], n]));
+const BARS = 8, STEPS = BARS * 16;
+// Ragas: 7 scale steps (Hindolam has 5 notes, so two are repeated) and a chord progression in scale degrees.
+const RAGAS = {
+  natabhairavi: { scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, -2, -1, 0, 0, -2, -4, -3] },  // i VI VII i | i VI iv v
+  kiravani:     { scale: [0, 2, 3, 5, 7, 8, 11], prog: [0, -2, -4, -3, 0, -2, -4, -3] }, // i VI iv V
+  hindolam:     { scale: [0, 3, 3, 5, 8, 8, 10], prog: [0, -2, 0, -1, 0, -2, -4, 0] },
+  maya:         { scale: [0, 1, 4, 5, 7, 8, 11], prog: [0, 1, 0, -1, 0, 1, -4, 0] },   // the original "snake" one
+};
+let raga = RAGAS.natabhairavi, leadOn = false, arpOn = false;
+const MAYA = RAGAS.maya.scale;
+const degOf = s => { const o = Math.floor(s / 12); return MAYA.indexOf(s - 12 * o) + 7 * o; }; // the tune was written in Mayamalavagowla
+const semiOf = d => { const o = Math.floor(d / 7); return raga.scale[d - 7 * o] + 12 * o; };
+const rootAt = s => semiOf(raga.prog[Math.floor(s / 16) % BARS]);
+const chordAt = s => { const d = raga.prog[Math.floor(s / 16) % BARS]; return [d, d + 2, d + 4].map(semiOf); };
+
+const SKETCHES = {
+  A: { bpm: 146, lead: "brass", step(t, s, sd, hot) {
+      const i = s % 16;
+      if ([0, 3, 6, 8, 12].includes(i)) drums.thavilLow(t, i === 0 ? 1.1 : 0.85);
+      if ([2, 5, 10, 11, 14, 15].includes(i)) drums.thavilSlap(t, 0.8);
+      else if (hot && i % 2 === 1) drums.thavilSlap(t, 0.4);
+      if (i === 4 || i === 12) drums.parai(t);
+      if (s % 64 === 0) drums.boom(t, 0.7);
+      if (i === 0) drone(t, sd * 16);
+      if (i % 4 === 0) synthBass(t, hz(rootAt(s) - 24), sd * 2, 0.14);
+    } },
+  B: { bpm: 152, lead: "brass", step(t, s, sd, hot) {
+      const i = s % 16, root = rootAt(s);
+      if ([0, 8, 10].includes(i) || (hot && i === 14)) drums.kick(t);
+      if (i === 4 || i === 12) drums.snare(t);
+      if (i % 2 === 0 || hot) drums.hat(t, i % 4 === 2 ? 1 : 0.6);
+      if (i % 2 === 0) synthBass(t, hz(root - 24 + (i % 4 === 2 ? 12 : 0)), sd * 1.8, 0.2);  // octave bounce
+      if (arpOn) { const ch = chordAt(s); tone(t, hz(ch[i % 3] + 12), 'triangle', 0.03, sd * 0.8, { a: 0.006 }); } // arpeggio
+    } },
+  C: { bpm: 148, lead: "brass", step(t, s, sd, hot) {
+      const i = s % 16, root = rootAt(s);
+      if ([0, 8, 10].includes(i)) drums.kick(t);
+      if (i === 4 || i === 12) drums.snare(t, 0.85);
+      if ([3, 6, 14].includes(i)) drums.thavilLow(t, 0.7);
+      if ([2, 5, 11, 15].includes(i)) drums.thavilSlap(t, 0.7);
+      else if (hot && i % 2 === 1) drums.thavilSlap(t, 0.4);
+      if (i % 2 === 0 && hot) drums.hat(t, 0.7);
+      if (s % 64 === 0) drums.boom(t, 0.6);
+      if (s % 64 === 60) for (let k = 0; k < 4; k++) drums.parai(t + k * sd, 0.5 + k * 0.15); // roll into the top
+      if (i % 2 === 0) synthBass(t, hz(root - 24 + (i % 4 === 2 ? 12 : 0)), sd * 1.8, 0.17);
+      if (i === 0) drone(t, sd * 16);
+    } },
+};
+
+// ---------- sequencer ----------
+let current = null, step = 0, nextTime = 0, timer = null, lastF = null, hot = false;
+function stepDur() { return 60 / (SKETCHES[current].bpm * (hot ? 1.07 : 1)) / 4; }
+function schedule() {
+  while (nextTime < ctx.currentTime + 0.12) {
+    const sk = SKETCHES[current], sd = stepDur(), s = step % STEPS;
+    sk.step(nextTime, s, sd, hot);
+    const n = MEL.get(s);
+    if (n && leadOn && step >= 32) {           // two bars of rhythm, then the tune comes in
+      const f = hz(semiOf(degOf(n[2]))), dur = n[1] * sd;
+      fmBrass(nextTime, f, dur * 0.95, null); if (hot) fmBrass(nextTime, f * 2, dur * 0.95, null, 0.045);
+      lastF = f;
+    }
+    nextTime += sd; step++;
+  }
+}
+function play(id) {
+  init(); ctx.resume();
+  stop(false);
+  bus.gain.cancelScheduledValues(ctx.currentTime); bus.gain.setValueAtTime(1, ctx.currentTime);
+  current = id; step = 0; lastF = null; nextTime = ctx.currentTime + 0.05;
+  timer = setInterval(schedule, 25); schedule();
+  render();
+}
+function stop(doRender = true) {
+  clearInterval(timer); timer = null; current = null;
+  if (doRender) render();
+}
+function render() {
+  document.querySelectorAll('.card').forEach(c => {
+    const on = c.dataset.sketch === current;
+    c.classList.toggle('playing', on); c.querySelector('button').textContent = on ? 'Stop' : 'Play';
+  });
+}
+document.querySelectorAll('.card').forEach(c => c.querySelector('button').onclick = () =>
+  current === c.dataset.sketch ? stop() : play(c.dataset.sketch));
+
+document.querySelectorAll('#ragas button').forEach(b => b.onclick = () => {
+  raga = RAGAS[b.dataset.raga]; lastF = null;
+  document.querySelectorAll('#ragas button').forEach(x => x.setAttribute('aria-pressed', x === b));
+});
+document.getElementById('leadBtn').onclick = e => { leadOn = !leadOn; e.currentTarget.setAttribute('aria-pressed', leadOn); };
+document.getElementById('arpBtn').onclick = e => { arpOn = !arpOn; e.currentTarget.setAttribute('aria-pressed', arpOn); };
+document.getElementById('intensity').onclick = e => { hot = !hot; e.currentTarget.setAttribute('aria-pressed', hot); };
+
+document.getElementById('round').onclick = () => {
+  init(); ctx.resume();
+  const t = ctx.currentTime + 0.05;
+  for (let k = 0; k < 12; k++) drums.thavilSlap(t + k * 0.05, 0.3 + k * 0.06);  // rising roll
+  fmBrass(t, hz(0), 0.55, null, 0.1); fmBrass(t + 0.6, hz(12), 0.5, null, 0.14);   // a brass call that leaps up
+  drums.boom(t + 0.62, 1); drums.parai(t + 0.62, 1.2);
+  // "Fight!": the band hits together
+  const h = t + 1.15; drums.boom(h, 1); drums.snare(h, 1.2); drums.parai(h, 1.2);
+  for (const s of [-12, 0, 4, 7]) tone(h, hz(s), 'sawtooth', 0.07, 0.5, { lp: [3000, 600], wet: 0.5 });
+};
+
+document.getElementById('ko').onclick = () => {
+  init(); ctx.resume();
+  const t = ctx.currentTime + 0.02;
+  if (current) { bus.gain.cancelScheduledValues(t); stop(); }
+  // music is dead; one huge hit and a gong tail (inharmonic partials)
+  drums.boom(t, 1.3); drums.parai(t, 1.4); drums.snare(t, 1.2);
+  for (const [f, p] of [[98, 0.14], [147.5, 0.09], [219, 0.07], [311, 0.05], [467, 0.035]]) tone(t, f, 'sine', p, 3.5, { a: 0.01, wet: 0.8 });
+};
+</script>
+</body>
+</html>

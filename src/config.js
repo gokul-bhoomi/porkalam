@@ -67,4 +67,18 @@ export const TUNE = {
     impact: { r: 19, life: 90, moves: ['Gaja Arrow', 'Pashupatastra', 'Shakti Vel', 'Vishwaroopam'] },
     wet: { r: 8, life: 20 },
   },
+  // Arena hazards (ground rule 12 note, owner 2026-11-21): the battlefield's war spills into the arena now and then.
+  // They belong to nobody and hit anyone. One at a time, after a random gap (s); never while an arena change is on.
+  // warn = how long the warning shows before it can hurt. dmg %, kb world units/s, r world units, hp % (units only).
+  hazard: {
+    first: [8, 20], gap: [6, 30],
+    weights: { arrows: 3, soldier: 3, spear: 2, horse: 2, elephant: 1 },
+    arrows: { n: [5, 10], warn: 1.2, stagger: 0.35, r: 6, dmg: 3, kb: 30, stick: 4, solid: 3 }, // each can be shot down before it lands (rule 6); once stuck in the sand it is solid (radius `solid`) until it fades (owner 2026-11-22)
+    soldier: { warn: 1.1, fall: 0.45, r: 10, dmg: 6, kb: 120, body: { len: 24, r: 4, life: 10 } }, // his body is solid on the ground until it fades (owner 2026-11-22): a capsule len long, r thick, lying across the screen
+    spear: { warn: 0.8, speed: 260, r: 4, dmg: 5, kb: 60 },
+    horse: { warn: 1.5, speed: [140, 175], r: 11, hp: 6, dmg: 6, kb: 160 }, // r 9 -> 11, elephant 15 -> 22 (2026-11-22): sized to match the drawn art
+    // owner 2026-11-22 ("easy to dodge"): warning 2 -> 1.3 s, speed 50-65 -> 80-95, and it swings its tusks (thantham) at anyone
+    // just beside its path: a short visible wind-up, then a sweep that reaches `reach` beyond its body (melee: misses a jump/flyer)
+    elephant: { warn: 1.3, speed: [80, 95], r: 22, hp: 25, dmg: 12, kb: 240, swing: { reach: 20, windup: 0.35, dur: 0.75, dmg: 8, kb: 220, rest: 0.8 } },
+  },
 };

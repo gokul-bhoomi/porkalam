@@ -16,13 +16,14 @@ export const BUTTONS = ['a1', 'a2', 'block', 's1', 's2', 's3'];
 const ACTS = ['s1', 's2', 's3', 'a2', 'a1']; // if several are pressed in one step, the first wins
 const SPECIALS = ['s1', 's2', 's3'];
 
-export function createMatch({ seed = 1, time = TUNE.match.default, chars = ['siddhan', 'veeran'] } = {}) {
+export function createMatch({ seed = 1, time = TUNE.match.default, chars = ['siddhan', 'veeran'], arena = 'river', hazardTest = null } = {}) {
   const duration = clamp(time, TUNE.match.min, TUNE.match.max);
   return {
     seed, rand: rng(seed), t: 0, duration, timeLeft: duration, phase: 'fight', result: null, scene: null,
     players: chars.map((id, i) => makeFighter(CHARS[id], i)),
     projectiles: [], strikes: [], areas: [], strikesDue: [], units: [], walls: [], arenaChange: null, rough: [],
     hits: [], events: [], prev: [{}, {}], nid: 1,
+    arena, haz: arena === 'battlefield' ? newHazards(seed, hazardTest) : null, // the battlefield's war spills in (arena hazards)
   };
 }
 
@@ -139,6 +140,7 @@ export function stepMatch(m, inputs = [{}, {}], dt = STEP) {
   m.strikes = [];
 
   movement(m, inputs, dt);        // 1. movement (and timers)
+  if (m.haz) hazards(m, dt);      //    the battlefield's hazards move, warn and strike
   newMoves(m, inputs, dt);        // 2. new moves start, casts finish
   clashes(m);                     // 3. clashes are decided
   collectHits(m);
@@ -200,6 +202,29 @@ function movement(m, inputs, dt) {
     const n = dd > 1e-6 ? unitDir(b.x - a.x, b.y - a.y) : { x: 1, y: 0 }, push = (min - dd) / 2;
     a.x -= n.x * push; a.y -= n.y * push; b.x += n.x * push; b.y += n.y * push;
   }
+  // a fallen soldier (arena hazard) lies across the ground: anyone on the ground walks round him; jumping or flying
+  // goes over (owner 2026-11-22: fighters seemed to walk through him)
+  for (const z of m.rough) if (z.kind === 'body') for (const p of m.players) {
+    if (airborne(p)) continue;
+    const half = z.len / 2, cx = clamp(p.x, z.x - half, z.x + half), dx = p.x - cx, dy = p.y - z.y, d = Math.hypot(dx, dy), min = z.r + TUNE.fighterR;
+    if (d >= min) continue;
+    const n = d > 1e-6 ? { x: dx / d, y: dy / d } : { x: 0, y: p.y >= z.y ? 1 : -1 };
+    p.x = cx + n.x * min; p.y = z.y + n.y * min;
+    const vn = p.kvx * n.x + p.kvy * n.y; if (vn < 0) { p.kvx -= vn * n.x; p.kvy -= vn * n.y; } // knockback stops against him
+  }
+  // arrows stuck in the sand are solid too until they fade (owner 2026-11-22: fighters walked through them)
+  const H = m.haz?.cur;
+  if (H?.kind === 'arrows') for (const a of H.pts) {
+    if (a.gone || H.age < H.warn + a.d) continue;
+    for (const p of m.players) {
+      if (airborne(p)) continue;
+      const dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy), min = TUNE.hazard.arrows.solid + TUNE.fighterR;
+      if (d >= min) continue;
+      const n = d > 1e-6 ? { x: dx / d, y: dy / d } : { x: 1, y: 0 };
+      p.x = a.x + n.x * min; p.y = a.y + n.y * min;
+      const vn = p.kvx * n.x + p.kvy * n.y; if (vn < 0) { p.kvx -= vn * n.x; p.kvy -= vn * n.y; }
+    }
+  }
   for (const p of m.players) { // ground rule 4: attacks turn toward the opponent
     const o = opponent(m, p), fd = unitDir(o.x - p.x, o.y - p.y);
     if (fd.x || fd.y) p.face = fd;
@@ -237,13 +262,13 @@ function movement(m, inputs, dt) {
 }
 
 // Rough ground (ground rule 13, owner 2026-11-15): craters and wet sand slow anyone walking through them.
-function addRough(m, kind, x, y, r, life) {
-  const z = { kind, x, y, r, t0: m.t, until: m.t + life };
+function addRough(m, kind, x, y, r, life, extra) {
+  const z = { kind, x, y, r, t0: m.t, until: m.t + life, ...extra };
   m.rough.push(z); m.rough.sort((a, b) => a.until - b.until);
   if (m.rough.length > TUNE.rough.max) m.rough.shift(); // the oldest goes first
   ev(m, 'rough', { kind, x, y, r });
 }
-export const onRough = (m, p) => !airborne(p) && m.rough.some((z) => Math.hypot(p.x - z.x, p.y - z.y) < z.r + TUNE.rough.feet);
+export const onRough = (m, p) => !airborne(p) && m.rough.some((z) => z.kind !== 'body' && Math.hypot(p.x - z.x, p.y - z.y) < z.r + TUNE.rough.feet);
 function roughFromHit(m, t, n) {
   const R = TUNE.rough, srcs = n.srcs;
   if (!(n.dmg > 0) || srcs.includes('Brahmastra') || srcs.includes('Thousand-Arm Form') || srcs.every((s) => s === 'Lava' || s === 'wall')) return;
@@ -597,6 +622,153 @@ function absorb(m, w, dmg) {
   return dmg - a;
 }
 
+// ---------- arena hazards ----------
+// Ground rule 12 note (owner, 2026-11-21): the battlefield's arrow volleys, falling soldiers, stray spears, horses
+// and charging elephants belong to nobody (owner -1) and hit anyone. Each one warns first. Horses and elephants are
+// extra units (own health, any attack hits them); arrows and the spear are shots that can be met by a shot (rule 6).
+// Hitting them gives nothing. Their own random numbers (not m.rand), so they don't change the rest of the match.
+// Height (rule 17): the falling arrows and soldier, and a horse or elephant running you down, are like arrow rain and
+// melee (they miss anyone jumping or flying); the spear is a shot (it passes under a jump, hits a flyer).
+const NOBODY = -1;
+// test = { kind, busy } (review aid from the URL: only that kind / short gaps)
+function newHazards(seed, test) {
+  const rand = rng((seed * 7919 + 13) | 0), H = TUNE.hazard, first = test?.busy ? [1, 2] : H.first;
+  return { rand, cur: null, last: null, next: first[0] + rand() * (first[1] - first[0]), fallen: [], test };
+}
+// Test mode only (src/testmode.js): send this hazard in now, replacing whatever is on. Not used by the game itself.
+export function forceHazard(m, kind) {
+  if (!m.haz || !TUNE.hazard[kind]) return false;
+  if (m.haz.cur?.unit) { const i = m.units.indexOf(m.haz.cur.unit); if (i >= 0) m.units.splice(i, 1); }
+  m.haz.cur = null; m.haz.force = kind; m.haz.next = m.t;
+  return true;
+}
+function hazards(m, dt) {
+  const Z = m.haz, H = TUNE.hazard, R = (a, b) => a + Z.rand() * (b - a), r = ARENA.r;
+  Z.fallen = Z.fallen.filter((f) => m.t - f.t0 < 3);
+  if (!Z.cur && (!m.arenaChange || Z.force) && m.phase === 'fight' && m.t >= Z.next) { // the next one comes in
+    const opts = Object.entries(H.weights).filter(([k]) => k !== Z.last); // never the same kind twice running
+    let w = Z.rand() * opts.reduce((a, [, v]) => a + v, 0), kind = opts[opts.length - 1][0];
+    for (const [k, v] of opts) if ((w -= v) <= 0) { kind = k; break; }
+    if (H[Z.test?.kind]) kind = Z.test.kind;
+    if (Z.force) { kind = Z.force; Z.force = null; }
+    Z.last = kind;
+    const C = H[kind], a0 = R(0, Math.PI * 2), h = { id: m.nid++, kind, age: 0, warn: C.warn };
+    if (kind === 'arrows') {
+      h.side = Z.rand() < 0.5 ? 1 : -1;
+      h.pts = Array.from({ length: Math.floor(R(C.n[0], C.n[1] + 1)) }, () => { const a = R(0, Math.PI * 2), d = Math.sqrt(Z.rand()) * r * 0.85; return { x: Math.cos(a) * d, y: Math.sin(a) * d, d: R(0, C.stagger), tilt: R(-0.3, 0.3), dmg: C.dmg }; });
+      h.life = C.warn + C.stagger + C.stick;
+    } else if (kind === 'soldier') {
+      h.fall = C.fall; h.life = C.warn + C.fall; h.army = Z.rand() < 0.5 ? 0 : 1;
+      h.x0 = Math.cos(a0) * r * 1.12; h.y0 = Math.sin(a0) * r * 1.12; h.x1 = Math.cos(a0) * r * 0.86; h.y1 = Math.sin(a0) * r * 0.86;
+    } else if (kind === 'spear') {
+      const a1 = a0 + Math.PI + R(-0.7, 0.7);
+      h.x0 = h.x = Math.cos(a0) * r * 1.05; h.y0 = h.y = Math.sin(a0) * r * 1.05; h.x1 = Math.cos(a1) * r * 1.3; h.y1 = Math.sin(a1) * r * 1.3;
+      const d = unitDir(h.x1 - h.x0, h.y1 - h.y0); h.vx = d.x * C.speed; h.vy = d.y * C.speed; h.dmg = C.dmg;
+      h.life = C.warn + Math.hypot(h.x1 - h.x0, h.y1 - h.y0) / C.speed;
+    } else { // a horse or an elephant runs straight across, left to right or right to left (owner 2026-11-22: they are
+      // painted side-on, so a lane up or down the screen made them slide sideways into the war behind or out the front)
+      const b0 = (Z.rand() < 0.5 ? 0 : Math.PI) + R(-0.55, 0.55), a1 = b0 + Math.PI + R(-0.35, 0.35), sp = R(C.speed[0], C.speed[1]);
+      const a0 = b0;
+      h.x0 = Math.cos(a0) * r * 1.3; h.y0 = Math.sin(a0) * r * 1.3; h.x1 = Math.cos(a1) * r * 1.3; h.y1 = Math.sin(a1) * r * 1.3;
+      const d = unitDir(h.x1 - h.x0, h.y1 - h.y0); h.vx = d.x * sp; h.vy = d.y * sp; h.army = Z.rand() < 0.5 ? 0 : 1; h.rider = kind === 'elephant' || Z.rand() < 0.5;
+      h.run = Math.hypot(h.x1 - h.x0, h.y1 - h.y0) / sp; h.life = C.warn + h.run;
+    }
+    Z.cur = h;
+    ev(m, 'hazard', { kind, id: h.id });
+  }
+  const h = Z.cur;
+  if (!h) return;
+  h.age += dt;
+  const C = H[h.kind], FR = TUNE.fighterR, onGround = (p) => !airborne(p);
+  const shotDown = (x, y, rr, dmg) => { // a fighter's shot meets it (rule 6): the stronger goes on, weakened
+    for (const pr of m.projectiles) {
+      if (pr.dead || Math.hypot(pr.x - x, pr.y - y) > pr.r + rr) continue;
+      ev(m, 'clash', { x, y, a: pr.name, b: h.kind });
+      if (pr.dmg > dmg) { pr.dmg -= dmg; return 0; }
+      if (pr.dmg < dmg) { dmg -= pr.dmg; pr.dead = true; continue; }
+      pr.dead = true; return 0;
+    }
+    return dmg;
+  };
+  if (h.kind === 'arrows') {
+    for (const p of h.pts) {
+      if (p.done) continue;
+      const land = h.warn + p.d;
+      if (h.age < land) { p.dmg = shotDown(p.x, p.y, 3, p.dmg); if (p.dmg <= 0) { p.done = p.gone = true; } continue; }
+      p.done = true;
+      for (const t of m.players) if (onGround(t) && Math.hypot(t.x - p.x, t.y - p.y) <= C.r + FR) m.hits.push({ target: t, dmg: p.dmg, kb: C.kb, from: { x: p.x, y: p.y }, src: 'Stray arrows' });
+    }
+  } else if (h.kind === 'soldier') {
+    if (!h.landed && h.age >= h.life) {
+      h.landed = true;
+      for (const t of m.players) if (onGround(t) && Math.hypot(t.x - h.x1, t.y - h.y1) <= C.r + FR) m.hits.push({ target: t, dmg: C.dmg, kb: C.kb, from: { x: h.x0, y: h.y0 }, src: 'Falling soldier' });
+      addRough(m, 'body', h.x1, h.y1, C.body.r, C.body.life, { army: h.army, flip: h.x0 <= 0, len: C.body.len }); // he lies there, solid, until he fades
+    }
+  } else if (h.kind === 'spear') {
+    if (h.age >= h.warn && !h.dead) {
+      h.x += h.vx * dt; h.y += h.vy * dt;
+      h.dmg = shotDown(h.x, h.y, C.r, h.dmg);
+      for (const w of m.walls) { // a block soaks it like any shot
+        if (h.dmg <= 0 || w.dead || (h.hitWalls ||= []).includes(w.id)) continue;
+        const [a, b] = wallEnds(w);
+        if (segDist(h, a, b) > C.r + 1) continue;
+        h.hitWalls.push(w.id); h.dmg = absorb(m, w, h.dmg);
+      }
+      if (h.dmg <= 0) h.dead = true;
+      for (const t of m.players) {
+        if (h.dead || t.air?.kind === 'jump' || Math.hypot(t.x - h.x, t.y - h.y) > FR + C.r) continue;
+        const d = unitDir(h.vx, h.vy);
+        m.hits.push({ target: t, dmg: h.dmg, kb: C.kb, dir: d, from: { x: h.x - d.x * 20, y: h.y - d.y * 20 }, walled: true, src: 'Stray spear' });
+        h.dead = true;
+      }
+      if (h.dead) h.life = Math.min(h.life, h.age + 0.4);
+    }
+  } else { // horse / elephant
+    if (h.age >= h.warn && !h.unit && !h.gone) { // it comes in: an extra unit with its own health (rule 12)
+      h.unit = { id: m.nid++, owner: NOBODY, hazard: h.kind, x: h.x0, y: h.y0, vx: h.vx, vy: h.vy, hp: C.hp, hp0: C.hp, t: h.run, r: C.r, name: h.kind, hit: [] };
+      m.units.push(h.unit);
+    }
+    const u = h.unit;
+    if (u) {
+      if (!m.units.includes(u)) { // gone: run out of the arena, or brought down
+        if (u.hp <= 0) { Z.fallen.push({ kind: h.kind, x: u.x, y: u.y, vx: u.vx, army: h.army, rider: h.rider, t0: m.t }); ev(m, 'hazardDown', { kind: h.kind, x: u.x, y: u.y }); }
+        h.unit = null; h.gone = true; h.life = Math.min(h.life, h.age);
+      } else {
+        u.x += u.vx * dt; u.y += u.vy * dt;
+        for (const t of m.players) { // runs down anyone on the ground in its way, once each
+          if (!onGround(t) || u.hit.includes(t.id) || Math.hypot(t.x - u.x, t.y - u.y) > u.r + FR) continue;
+          u.hit.push(t.id);
+          const d = unitDir(u.vx, u.vy);
+          m.hits.push({ target: t, dmg: C.dmg, kb: C.kb, dir: d, from: { x: u.x - d.x * 12, y: u.y - d.y * 12 }, src: h.kind === 'elephant' ? 'Charging elephant' : 'Runaway horse' });
+        }
+        if (C.swing) tuskSwing(m, u, C.swing, dt); // the elephant also swings its tusks at anyone just beside its path
+      }
+    }
+  }
+  if (h.age >= h.life) { // over: the next one only after a random gap
+    if (h.unit) { const i = m.units.indexOf(h.unit); if (i >= 0) m.units.splice(i, 1); }
+    const gap = Z.test?.busy ? [1, 4] : H.gap; Z.cur = null; Z.next = m.t + R(gap[0], gap[1]);
+  }
+}
+
+// The elephant's tusk swing (owner 2026-11-22): someone on the ground near its front, just outside its path, gets a
+// sweep of the tusks: a visible wind-up (u.swing.t < windup), then anyone still in reach is hit once. Rests a moment after.
+function tuskSwing(m, u, S, dt) {
+  const FR = TUNE.fighterR, d = unitDir(u.vx, u.vy), reach = u.r + S.reach + FR;
+  const inReach = (t) => { const dx = t.x - u.x, dy = t.y - u.y; return !airborne(t) && Math.hypot(dx, dy) <= reach && dx * d.x + dy * d.y > -u.r * 0.5; }; // beside or ahead, not behind
+  if (u.swing) {
+    u.swing.t += dt;
+    if (!u.swing.struck && u.swing.t >= S.windup) {
+      u.swing.struck = true;
+      for (const t of m.players) if (inReach(t) && !u.hit.includes(t.id)) { u.hit.push(t.id); m.hits.push({ target: t, dmg: S.dmg, kb: S.kb, from: { x: u.x, y: u.y }, src: 'Tusk swing' }); }
+    }
+    if (u.swing.t >= S.dur) { u.swing = null; u.rest = S.rest; }
+    return;
+  }
+  if ((u.rest = Math.max(0, (u.rest || 0) - dt)) > 0) return;
+  if (m.players.some((t) => inReach(t) && !u.hit.includes(t.id))) { u.swing = { t: 0 }; ev(m, 'tusk', { x: u.x, y: u.y }); }
+}
+
 // ---------- 3. clashes ----------
 // Rule 6 says moves collide when they touch ON SCREEN, so a clash uses the size the shot is drawn at (render.js
 // drawProjectile), not its small hit size against a fighter, which stays as it is (dodging is unchanged).
@@ -718,14 +890,14 @@ function applyHits(m) {
       ev(m, 'barrier', { pid: t.id, amount: a, left: t.med.barrier, x: t.x, y: t.y });
       if (t.med.barrier <= 1e-9) stopMed(m, t, 'BARRIER BROKEN');
       else { // the barrier held: the little that leaks through hurts, but doesn't break meditation or push
-        if (dmg > 0) { n.dmg += dmg; n.srcs.push(h.src); if (h.by != null && m.players[h.by]) m.players[h.by].stats.dealt += dmg; }
+        if (dmg > 0) { n.dmg += dmg; n.srcs.push(h.src); if (h.by != null && m.players[h.by] && !t.hazard) m.players[h.by].stats.dealt += dmg; }
         continue;
       }
     }
     if (!(dmg > 0)) continue;
-    if (h.burn) { n.dmg += dmg; n.srcs.push(h.src); if (h.by != null && m.players[h.by]) m.players[h.by].stats.dealt += dmg; continue; } // lava: hurts, never interrupts
+    if (h.burn) { n.dmg += dmg; n.srcs.push(h.src); if (h.by != null && m.players[h.by] && !t.hazard) m.players[h.by].stats.dealt += dmg; continue; } // lava: hurts, never interrupts
     n.dmg += dmg; n.hit = true; n.srcs.push(h.src);
-    if (h.by != null && m.players[h.by]) m.players[h.by].stats.dealt += Number.isFinite(dmg) ? dmg : 0;
+    if (h.by != null && m.players[h.by] && !t.hazard) m.players[h.by].stats.dealt += Number.isFinite(dmg) ? dmg : 0;
     if (t.kvx != null && h.kb) {
       const k = Number.isFinite(h.dmg) && h.dmg > 0 ? dmg / h.dmg : 1;
       let d = h.from ? unitDir(t.x - h.from.x, t.y - h.from.y) : { x: 0, y: 0 };

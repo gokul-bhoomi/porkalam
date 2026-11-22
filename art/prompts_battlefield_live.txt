@@ -1,0 +1,67 @@
+Porkalam art - LIVE BATTLEFIELD (2026-11-21). Owner: the battlefield must be ACTIVE (real fighting behind the
+arena, soldiers falling in, arrows, horses and elephants running through), all random so it never repeats.
+The game already plays all of this with placeholder code shapes (src/war.js draws, src/sim.js decides); these
+images replace the shapes. Owner's art rule: every moving thing is a real frame-by-frame ChatGPT animation
+(8-16 frames), never one picture slid or wobbled by code. Code only plays the frames and moves them.
+
+How to run them: ONE NEW ChatGPT chat per image ("Work" mode), paste the prompt as one paragraph (Enter sends),
+attach the reference images in [brackets]. ChatGPT saves into /Users/gokul/dev/home/; copy each result into art/
+with the given name. Do #1 first; it is the style reference for the rest. Not more than 2 jobs at once.
+
+Shared rules for every sprite sheet (2-15), already written into each prompt:
+- painted pixel-art style matching the arena, dark contours, side view from the same high 3/4 camera
+- one horizontal strip, frames the same size, evenly spaced, the figure's feet on the same baseline in every frame
+- flat pure magenta (#FF00FF) background so the code can cut it out; no shadow on the ground, no text
+- the two armies: TIGER army = red cloth, gold trim, round red shields with a gold tiger; FISH army = deep blue
+  cloth, pale gold trim, round blue shields with two gold fish. Chola-era South Indian soldiers: bare chest or
+  quilted vest, dhoti wrapped for battle, cloth helmet/turban, spear, sword or bow, round shield.
+
+------------------------------------------------------------------
+1) arena_battlefield_live.png   [attach art/arena_battlefield.png]
+Use the image generation tool. Repaint the attached image at exactly the same size (1672x941), same camera, same painted pixel-art style, same sunset sky, hills, sun, smoke columns, burning tents, tiger and fish banners at the far left and right, the same round clearing in exactly the same place and size, and the same props outside its edge (chariot wheel, drum, shields, spear). ONE change: REMOVE ALL THE ARMIES. No soldiers, elephants, horses, chariots or flying arrows anywhere. Behind the clearing's far edge leave an empty band of trampled, dusty brown battleground about 90 px deep that runs the whole width of the picture, with only scattered dropped weapons, hoof prints and small wisps of dust, so moving soldiers can be drawn there later. Far away on the horizon a faint hazy suggestion of distant troops and banners is fine, very small and soft. Save the final PNG as arena_battlefield_live.png.
+
+2) war_duel_tiger.png
+Use the image generation tool. A sprite sheet of 12 frames in one horizontal row, each cell 160x160, on flat pure magenta (#FF00FF), no ground shadow, no text. Painted pixel art, dark contours, seen from the side from a high three-quarter camera. Two Chola-era soldiers duelling, facing each other a little apart: LEFT a TIGER army soldier (red cloth, gold trim, round red shield with a gold tiger, sword), RIGHT a FISH army soldier (deep blue cloth, round blue shield with two gold fish, spear). Frames 1-12 are one looping exchange: circling, a sword cut blocked by the shield, a spear thrust dodged, a shove, back to guard; every frame a small step from the last, both feet on the same baseline in every frame. Save as war_duel_tiger.png.
+
+3) war_duel_fall.png
+Same style and two soldiers as before (attach war_duel_tiger.png as the reference). 12 frames, one row, cells 160x160, flat magenta. The end of a duel: the TIGER soldier lands a sword blow, the FISH soldier staggers back (frames 1-4), falls backwards to the ground (5-8), lies still on his back with his spear and shield beside him (9-12) while the winner lowers his sword and turns to run on (10-12). Save as war_duel_fall.png.
+
+4) war_run_tiger.png and 5) war_run_fish.png   (two chats)
+Use the image generation tool. A sprite sheet of 8 frames, one row, cells 96x128, flat pure magenta (#FF00FF), no ground shadow, no text. Painted pixel art, dark contours, side view from a high three-quarter camera. One Chola-era foot soldier of the TIGER army (red cloth, gold trim, round red shield with a gold tiger, spear held forward) CHARGING at a run to the right: a full looping run cycle, the legs clearly alternating in every frame, the shield arm and spear bobbing with the stride, cloth flapping. Feet on the same baseline. Save as war_run_tiger.png. (Second chat: the same, FISH army: deep blue, round blue shield with two gold fish, save as war_run_fish.png.)
+
+6) war_stagger_fall.png
+Use the image generation tool. 16 frames, one row, cells 128x128, flat pure magenta, no ground shadow, no text. Painted pixel art, dark contours, high three-quarter side view. A Chola-era foot soldier (attach war_run_tiger.png for the look) has just been struck in battle: frames 1-6 he staggers BACKWARDS to the left, arms flung out, losing his footing; frames 7-11 he falls backwards and hits the ground with a puff of dust; frames 12-16 he lies on his back, weapon and shield dropped beside him, only a last small movement, then still. Make one sheet for the TIGER army; a second chat makes war_stagger_fall_fish.png in FISH colours. Save as war_stagger_fall.png.
+
+7) war_horse_gallop.png
+Use the image generation tool. 8 frames, one row, cells 192x144, flat pure magenta, no ground shadow, no text. Painted pixel art, dark contours, high three-quarter side view. A war horse with NO rider galloping to the right in panic, reins and a torn red saddle cloth flapping, mane and tail streaming, a full looping gallop cycle (the four legs in the real gallop order, every frame different). Feet on the same baseline. Save as war_horse_gallop.png.
+
+8) war_horse_rider.png
+Same as #7 (attach it), but a TIGER army rider sits on the horse holding a spear, leaning forward, cloth flying. 8 frames, same cells and baseline so the two sheets line up. Save as war_horse_rider.png.
+
+9) war_elephant_charge.png
+Use the image generation tool. 12 frames, one row, cells 288x224, flat pure magenta, no ground shadow, no text. Painted pixel art, dark contours, high three-quarter side view. A huge Chola war elephant CHARGING to the right: armoured head plate, long red-and-gold caparison, a tall wooden howdah with two TIGER army warriors (one with a bow, one with a spear), trunk raised and swinging, ears flapping, tusks with gold caps, the heavy legs in a real fast walk/charge cycle so the weight shows, a little dust kicked up at the feet. Feet on the same baseline. Save as war_elephant_charge.png.
+
+10) war_elephant_fall.png
+Same elephant (attach war_elephant_charge.png). 12 frames, same cells. Brought down mid-charge: it rears and trumpets (1-4), stumbles and crashes onto its side with a big puff of dust (5-9), the howdah breaks and the riders tumble off; frames 10-12 it lies still. Save as war_elephant_fall.png.
+
+11) war_chariot.png
+Use the image generation tool. 8 frames, one row, cells 256x160, flat pure magenta, no ground shadow, no text. Painted pixel art, high three-quarter side view. A Chola war chariot racing to the right: two white horses at full gallop (proper alternating gallop, every frame different), a gilded wooden chariot with big spoked wheels that turn, a TIGER army charioteer and an archer drawing his bow, banner pole streaming. Feet and wheels on the same baseline. Save as war_chariot.png.
+
+12) war_cavalry.png
+Same style as #8 (attach it). 8 frames, cells 192x144: a FISH army horseman (deep blue, round blue shield with two gold fish, sword raised) on a brown horse galloping to the right. Save as war_cavalry.png.
+
+13) war_arrows_land.png
+Use the image generation tool. 12 frames, one row, cells 64x96, flat pure magenta, no text. Painted pixel art. One war arrow coming down steeply from the upper left and striking the sandy ground: frames 1-4 it falls (motion streak), frame 5 it hits with a small burst of sand, frames 6-9 it quivers stuck at an angle, frames 10-12 it is still, stuck in the sand with its feathers up. Save as war_arrows_land.png.
+
+14) war_spear.png
+Use the image generation tool. 8 frames, one row, cells 128x48, flat pure magenta, no text. Painted pixel art. A thrown war spear flying to the right, slight wobble and a faint motion streak, the iron head catching the sunset light with a small glint in frames 1-2. Save as war_spear.png.
+
+15) war_dust_warning.png
+Use the image generation tool. 12 frames, one row, cells 160x128, flat pure magenta, no text. Painted pixel art. A rising cloud of brown battle dust, as if something big is about to burst through it: it starts small and low (frame 1), billows up and spreads (2-8), then thins and drifts away (9-12). Warm ochre and brown, soft but clearly pixel-art clusters. Save as war_dust_warning.png.
+
+RESULT (2026-11-22, driven from Claude Code, all in use via src/art.js -> src/war.js):
+arena_battlefield_live.png (+ .json = the old fit), war_run_tiger, war_run_fish, war_duel (one loop, tiger left),
+war_stagger_fall (tiger) + war_stagger_fall_fish, war_horse_gallop, war_cavalry_fish (made instead of #8/#12),
+war_chariot, war_elephant_charge, war_elephant_fall, war_arrow_land, war_spear, war_dust.
+Not made: #3 duel fall (the loser uses the stagger_fall frames), a tiger horseman, a horse falling (a killed horse fades).
+Known: a faint pink tint in the elephant-fall dust (magenta key).

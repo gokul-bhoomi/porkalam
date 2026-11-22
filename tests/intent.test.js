@@ -515,6 +515,109 @@ test('rule 12: only one arena change at a time, always with an end time', () => 
   assert.equal(m.arenaChange, null);
 });
 
+// Arena hazards (rule 12 note, owner 2026-11-21): the battlefield's war spills into the arena.
+const HAZ_SRCS = ['Stray arrows', 'Falling soldier', 'Stray spear', 'Runaway horse', 'Charging elephant'];
+const field = (o = {}) => { const m = createMatch({ seed: o.seed ?? 1, time: o.time ?? 300, arena: 'battlefield', hazardTest: o.test ?? null }); return m; };
+const hazHits = (m) => m.events.filter((e) => e.type === 'hp' && e.dmg > 0 && e.srcs.some((s) => HAZ_SRCS.includes(s)));
+function untilHazard(m, kind, max = 60) { // run until a hazard of that kind is on (or any, without a kind)
+  for (let i = 0; i < steps(max); i++) { stepMatch(m, [{}, {}]); if (m.haz.cur && (!kind || m.haz.cur.kind === kind)) return m.haz.cur; }
+  return null;
+}
+test('rule 12 hazards: only on the battlefield, belong to nobody and hit both fighters, and cannot be turned off', () => {
+  assert.equal(createMatch({ arena: 'river' }).haz, null);
+  assert.ok(createMatch({ arena: 'battlefield' }).haz, 'every battlefield match has hazards (there is no switch)');
+  const hit = [0, 0];
+  for (let seed = 1; seed <= 6; seed++) { // fighters standing still for a whole match get caught now and then
+    const m = field({ seed, time: 300 }); m.players[K].x = -40; m.players[R].x = 40;
+    const cut = (e) => { for (const x of hazHits(m).filter((e) => !e.seen)) { x.seen = true; hit[x.pid]++; } };
+    for (let i = 0; i < steps(300) && m.phase === 'fight'; i++) { stepMatch(m, [{}, {}]); if (m.events.length > 300) cut(); }
+    cut();
+  }
+  assert.ok(hit[K] > 0 && hit[R] > 0, `both fighters get hit (${hit})`);
+});
+test('rule 12 hazards: one at a time, random gaps, never the same kind twice running, and each one warns first', () => {
+  const m = field({ seed: 4, time: 600 }), seen = [];
+  let cur = null;
+  for (let i = 0; i < steps(600) && m.phase === 'fight'; i++) {
+    m.players[K].hp = m.players[R].hp = 100; // keep the match going
+    stepMatch(m, [{}, {}]);
+    if (m.haz.cur && m.haz.cur !== cur) { cur = m.haz.cur; seen.push({ kind: cur.kind, t: m.t, warn: cur.warn }); }
+    for (const e of m.events.splice(0)) if (e.type === 'hp' && e.dmg > 0 && e.srcs.some((s) => HAZ_SRCS.includes(s))) {
+      const last = seen.at(-1);
+      assert.ok(e.t >= last.t + last.warn - 1e-6, `${e.srcs} hurt before its warning was over`);
+    }
+  }
+  assert.ok(seen.length >= 10, `${seen.length} hazards in 10 minutes`);
+  for (let i = 1; i < seen.length; i++) assert.notEqual(seen[i].kind, seen[i - 1].kind);
+  const gaps = new Set(seen.slice(1).map((h, i) => Math.round((h.t - seen[i].t) * 10)));
+  assert.ok(gaps.size > seen.length / 2, 'the gaps between hazards are random, not a rhythm');
+  assert.equal(new Set(seen.map((h) => h.kind)).size, Object.keys(TUNE.hazard.weights).length, 'every kind comes up');
+});
+test('rule 12 hazards: a horse or elephant is an extra unit: own health, any attack hits it, hitting it gives nothing', () => {
+  for (const kind of ['horse', 'elephant']) {
+    const a = field({ test: { kind } }), b = field({ test: { kind } });
+    for (const m of [a, b]) { untilHazard(m, kind); for (let i = 0; i < steps(5) && !m.units.length; i++) stepMatch(m, [{}, {}]); }
+    const u = a.units.find((x) => x.hazard === kind);
+    assert.ok(u && u.owner !== K && u.owner !== R, 'it belongs to nobody');
+    assert.equal(u.hp, TUNE.hazard[kind].hp);
+    a.hits.push({ target: u, dmg: 4, kb: 0, from: null, src: 'Mantra bolt', by: K });
+    stepMatch(a, [{}, {}]); stepMatch(b, [{}, {}]);
+    assert.ok(Math.abs(u.hp - (TUNE.hazard[kind].hp - 4)) < 1e-9, 'the hit took its health');
+    for (const pid of [K, R]) for (const f of ['power', 'devotion']) assert.equal(a.players[pid][f], b.players[pid][f], `no ${f} for hitting it`);
+    assert.equal(a.players[K].stats.dealt, b.players[K].stats.dealt, 'and it is not counted as damage dealt');
+  }
+});
+test('rule 12 hazards: the elephant swings its tusks at someone just outside its path, after a visible wind-up', () => {
+  const m = field({ test: { kind: 'elephant' } });
+  untilHazard(m, 'elephant');
+  for (let i = 0; i < steps(5) && !m.units.some((u) => u.hazard); i++) stepMatch(m, [{}, {}]);
+  const u0 = m.units.find((x) => x.hazard === 'elephant');
+  const v0 = Math.hypot(u0.vx, u0.vy), px = -u0.vy / v0 * 100, py = u0.vx / v0 * 100; // well off its path, either side
+  Object.assign(m.players[K], { x: px, y: py }); Object.assign(m.players[R], { x: -px, y: -py });
+  for (let i = 0; i < steps(5) && Math.hypot(u0.x, u0.y) > 60; i++) stepMatch(m, [{}, {}]);
+  const u = m.units.find((x) => x.hazard === 'elephant'), C = TUNE.hazard.elephant, sp = Math.hypot(u.vx, u.vy), d = { x: u.vx / sp, y: u.vy / sp };
+  const side = u.r + TUNE.fighterR + C.swing.reach / 2; // beside its path, clear of its body
+  Object.assign(m.players[K], { x: u.x + d.x * 30 - d.y * side, y: u.y + d.y * 30 + d.x * side });
+  const hp = m.players[K].hp;
+  stepMatch(m, [{}, {}]);
+  assert.ok(u.swing, 'it starts a swing');
+  run(m, [{}, {}], C.swing.windup - 0.05);
+  assert.equal(m.players[K].hp, hp, 'nothing lands during the wind-up');
+  run(m, [{}, {}], 0.2);
+  assert.ok(m.players[K].hp < hp, 'the tusks land');
+});
+test('rule 12 hazards: arrows stuck in the sand are solid until they fade', () => {
+  const m = field({ test: { kind: 'arrows' } }); m.players[K].x = -130; m.players[R].x = 130;
+  const h = untilHazard(m, 'arrows'), a = h.pts[0];
+  run(m, [{}, {}], h.warn + TUNE.hazard.arrows.stagger + 0.1);
+  const p = m.players[K]; Object.assign(p, { x: a.x - 25, y: a.y, kvx: 0, kvy: 0 }); m.players[R].x = a.x + 100; m.players[R].y = a.y + 60;
+  run(m, [{ mx: 1 }, {}], 0.8);
+  assert.ok(Math.hypot(p.x - a.x, p.y - a.y) >= TUNE.hazard.arrows.solid + TUNE.fighterR - 1e-6, 'nobody on the ground walks through it');
+});
+test('rule 12 hazards: a falling arrow is a shot, so a shot can meet it before it lands (rule 6)', () => {
+  const m = field({ test: { kind: 'arrows' } }); m.players[K].x = -130; m.players[R].x = 130;
+  const h = untilHazard(m, 'arrows'), p = h.pts[0];
+  m.projectiles.push({ id: m.nid++, owner: K, name: 'test bolt', x: p.x, y: p.y, vx: 0, vy: 0, r: 4, dmg: 10, life: 1, lt: 0, flown: 0, reach: 999, hitUnits: [] });
+  stepMatch(m, [{}, {}]);
+  assert.ok(p.gone, 'the arrow was shot down');
+  assert.ok(Math.abs(m.projectiles[0].dmg - (10 - TUNE.hazard.arrows.dmg)) < 1e-9, 'the stronger shot goes on, weakened');
+});
+test('rule 12 hazards: they pause while an arena change is on; a fallen soldier is solid on the ground until he fades', () => {
+  const m = field({ test: { busy: true } });
+  startArenaChange(m, { name: 'flood', time: 20 });
+  run(m, [{}, {}], 19);
+  assert.equal(m.haz.cur, null, 'no hazard comes in during an arena change');
+  const s = field({ test: { kind: 'soldier' } });
+  const h = untilHazard(s, 'soldier'); run(s, [{}, {}], h.life + 0.1);
+  const body = s.rough.find((z) => z.kind === 'body');
+  assert.ok(body && body.until - body.t0 === TUNE.hazard.soldier.body.life, 'he lies there');
+  const p = s.players[K]; Object.assign(p, { x: body.x - 40, y: body.y, kvx: 0, kvy: 0 }); s.players[R].x = body.x + 90; s.players[R].y = body.y + 60;
+  run(s, [{ mx: 1 }, {}], 1.2);
+  assert.ok(p.x < body.x - body.len / 2 + 1 || Math.abs(p.y - body.y) >= body.r + TUNE.fighterR - 1e-6, 'nobody on the ground walks through him');
+  run(s, [{}, {}], TUNE.hazard.soldier.body.life);
+  assert.ok(!s.rough.includes(body), 'then fades');
+});
+
 // ---------- 13. Arena ----------
 test('rule 13: nobody leaves the round arena, it never grows, and being knocked into the edge costs health', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0 } });

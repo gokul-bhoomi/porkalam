@@ -74,6 +74,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 ## 12. Extra units and arena changes
 - Summoned helpers and copies have their own health, can be hit, and disappear when their timer ends.
 - Only one arena change can be active at a time. It looks the same to both players and always has an end time.
+- Arena hazards (owner, 2026-11-21), such as the battlefield's arrow volleys, stray spears, falling soldiers, horses and charging elephants, belong to nobody. They hit anyone, always give a visible warning, and come at random times. A hazard that is a unit (horse, elephant) is an extra unit as above: it has its own health and any attack in range hits it. A hazard that is a shot (arrow, spear) clashes like any move (rule 6). Hitting or killing a hazard gives no reward (no power, no devotion). Hazards pause while an arena change is active, and they can't be turned off. Arrows from a volley stay stuck in the sand for a few seconds and are solid until they fade (owner, 2026-11-22). A fallen soldier lies on the ground until he fades: he is solid, so anyone on the ground walks round him, and jumping or flying goes over (owner, 2026-11-22; he was rough ground before).
 
 ## 13. Arena
 - One round arena that fits on one screen and is always fully visible to both players.

@@ -1,5 +1,5 @@
 // Sound and music, synthesized with the Web Audio API (no audio files; the owner chose not to download any).
-// The sound is a fighting game's: dark and heavy. The music is slow and cinematic (see the music section).
+// The sound is a fighting game's: dark and heavy. The music is fast bass and drums (see the music section).
 // Effects are punchy and low: distorted punches, whooshes, metal clangs. Divine moments get a great gong,
 // a deep choir and brass. Browsers only allow sound after a key press, so everything starts on the first input.
 // M mutes.
@@ -8,7 +8,7 @@ const ROOT = 73.42; // D2
 const hz = (semi, oct = 0) => ROOT * 2 ** (semi / 12 + oct);
 
 let ctx = null, master = null, musicBus = null, sfxBus = null, verb = null, shaper = null;
-let muted = false, musicOn = false, musicMode = null, musicLevel = 0, nextBeat = 0, beat = 0, lastPlay = {};
+let muted = false, musicOn = false, musicMode = null, musicLevel = 0, lastPlay = {};
 export const log = []; // names of played sounds (read by the smoke test)
 
 function init() {
@@ -48,10 +48,10 @@ export const state = () => (ctx ? ctx.state : 'none');
 
 // ---------- building blocks ----------
 function env(g, t, a, peak, d) { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); }
-function osc(type, f, t, a, peak, d, out, { glide = null, detune = 0, wet = 0, lp = null } = {}) {
+function osc(type, f, t, a, peak, d, out, { glide = null, gt = null, detune = 0, wet = 0, lp = null } = {}) { // gt = glide time
   const o = ctx.createOscillator(), g = ctx.createGain();
   o.type = type; o.frequency.setValueAtTime(f, t); o.detune.value = detune;
-  if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + a + d);
+  if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + (gt ?? a + d));
   let node = o;
   if (lp) { const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(lp[0], t); if (lp[1]) fl.frequency.exponentialRampToValueAtTime(lp[1], t + a + d); fl.Q.value = lp[2] || 1; o.connect(fl); node = fl; }
   env(g, t, a, peak, d); node.connect(g); g.connect(out);
@@ -90,18 +90,21 @@ function brass(t, d = 1.2, peak = 0.12, s = 0) { // a low horn blast
 }
 
 // ---------- music ----------
-// Cinematic and dark (owner, 2026-11-08: the drum-loop music didn't work; then 'a bit faster'). At 88 bpm:
-//  - warm string pads moving through Dm - Bb - Gm - A (two bars each), with a sub bass under them
-//  - a bansuri-like flute playing slow, breathy phrases in D minor (a Kirwani-like colour), with rests
-//  - in a fight: a heartbeat pulse, and a big war drum with a short roll every four bars
-//  - menus: pads and flute only
-const BPM = 88, BEAT = 60 / BPM; // 66 -> 88 (owner, 2026-11-08: a bit faster)
-const CHORDS = [[0, 3, 7], [-4, 0, 3], [-7, -2, 2], [-5, -1, 2]]; // Dm, Bb, Gm, A (semitones from D)
-const FLUTE = [0, 2, 3, 5, 7, 8, 11, 12, 14, 15]; // D minor with a raised 7th (harmonic minor)
-export function setMusic(mode) { // 'menu', 'fight', or null
+// "Hybrid" (owner, 2026-11-21, picked from review/music-sketches.html; the slow cinematic pads felt nothing like a
+// fighting game). Bass and drums only, no lead tune (the owner disliked the nadaswaram-style lead and a busy melody).
+// 148 bpm in Natabhairavi (D natural minor; NOT Mayamalavagowla, which sounded like snake-charmer music):
+//  - arcade synth bass bouncing octaves in eighths, a low drone on D and A
+//  - kick and snare backbeat, thavil thumps and slaps on the off-beats, a war-drum boom every 4 bars with a parai roll into it
+//  - menus: drone, bass and soft thavil only
+//  - final stretch (last 30 s, or someone at 25% health or less): 7% faster, busier slaps and hi-hats
+const BPM = 148;
+const ROOTS = [0, -4, -2, 0, 0, -4, -7, -5]; // one bar each: Dm Bb C Dm | Dm Bb Gm Am (semitones from D)
+let step = 0, nextStep = 0, hot = false;
+export function setMusic(mode, final = false) { // 'menu', 'fight', or null; final = the last stretch of a fight
+  hot = mode === 'fight' && final;
   if (mode === musicMode) return;
   musicMode = mode; musicOn = !!mode;
-  musicLevel = mode === 'fight' ? 0.55 : mode === 'menu' ? 0.45 : 0;
+  musicLevel = mode === 'fight' ? 0.5 : mode === 'menu' ? 0.4 : 0;
   if (ctx) musicBus.gain.setTargetAtTime(musicLevel, ctx.currentTime, 0.6);
 }
 export function duck(amount = 0.25, time = 1.6) {
@@ -109,55 +112,42 @@ export function duck(amount = 0.25, time = 1.6) {
   const t = ctx.currentTime;
   musicBus.gain.cancelScheduledValues(t); musicBus.gain.setTargetAtTime(musicLevel * amount, t, 0.06); musicBus.gain.setTargetAtTime(musicLevel, t + time, 0.6);
 }
-function pad(chord, t, d) { // a string-section chord: detuned saws, soft attack, slow filter swell
-  for (const s of chord) for (const [oct, det] of [[0, -7], [0, 6], [1, 0]]) {
-    const o = ctx.createOscillator(), g = ctx.createGain(), fl = ctx.createBiquadFilter();
-    o.type = 'sawtooth'; o.frequency.value = hz(s, 1 + oct); o.detune.value = det;
-    fl.type = 'lowpass'; fl.Q.value = 0.7; fl.frequency.setValueAtTime(400, t); fl.frequency.linearRampToValueAtTime(1100, t + d * 0.5); fl.frequency.linearRampToValueAtTime(500, t + d);
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.022, t + d * 0.35); g.gain.setValueAtTime(0.022, t + d * 0.8); g.gain.linearRampToValueAtTime(0.0001, t + d + 0.8);
-    o.connect(fl); fl.connect(g); g.connect(musicBus); o.start(t); o.stop(t + d + 0.9);
-  }
-  osc('sine', hz(chord[0], 0), t, 0.4, 0.12, d, musicBus); // sub bass
-}
-let lastFlute = 7;
-function flute(semi, t, d) { // a breathy bamboo flute with a little glide into the note and slow vibrato
-  const f = hz(semi, 2), o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
-  o.type = 'sine'; o.frequency.setValueAtTime(hz(lastFlute, 2), t); o.frequency.exponentialRampToValueAtTime(f, t + 0.09);
-  lfo.frequency.value = 5; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * 0.012, t + d * 0.6); lfo.connect(lg); lg.connect(o.frequency);
-  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.07, t + 0.08); g.gain.setValueAtTime(0.06, t + d * 0.7); g.gain.linearRampToValueAtTime(0.0001, t + d);
-  o.connect(g); g.connect(musicBus); o.start(t); lfo.start(t); o.stop(t + d + 0.05); lfo.stop(t + d + 0.05);
-  osc('triangle', f * 2, t, 0.08, 0.008, d, musicBus); // a touch of brightness
-  noise(t, d, 0.012, musicBus, { f: f * 2, q: 2, a: 0.06 }); // breath
-  lastFlute = semi;
-}
-function phrase(t) { // 3-5 slow notes moving mostly by step, ending long on a chord tone
-  let i = FLUTE.indexOf(lastFlute); if (i < 0) i = 4;
-  let tt = t;
-  const n = 3 + Math.floor(Math.random() * 3);
-  for (let k = 0; k < n; k++) {
-    i = Math.max(0, Math.min(FLUTE.length - 1, i + [-2, -1, -1, 1, 1, 2][Math.floor(Math.random() * 6)]));
-    const last = k === n - 1, d = last ? BEAT * 2.5 : BEAT * [0.5, 0.5, 1, 1][Math.floor(Math.random() * 4)];
-    flute(last ? [0, 3, 7, 12][Math.floor(Math.random() * 4)] : FLUTE[i], tt, d * 0.95);
-    tt += d;
-  }
-}
+const M = {
+  kick: (t, v = 1) => { osc('sine', 150, t, 0.002, 0.9 * v, 0.3, musicBus, { glide: 42, gt: 0.09 }); osc('square', 1200, t, 0.001, 0.04 * v, 0.01, musicBus); },
+  snare: (t, v = 1) => { noise(t, 0.14, 0.38 * v, musicBus, { f: 1900, q: 0.9 }); osc('triangle', 210, t, 0.001, 0.18 * v, 0.07, musicBus, { glide: 160 }); },
+  hat: (t, v = 1) => noise(t, 0.03, 0.09 * v, musicBus, { type: 'highpass', f: 7500 }),
+  thavil: (t, v = 1) => { osc('sine', 170, t, 0.002, 0.75 * v, 0.28, musicBus, { glide: 68, gt: 0.07 }); noise(t, 0.03, 0.12 * v, musicBus, { type: 'lowpass', f: 900 }); },
+  slap: (t, v = 1) => { noise(t, 0.06, 0.32 * v, musicBus, { f: 2600, q: 2.2 }); osc('triangle', 620, t, 0.001, 0.08 * v, 0.04, musicBus); },
+  parai: (t, v = 1) => { noise(t, 0.1, 0.42 * v, musicBus, { type: 'highpass', f: 1400, q: 0.8 }); osc('triangle', 330, t, 0.001, 0.12 * v, 0.06, musicBus, { glide: 220 }); },
+  boom: (t, v = 1) => { osc('sine', 90, t, 0.002, 1.0 * v, 1.1, musicBus, { glide: 34, gt: 0.25 }); noise(t, 0.5, 0.25 * v, musicBus, { type: 'lowpass', f: 400 }); },
+  bass: (t, f, d, peak) => { osc('sawtooth', f, t, 0.003, peak, d, musicBus, { lp: [1400, 220, 6] }); osc('square', f / 2, t, 0.003, peak * 0.4, d, musicBus, { lp: [400] }); },
+  drone: (t, d) => { for (const s of [0, 7]) osc('sawtooth', hz(s), t, 0.3, 0.035, d, musicBus, { lp: [520] }); },
+};
 export function tickMusic() {
   if (!ctx || ctx.state !== 'running' || !musicOn) return;
   const now = ctx.currentTime;
-  if (nextBeat < now) nextBeat = now + 0.1;
-  while (nextBeat < now + 0.3) {
-    const t = nextBeat, b = beat % 32; // 8 bars of 4 beats
-    if (b % 8 === 0) pad(CHORDS[(b / 8) % 4], t, BEAT * 8);
-    if ((b === 2 || b === 10 || b === 18 || b === 26) && Math.random() < 0.7) phrase(t);
-    if (musicMode === 'fight') {
-      if (b % 2 === 0) { osc('sine', 55, t, 0.004, 0.22, 0.28, musicBus, { glide: 40 }); osc('sine', 55, t + BEAT * 0.28, 0.004, 0.14, 0.25, musicBus, { glide: 40 }); } // heartbeat
-      const root = CHORDS[Math.floor(b / 8) % 4][0]; // a driving low string pulse in eighths
-      for (const h of [0, 0.5]) osc('sawtooth', hz(root, 0), t + h * BEAT, 0.005, 0.05, BEAT * 0.4, musicBus, { lp: [600, 200, 2] });
-      if (b % 4 === 2) tom(t + BEAT / 2, 0.12, 110, musicBus);
-      if (b % 16 === 0) { boom(t, 0.6, 46); noise(t, 1.2, 0.05, musicBus, { type: 'lowpass', f: 300, a: 0.01 }); }   // war drum
-      if (b % 16 === 15) for (let k = 0; k < 4; k++) tom(t + k * BEAT / 4, 0.1 + k * 0.04, 95, musicBus);          // roll into it
+  if (nextStep < now) nextStep = now + 0.05;
+  while (nextStep < now + 0.2) {
+    const t = nextStep, sd = 60 / (BPM * (hot ? 1.07 : 1)) / 4; // one sixteenth
+    const s = step % 128, i = s % 16, root = ROOTS[Math.floor(s / 16)], fight = musicMode === 'fight';
+    if (i === 0) M.drone(t, sd * 16);
+    if (fight) {
+      if (i === 0 || i === 8 || i === 10) M.kick(t);
+      if (i === 4 || i === 12) M.snare(t, 0.85);
+      if (i === 3 || i === 6 || i === 14) M.thavil(t, 0.7);
+      if (i === 2 || i === 5 || i === 11 || i === 15) M.slap(t, 0.7);
+      else if (hot && i % 2 === 1) M.slap(t, 0.4);
+      if (hot && i % 2 === 0) M.hat(t, 0.7);
+      if (s % 64 === 0) M.boom(t, 0.6);
+      if (s % 64 === 60) for (let k = 0; k < 4; k++) M.parai(t + k * sd, 0.5 + k * 0.15); // roll into the top
+      if (i % 2 === 0) M.bass(t, hz(root, i % 4 === 2 ? 1 : 0), sd * 1.8, 0.17);
+    } else {
+      if (i === 0 || i === 8) M.thavil(t, 0.5);
+      if (i === 6 || i === 14) M.slap(t, 0.35);
+      if (s % 64 === 0) M.boom(t, 0.4);
+      if (i % 4 === 0) M.bass(t, hz(root), sd * 3, 0.12);
     }
-    nextBeat += BEAT; beat++;
+    nextStep += sd; step++;
   }
 }
 

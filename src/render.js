@@ -6,6 +6,7 @@ import { opponent, chargeOf, airborne } from './sim.js';
 import { ART, drawSprite, drawFx as fxSprite, drawPortrait, POSES, AIR_POSES } from './art.js';
 import { GODS as GODS_LIST } from './chars/gods.js';
 import { damageReset, damageTrack, drawDamage } from './damage.js';
+import { warOn, warUpdate, warDrawBack, warDrawGround, warActors } from './war.js';
 const fxArt = (name) => useArt && ART.fx[name];
 
 export const FONT = '"Press Start 2P", monospace';
@@ -98,7 +99,7 @@ function drawWarAmbient(now) {
 // banners snapping in the wind at the edges, battle dust drifting along the back of the clearing, and now and then
 // a volley of arrows crossing the sky. All ChatGPT frame sheets, crossfaded. Places are in the painting's pixels.
 const WAR = {
-  smoke: [{ x: 452, y: 200, s: 0.42, ph: 0 }, { x: 705, y: 205, s: 0.36, ph: 3 }, { x: 1318, y: 205, s: 0.4, ph: 5 }],
+  smoke: [{ x: 452, y: 200, s: 0.42, ph: 0 }, { x: 705, y: 205, s: 0.36, ph: 3 }, { x: 1318, y: 205, s: 0.4, ph: 5 }], // over the fires in the old arena_battlefield.png (?war=0)
   sky: { name: 'skyArrows', n: 8, fps: 8, ground: 250, scale: 1.0, drift: 0, alpha: 0.85, every: 11, show: 3.5 }, // a volley every 11 s
   dust: { name: 'dustBand', n: 8, fps: 4, ground: 300, scale: 0.6, drift: 12, alpha: 0.55, foot: 0 },
   props: [
@@ -119,11 +120,15 @@ function drawWarLive(now) {
     const off = ((now * L.drift * a.s) % w + w) % w;
     for (let x = a.x - w + off; x < a.x + a.w + w; x += w) blend(L.name, L.n, L.fps, 0, 1, (nm, al) => fxSprite(G, nm, x + w / 2, bottom, w, { h, anchor: 'bottom', alpha: (L.alpha ?? 1) * al * fade }));
   };
-  const S = WAR.sky, ts = now % S.every; // the volley rises, crosses and fades
-  if (ts < S.show) band(S, Math.min(1, ts / 0.6, (S.show - ts) / 0.8));
-  for (const b of WAR.smoke) { const c = ART.fx.smokeCol1; if (c) blend('smokeCol', 8, 6, b.ph, 1, (nm, al) => fxSprite(G, nm, X(b.x), Y(b.y), c.w * b.s * a.s, { anchor: 'bottom', alpha: al })); }
+  const S = WAR.sky, ts = now % S.every; // the volley rises, crosses and fades (the live war's director sends its own, at random)
+  if (!warOn && ts < S.show) band(S, Math.min(1, ts / 0.6, (S.show - ts) / 0.8));
+  // the live painting has its own fires and smoke; these burning-tent loops (made for the old painting) stood out bigger than its
+  // tents with a pink rim (owner 2026-11-22: "something feels off in the huts"), so only the old painting keeps them
+  if (!warOn) for (const b of WAR.smoke) { const c = ART.fx.smokeCol1; if (c) blend('smokeCol', 8, 6, b.ph, 1, (nm, al) => fxSprite(G, nm, X(b.x), Y(b.y), c.w * b.s * a.s, { anchor: 'bottom', alpha: al })); }
   band(WAR.dust);
-  for (const P of WAR.props) {
+  // the live painting (war on) has its own big banners in the top corners; these edge banners stood on the arena's rim and
+  // fighters at the edge were drawn over their poles (owner 2026-11-22: "the flags don't feel right"), so only the old painting keeps them
+  if (!warOn) for (const P of WAR.props) {
     const c = ART.fx[P.name + P.from];
     if (!c) continue;
     const w = P.w * a.s, h = w * c.h / c.w, x = P.anchor === 'left' ? X(P.x) + w / 2 - w * 0.06 : P.anchor === 'right' ? X(P.x) - w / 2 + w * 0.06 : X(P.x);
@@ -1498,11 +1503,15 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   const cam = sceneCamera(m) || divineCamera(now); // a power-up zooms in on the caster; a divine weapon on its moment
   if (cam) { G.translate(CX, H / 2); G.scale(cam.z, cam.z); G.translate(-cam.fx, -cam.fy); }
   drawBackdrop(now);
+  const live = warOn && useArt && arenaDraw && ART.theme === 'battlefield'; // the war going on behind the battlefield (src/war.js, just for looks; ?war=0 hides it)
+  const WV = { sx, sy, Z, SQ, SC };
+  if (live) { const a = arenaDraw; warUpdate(m, fxNow); warDrawBack(G, (x, y) => [a.x + x * a.s, a.y + y * a.s], a.s); }
   if (m.scene) sceneSky(m);
   drawHeaven(m, now);
   for (const f of fx) if (f.kind === 'god') drawGod(f, fxNow); // a god appearing in the sky (small and medium boons)
   drawArena();
   drawDamage(G, fxNow, 'ground'); // what the fight has done to the sand
+  if (m.haz) warDrawGround(G, WV, m); // the battlefield's hazards (they are real, so they show with or without the art)
   drawChasm(m, now);
   for (const a of m.areas) {
     const k = 1 - a.t / a.delay;
@@ -1515,7 +1524,7 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
     ring(sx(a.x), sy(a.y), Z(a.r), Z(a.r) * SQ, '#ff4a3a', 1);
     ell(sx(a.x), sy(a.y), Z(a.r) * k, Z(a.r) * SQ * k, 'rgba(255,74,58,.3)');
   }
-  for (const u of m.units) { ell(sx(u.x), sy(u.y) - 4, Z(u.r), Z(u.r), '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
+  for (const u of m.units) if (!u.hazard) { ell(sx(u.x), sy(u.y) - 4, Z(u.r), Z(u.r), '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
   for (const f of fx) if (f.ground) drawFx(f, fxNow);
   drawDivine(m, now, 'ground');
   if (m.scene?.name === 'Thousand-Arm Form') {
@@ -1523,10 +1532,10 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
     drawSignatureHalo(sx(p.x), sy(p.y) - 18, m.scene.t);
   }
   m0 = m;
-  const order = [...m.players, ...m.walls, ...wallGhosts(m.walls, now)].sort((a, b) => a.y - b.y); // back to front
+  const order = [...m.players, ...m.walls, ...wallGhosts(m.walls, now), ...warActors(WV, m)].sort((a, b) => a.y - b.y); // back to front
   const lifted = (o, draw) => { const d = liftAt(o.x, o.y); if (d) { G.save(); G.translate(0, d); draw(); G.restore(); } else draw(); }; // rides its half of a split island
   drawParts(now, true);
-  for (const o of order) if (o.ch) drawFighter(m, o, now); else lifted(o, () => drawWall(o, now));
+  for (const o of order) if (o.ch) drawFighter(m, o, now); else if (o.warDraw) o.warDraw(G); else lifted(o, () => drawWall(o, now));
   drawParts(now, false);
   drawDamage(G, fxNow, 'air'); // sand thrown up
   drawDivine(m, now, 'sky');
