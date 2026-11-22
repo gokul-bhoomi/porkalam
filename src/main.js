@@ -224,7 +224,9 @@ function update(dt) {
   if (TEST && S.screen === 'fight') TEST.tick(S.now);
   const inp = input.poll();
   if (inp.pads) sound.unlock(); // a pad press may count as a gesture in some browsers
-  sound.setMusic(S.screen === 'fight' && !S.paused && S.match?.phase === 'fight' ? 'fight' : 'menu');
+  const fighting = S.screen === 'fight' && !S.paused && S.match?.phase === 'fight';
+  const finalStretch = fighting && (S.match.timeLeft <= 30 || S.match.players.some((p) => p.hp <= 25)); // music speeds up
+  sound.setMusic(fighting ? 'fight' : 'menu', finalStretch);
   S.pads = inp.pads;
   while (DBG.menu.length) { const { pid, action } = DBG.menu.shift(); inp.menu[pid][action] = true; }
   const m = inp.menu, any = (a) => m[0][a] || m[1][a];
