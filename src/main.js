@@ -1,8 +1,8 @@
 import { W, H, RES, STEP, TUNE, ARENA } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { CHARS } from './chars/index.js';
-import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, setSeries, drawRemap, drawTutorial, CX, fitView, fxEvent, BRAHMA_HOLD, BRAHMA_AFTER, BRAHMA_BORN, divineTime, DRAMA_MOVES, setUseArt, useArt, sx, sy } from './render.js';
-import { loadArt, ART } from './art.js';
+import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawArenaPick, drawPause, drawResult, setSeries, drawRemap, drawTutorial, CX, fitView, fxEvent, BRAHMA_HOLD, BRAHMA_AFTER, BRAHMA_BORN, divineTime, DRAMA_MOVES, setUseArt, useArt, sx, sy } from './render.js';
+import { loadArt, ART, setArena, ARENA_IDS } from './art.js';
 import { createInput, KEYS, KEY_NAME, PAD, PAD_NAMES, REMAP, ACTIONS, RESERVED, PAD_RESERVED, setKey, setPad, resetControls } from './input.js';
 import { createTutorial, startTutorial, nextLesson, frozen, beforeStep, afterStep, view as tutView, lesson } from './tutorial.js';
 import * as sound from './audio.js';
@@ -32,13 +32,14 @@ const TEST = createTestMode(qs, {
 
 // Setup screen rows. 1 player: you pick your fighter and the computer's level.
 const CHAR_IDS = Object.keys(CHARS);
-const ROWS = () => (S.mode === '1p' ? ['mode', 'level', 'length', 'series'] : ['mode', 'length', 'series']); // the fighters are picked on the select screen
+const ROWS = () => (S.mode === '1p' ? ['mode', 'level', 'arena', 'length', 'series'] : ['mode', 'arena', 'length', 'series']); // the fighters are picked on the select screen
 function changeRow(dir) {
   const row = ROWS()[S.row];
   if (row === 'mode') { S.mode = S.mode === '1p' ? '2p' : '1p'; S.row = 0; }
   if (row === 'side') S.side = 1 - S.side;
   if (row === 'level') S.level = LEVEL_IDS[(LEVEL_IDS.indexOf(S.level) + dir + LEVEL_IDS.length) % LEVEL_IDS.length];
   if (row === 'length') S.minutes = Math.max(1, Math.min(TUNE.match.max / 60, S.minutes + dir));
+  if (row === 'arena') { S.arena = ARENA_IDS[(ARENA_IDS.indexOf(ART.theme) + dir + ARENA_IDS.length) % ARENA_IDS.length]; setArena(S.arena); fitView(); } // the backdrop shows it straight away
   if (row === 'series') S.bestOf = SERIES_SIZES[(SERIES_SIZES.indexOf(S.bestOf) + dir + SERIES_SIZES.length) % SERIES_SIZES.length];
 }
 // Tournament mode (owner, 2026-11-21): a single match, best of 3 or best of 5. The same two fighters play until one
@@ -52,7 +53,9 @@ function startMatch() {
   S.offer = null;
   const seed = S.seed++;
   setSeries(S.series);
-  S.match = createMatch({ seed, time: S.tutorial ? TUNE.match.max : S.minutes * 60, chars: S.chars || ['siddhan', 'veeran'], arena: S.tutorial ? 'river' : ART.theme, hazardTest: HAZ_TEST });
+  if (S.tutorial) setArena('river'); else if (S.arena) setArena(S.arena); // the arena picked on setup (or by the last match's loser)
+  fitView();
+  S.match = createMatch({ seed, time: S.tutorial ? TUNE.match.max : S.minutes * 60, chars: S.chars || ['siddhan', 'veeran'], arena: ART.theme, hazardTest: HAZ_TEST });
   S.cpu = S.mode === '1p' && !S.tutorial ? createCpu(1 - S.side, S.level, seed) : null; // the computer plays the other fighter
   Object.assign(S, { screen: 'fight', paused: false, fx: [], banner: null, sel: 0, screenAt: S.now });
   S.tut = null;
@@ -258,22 +261,32 @@ function update(dt) {
     if (S.boonsPage || S.movesPage) { if (any('up') || any('back') || any('confirm') || any('down')) S.boonsPage = S.movesPage = false; return; }
     if (any('down')) { S.boonsPage = true; return; }
     if (any('up')) { S.movesPage = true; return; }
-    const humans = S.mode === '1p' ? [0] : [0, 1], menu = (pid) => (S.mode === '1p' ? { ...m[1], ...Object.fromEntries(Object.entries(m[0]).filter(([, v]) => v)) } : m[pid]);
+    // 1 player (owner 2026-11-22): pick your fighter, then pick the computer's (the tutorial dummy is still automatic)
+    const one = S.mode === '1p', pickCpu = one && !S.tutorial;
+    const humans = one ? (pickCpu && S.locked[0] ? [1] : [0]) : [0, 1], menu = (pid) => (one ? { ...m[1], ...Object.fromEntries(Object.entries(m[0]).filter(([, v]) => v)) } : m[pid]);
+    if (pickCpu && S.locked[0] && !S.locked[1] && any('back')) { S.locked[0] = false; S.focus = 0; return; }
     for (const pid of humans) {
       const mm = menu(pid), n = CHAR_IDS.length;
       if (!S.locked[pid]) {
         if (mm.left) { S.cursor[pid] = (S.cursor[pid] + n - 1) % n; S.focus = pid; sound.play('tick'); }
         if (mm.right) { S.cursor[pid] = (S.cursor[pid] + 1) % n; S.focus = pid; sound.play('tick'); }
-        if (mm.confirm) { S.locked[pid] = true; sound.play('start'); }
+        if (mm.confirm) { S.locked[pid] = true; sound.play('start'); if (pickCpu && pid === 0) { S.focus = 1; break; } }
       } else if (mm.back) S.locked[pid] = false;
       else if (mm.confirm && humans.every((h) => S.locked[h])) break;
     }
-    if (humans.every((h) => !S.locked[h]) && any('back')) { go(S.tutorial ? 'title' : 'setup'); return; }
-    if (humans.every((h) => S.locked[h])) {
-      if (S.mode === '1p') S.cursor[1] = (S.cursor[0] + 1) % CHAR_IDS.length; // the computer takes the other fighter
+    if ([0, 1].every((h) => !S.locked[h]) && any('back')) { go(S.tutorial ? 'title' : 'setup'); return; }
+    if ((pickCpu ? [0, 1] : humans).every((h) => S.locked[h])) {
+      if (one && !pickCpu) S.cursor[1] = (S.cursor[0] + 1) % CHAR_IDS.length; // the tutorial dummy is the other fighter
       S.chars = [CHAR_IDS[S.cursor[0]], CHAR_IDS[S.cursor[1]]]; S.side = 0;
       newSeries(); startMatch();
     }
+  } else if (S.screen === 'arena') { // between tournament matches: the loser of the last one picks the arena
+    const P = S.pick, n = ARENA_IDS.length;
+    const mm = P.cpu ? {} : S.mode === '1p' ? { ...m[1], ...Object.fromEntries(Object.entries(m[0]).filter(([, v]) => v)) } : m[P.pid];
+    if (mm.left || mm.up) { P.sel = (P.sel + n - 1) % n; sound.play('tick'); }
+    if (mm.right || mm.down) { P.sel = (P.sel + 1) % n; sound.play('tick'); }
+    if (ART.theme !== ARENA_IDS[P.sel]) { setArena(ARENA_IDS[P.sel]); fitView(); } // the backdrop shows the one picked
+    if (mm.confirm || (P.cpu && S.now - P.at > 1.6)) { S.arena = ARENA_IDS[P.sel]; sound.play('start'); startMatch(); }
   } else if (S.screen === 'fight') {
     const match = S.match;
     if (S.paused) {
@@ -301,7 +314,13 @@ function update(dt) {
       if (any('up')) S.sel = (S.sel + 2) % 3;
       if (any('down')) S.sel = (S.sel + 1) % 3;
       if (any('confirm')) {
-        if (S.sel === 0) { if (!S.series || seriesOver()) newSeries(); else S.series.round++; startMatch(); }
+        if (S.sel === 0 && S.series && !seriesOver() && match.result?.winner != null) { // tournament (owner 2026-11-22): whoever lost picks the next arena
+          S.series.round++;
+          const loser = 1 - match.result.winner;
+          S.pick = { pid: loser, sel: Math.max(0, ARENA_IDS.indexOf(ART.theme)), cpu: S.mode === '1p' && loser !== S.side, at: S.now };
+          if (S.pick.cpu) S.pick.sel = Math.floor(Math.random() * ARENA_IDS.length); // the computer lost: it picks
+          go('arena');
+        } else if (S.sel === 0) { if (!S.series || seriesOver()) newSeries(); else S.series.round++; startMatch(); } // a draw: same arena
         else { S.series = null; go(S.sel === 1 ? 'setup' : 'title'); }
       }
       return;
@@ -336,7 +355,8 @@ function render() {
   R(0, 0, W, H, '#000');
   if (S.screen === 'title') drawTitle(S.now, S.pads, S.titleSel || 0);
   else if (S.screen === 'select') drawSelect(S.now, { ...S, ids: CHAR_IDS, chars: CHARS });
-  else if (S.screen === 'setup') drawSetup(S.now, { ...S, rows: ROWS(), levelName: LEVELS[S.level].name });
+  else if (S.screen === 'setup') drawSetup(S.now, { ...S, arena: ART.theme, rows: ROWS(), levelName: LEVELS[S.level].name });
+  else if (S.screen === 'arena') drawArenaPick(S.now, { ...S.pick, ids: ARENA_IDS, who: CHARS[(S.chars || ['siddhan', 'veeran'])[S.pick.pid]]?.name || `P${S.pick.pid + 1}`, round: S.series?.round });
   else if (S.screen === 'fight') {
     const hints = [0, 1].map(useHint);
     drawFight(S.match, S.now, S.fx, S.tut ? ['YOU', 'DUMMY'] : S.cpu ? (S.cpu.pid === 0 ? ['CPU', 'YOU'] : ['YOU', 'CPU']) : ['P1', 'P2'], S.clock, hints);
@@ -379,6 +399,8 @@ window.__game = {
   get screen() { return S.screen; },
   hurt(pid) { return S.match ? isHurtPose(S.match, pid) : false; },
   get boonsPage() { return !!S.boonsPage; },
+  get locked() { return [...(S.locked || [])]; },
+  get chars() { return [...(S.chars || [])]; },
   get tutorial() { return S.tut ? { lesson: lesson(S.tut)?.id || null, i: S.tut.i, free: S.tut.free, done: S.tut.doneAt != null } : null; },
   get controls() { return S.ctl ? { row: S.ctl.row, col: S.ctl.col, listen: S.ctl.listen, msg: S.ctl.msg?.text || null } : null; },
   get keys() { return KEYS.map((K) => Object.fromEntries(REMAP.map((a) => [a, K[a][0]]))); },
@@ -403,7 +425,7 @@ window.__game = {
     snapshot() {
       const m = S.match;
       return {
-        screen: S.screen, paused: S.paused, minutes: S.minutes, series: S.series && { ...S.series, wins: [...S.series.wins], results: [...S.series.results] }, mode: S.mode, side: S.side, level: S.level, cpu: S.cpu ? S.cpu.pid : null, fx: S.fx.map((f) => f.text || f.kind), banner: S.banner?.text || null,
+        screen: S.screen, arena: ART.theme, paused: S.paused, minutes: S.minutes, series: S.series && { ...S.series, wins: [...S.series.wins], results: [...S.series.results] }, mode: S.mode, side: S.side, level: S.level, cpu: S.cpu ? S.cpu.pid : null, fx: S.fx.map((f) => f.text || f.kind), banner: S.banner?.text || null,
         match: m && {
           phase: m.phase, result: m.result, timeLeft: r1(m.timeLeft), duration: m.duration, scene: m.scene?.name || null,
           projectiles: m.projectiles.length,

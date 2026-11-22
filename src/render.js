@@ -1141,9 +1141,9 @@ function drawFighter(m, p, now) {
     else if (p.air && drawSprite(G, p.ch.id, 'air', airPose(p), x, y + 1, p.face.x < 0, 1 + 0.08 * Math.min(1, h / 13))) { /* jumping or flying (rule 17): a little bigger the higher, as if nearer */ }
     else if (pose == null || !drawSprite(G, p.ch.id, 'act', pose, x, y + 1, p.face.x < 0)) {
       const a = anim[p.id], sh = ART.sheets[p.ch.id] || {};
-      if (a.moving && sh.walk8) drawSprite(G, p.ch.id, 'walk8', Math.floor(a.stride * 2) % 8, x, y + 1, p.face.x < 0); // 8 frames over the same ground as the old 4
+      if (a.moving && sh.walk8) drawSprite(G, p.ch.id, 'walk8', loopFrame(Math.floor(a.stride * 2), 8), x, y + 1, p.face.x < 0); // 8 frames over the same ground as the old 4
       else if (!a.moving && sh.idle8) drawSprite(G, p.ch.id, 'idle8', Math.floor(now * 8) % 8, x, y + 1, p.face.x < 0);
-      else drawSprite(G, p.ch.id, 'walk', a.moving ? Math.floor(a.stride) % 4 + 4 : Math.floor(now * 5) % 4, x, y + 1, p.face.x < 0); // walking: one frame per STRIDE walked, so the feet keep pace with the ground
+      else drawSprite(G, p.ch.id, 'walk', a.moving ? loopFrame(Math.floor(a.stride), 4) + 4 : Math.floor(now * 5) % 4, x, y + 1, p.face.x < 0); // walking: one frame per STRIDE walked, so the feet keep pace with the ground
     }
     top = y - ART_TOP - (p.air?.ride && ART.sheets[p.ch.id]?.ride ? 12 : 0); // a peacock rider sits higher: keep the labels clear of his head
   } else {
@@ -1448,6 +1448,7 @@ function drawProjectile(pr0, now) {
 const anim = [0, 1].map(() => ({ x: 0, y: 0, moving: false, still: 0, hp: 100, cast: null, pose: null, until: 0 }));
 const ART_TOP = 58;
 let animMatch = null;
+const loopFrame = (n, k) => ((n % k) + k) % k; // frame n of a k-frame loop, also when counting backward
 const STRIDE = 6.5; // world units walked per frame of the walk cycle (2026-11-15: was a fixed 10 frames a second at any speed)
 function trackMotion(m) {
   const now = m.t; // match clock: poses freeze with the game
@@ -1461,7 +1462,9 @@ function trackMotion(m) {
     if (m.phase !== 'done') a.doneAt = null;
     const d = Math.hypot(p.x - a.x, p.y - a.y), P = POSES[p.ch.id];
     if (d > 0.2) { a.moving = true; a.still = 0; } else if (++a.still > 4) a.moving = false;
-    if (d < 20) a.stride = (a.stride || 0) + d / STRIDE;
+    // backing away (owner 2026-11-22): he keeps facing the fight and steps backward, the walk plays in reverse
+    const back = (p.x - a.x) * p.face.x + (p.y - a.y) * p.face.y < -0.3 * d;
+    if (d < 20) a.stride = (a.stride || 0) + (back ? -d : d) / STRIDE;
     a.x = p.x; a.y = p.y;
     // flinch only when hit (damage taken), not when paying a move's health cost, e.g. a signature
     if (P && p.stats.taken > a.taken + 0.01) { a.pose = P.hit; a.until = now + 0.3; }
@@ -1523,6 +1526,16 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
     }
     ring(sx(a.x), sy(a.y), Z(a.r), Z(a.r) * SQ, '#ff4a3a', 1);
     ell(sx(a.x), sy(a.y), Z(a.r) * k, Z(a.r) * SQ * k, 'rgba(255,74,58,.3)');
+  }
+  for (const s of m.strikesDue) if (s.land && !s.dead) { // Thousand-Arm Form: where the arms will come down, filling in as they come
+    const k = 1 - s.t / s.T, w = Z(s.land) * 2.2;
+    if (fxArt('danger')) {
+      fxSprite(G, 'danger', sx(s.to.x), sy(s.to.y), w, { h: w * SQ, alpha: 0.6 + 0.4 * Math.abs(Math.sin(now * 10)) });
+      fxSprite(G, 'danger', sx(s.to.x), sy(s.to.y), w * k, { h: w * k * SQ, alpha: 0.5 });
+    } else {
+      ring(sx(s.to.x), sy(s.to.y), Z(s.land), Z(s.land) * SQ, '#ffd36a', 1);
+      ell(sx(s.to.x), sy(s.to.y), Z(s.land) * k, Z(s.land) * SQ * k, 'rgba(255,211,106,.3)');
+    }
   }
   for (const u of m.units) if (!u.hazard) { ell(sx(u.x), sy(u.y) - 4, Z(u.r), Z(u.r), '#999'); txt(`${Math.ceil(u.hp)}`, sx(u.x), sy(u.y) - 20, '#fff', 'center'); }
   for (const f of fx) if (f.ground) drawFx(f, fxNow);
@@ -1788,7 +1801,7 @@ function drawHud(m, tags, hints = [null, null]) {
     const tierName = p.devotion >= MD.tiers[1] ? 'DIVINE' : p.devotion >= MD.tiers[0] ? 'SMALL' : '';
     txt(tierName ? `ASK: ${tierName}` : 'DEVOTION', X(46 + MD.segments * segW + 4), 35.5, tierName ? '#ffcf6a' : '#a898c0', al, 6);
     if (p.boon) { // the held boon, in a gold tag under the panel
-      const label = `${p.boon.tier === 'divine' ? '✦ ' : ''}${p.boon.name.toUpperCase()}${hints[p.id] ? `   ${hints[p.id].keys}` : ''}`;
+      const label = `${p.boon.name.toUpperCase()}${hints[p.id] ? `   ${hints[p.id].keys}` : ''}`;
       G.font = `6px ${FONT}`; const tw = G.measureText(label).width + 12, tx = X(30, tw), glow = 0.6 + 0.4 * Math.sin(m.t * 5);
       box(tx, 47, tw, 11, 4, `rgba(60,36,10,.9)`, `rgba(255,207,106,${glow})`);
       txt(label, tx + tw / 2, 49.5, '#ffe7a0', 'center', 6);
@@ -2090,17 +2103,18 @@ export function drawSelect(now, o) {
     box(110, 10, 260, 240, 4, PANEL, PANEL_EDGE); drawMoveList(o.chars[o.ids[o.cursor[o.focus || 0]]], 120, 20, 240);
     txt('ANY KEY: BACK', CX, 260, '#ddd', 'center', 6); return;
   }
-  txt('CHOOSE YOUR FIGHTER', CX, 6, '#ffcf6a', 'center', 16);
+  if (!(o.mode === '1p' && !o.tutorial)) txt('CHOOSE YOUR FIGHTER', CX, 6, '#ffcf6a', 'center', 16);
   const cw = 100, chh = 133, gap = 12, x0 = 14, y0 = 32;
   o.ids.forEach((id, i) => drawCard(o.chars[id], x0 + i * (cw + gap), y0, cw, chh, now));
-  const humans = o.mode === '1p' ? [0] : [0, 1];
+  const pickCpu = o.mode === '1p' && !o.tutorial, humans = o.mode === '1p' ? (pickCpu && o.locked[0] ? [0, 1] : [0]) : [0, 1];
+  if (pickCpu) txt(o.locked[0] ? 'CHOOSE THE CPU FIGHTER' : 'CHOOSE YOUR FIGHTER', CX, 6, '#ffcf6a', 'center', 16);
   for (const pid of humans) { // the players' cursors
     const i = o.cursor[pid], x = x0 + i * (cw + gap), col = pid === 0 ? '90,160,255' : '255,90,70', pulse = o.locked[pid] ? 1 : 0.6 + 0.4 * Math.sin(now * 6);
     G.save(); G.strokeStyle = `rgba(${col},${pulse})`; G.lineWidth = 2; G.beginPath(); G.roundRect(x - 2 - pid * 2, y0 - 2 - pid * 2, cw + 4 + pid * 4, chh + 4 + pid * 4, 6); G.stroke(); G.restore();
-    const tag = o.mode === '1p' ? 'YOU' : `P${pid + 1}`;
+    const tag = o.mode === '1p' ? (pid ? 'CPU' : 'YOU') : `P${pid + 1}`;
     txt(o.locked[pid] ? `${tag} READY` : tag, x + (pid ? cw - 2 : 2), y0 + chh + 6, `rgb(${col})`, pid ? 'right' : 'left', 6);
   }
-  if (o.mode === '1p') txt(o.tutorial ? 'THE OTHER ONE IS YOUR TRAINING DUMMY' : 'THE CPU TAKES THE OTHER FIGHTER', x0 + cw + gap / 2, y0 + chh + 18, '#9aa', 'center', 6);
+  if (o.tutorial) txt('THE OTHER ONE IS YOUR TRAINING DUMMY', x0 + cw + gap / 2, y0 + chh + 18, '#9aa', 'center', 6);
   box(232, 28, 242, 222, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)');
   drawTraitCard(o.chars[o.ids[o.cursor[o.focus || 0]]], 242, 36, 222, now);
   txt(o.mode === '1p' ? 'LEFT/RIGHT CHOOSE   ENTER LOCK IN   UP: MOVES   DOWN: BOONS' : 'LEFT/RIGHT CHOOSE   ATTACK 1 LOCK IN   UP: MOVES   DOWN: BOONS', CX, 258, '#ddd', 'center', 6);
@@ -2180,6 +2194,7 @@ export function drawSetup(now, o) {
     level: ['CPU LEVEL', o.levelName],
     length: ['LENGTH', `${o.minutes} MIN`],
     series: ['MATCHES', o.bestOf > 1 ? `BEST OF ${o.bestOf}` : 'SINGLE MATCH'],
+    arena: ['ARENA', ARENA_NAME[o.arena] || o.arena],
   };
   o.rows.forEach((r, i) => {
     const y = 84 + i * 24, on = i === o.row, [label, val] = show[r];
@@ -2187,9 +2202,21 @@ export function drawSetup(now, o) {
     txt(label, CX - 160, y, on ? '#ffcf6a' : '#ddd');
     txt(on ? `<  ${val}  >` : val, CX + 160, y, on ? '#ffcf6a' : '#fff', 'right');
   });
-  const tip = o.mode === '1p' ? 'YOU PICK YOUR FIGHTER NEXT; THE CPU TAKES THE OTHER ONE.' : 'BOTH PLAYERS PICK THEIR FIGHTER NEXT.';
-  txt(tip, CX, 200, '#9aa', 'center');
-  txt('UP/DOWN PICK  LEFT/RIGHT CHANGE  ENTER FIGHT  ESC BACK', CX, 220, '#ddd', 'center');
+}
+
+const ARENA_NAME = { river: 'RIVER ISLAND', battlefield: 'BATTLEFIELD' };
+// Between tournament matches (owner 2026-11-22): whoever lost the last match picks the arena for the next one.
+export function drawArenaPick(now, o) {
+  drawBackdrop(now); drawArena();
+  R(0, 0, W, H, 'rgba(10,12,20,.55)');
+  txt(`MATCH ${o.round}`, CX, 40, '#ffcf6a', 'center', 16);
+  txt(o.cpu ? `${o.who.toUpperCase()} (CPU) LOST: IT PICKS THE ARENA` : `${o.who.toUpperCase()} LOST: PICK THE ARENA`, CX, 70, '#e8dcc0', 'center');
+  o.ids.forEach((id, i) => {
+    const y = 104 + i * 24, on = i === o.sel;
+    if (on) R(CX - 120, y - 5, 240, 18, 'rgba(255,207,106,.15)');
+    txt(on ? `>  ${ARENA_NAME[id] || id}  <` : ARENA_NAME[id] || id, CX, y, on ? '#ffcf6a' : '#ddd', 'center');
+  });
+  if (!o.cpu) txt('UP/DOWN PICK  ENTER FIGHT', CX, 220, '#ddd', 'center');
 }
 
 export function drawPause(sel, items = ['RESUME', 'MOVES & BOONS', 'CONTROLS', 'QUIT TO TITLE']) {

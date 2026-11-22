@@ -141,7 +141,7 @@ test('rule 4: a move only brings its own user to 0 health if it says so', () => 
   assert.equal(whyNot(m, m.players[K], findBoon('brahmastra')), null, 'Brahmastra says so');
 });
 
-test('rule 4: attacks turn toward the opponent automatically', () => {
+test('rule 4: with no aim, attacks turn toward the opponent automatically', () => {
   const m = match({ k: { x: -60, y: -40 }, r: { x: 50, y: 40 } });
   run(m, [{ mx: -1 }, { mx: 1 }], 0.2);
   for (const p of m.players) {
@@ -150,6 +150,42 @@ test('rule 4: attacks turn toward the opponent automatically', () => {
   }
 });
 
+// No aim (owner, 2026-11-22: aim was tried that day and removed as confusing): keys only move; every attack goes
+// at the opponent, and he always faces the opponent.
+const shootWith = (stick) => { // the Warrior, on the right, taps his arrow with the stick held this way
+  const m = match({ k: { x: -100, y: 0 }, r: { x: 90, y: 0 } });
+  tap(m, R, 'a1', stick); run(m, [{}, stick], warrior.moves.a1.cast);
+  const pr = m.projectiles[0], w = m.players[R], k = m.players[K];
+  return { ang: Math.atan2(pr.vy, pr.vx), toK: Math.atan2(k.y - pr.y, k.x - pr.x), face: w.face };
+};
+const near = (a, b, e = 0.05) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < e;
+test('rule 4: keys never aim: whatever is held, the shot goes at the opponent', () => {
+  for (const st of [{}, { my: -1 }, { my: 1 }, { mx: 1 }, { mx: -1, my: 1 }]) {
+    const r = shootWith(st);
+    assert.ok(near(r.ang, r.toK, 0.3), `held ${JSON.stringify(st)}: it still flies at the Mage`);
+    assert.ok(r.face.x < -0.9, 'and he still faces the Mage');
+  }
+});
+test('rule 4: walking never turns him; backing away, he still faces the opponent', () => {
+  const m = match({ k: { x: -100, y: 0 }, r: { x: 90, y: 0 } });
+  run(m, [{}, { mx: 1 }], 0.3);
+  assert.ok(m.players[R].face.x < -0.99);
+});
+test('rule 4: Thousand-Arm Form comes down on a circle where the opponent stood: run out of it in time and it misses', () => {
+  const m = match({ k: { x: -60, y: 0, power: 100 }, r: { x: 60, y: 0 } });
+  m.players[K].cast = { move: mage.moves.sig, slot: 'sig', t: mage.moves.sig.cast, done: true };
+  stepMatch(m, [{}, {}]);
+  const s = m.strikesDue.find((x) => x.land);
+  assert.ok(s && Math.hypot(s.to.x - 60, s.to.y) < 1, 'the circle is on the Warrior');
+  run(m, [{}, { my: -1 }], mage.moves.sig.strikeDelay + 0.1); // he runs out of it while the arms come
+  assert.equal(m.players[R].hp, 100, 'out of the circle in time: missed');
+});
+test('rule 5: a wall goes up between him and the opponent, whatever key is held', () => {
+  const b = match({ k: { x: -100, y: 0, power: 100 }, r: { x: 90, y: 0 } });
+  run(b, [{ block: true, my: -1 }, {}], 0.3);
+  const w = b.walls[0], p = b.players[K], o = b.players[R], d = Math.hypot(o.x - p.x, o.y - p.y);
+  assert.ok(Math.abs(w.nx - (o.x - p.x) / d) < 1e-6 && Math.abs(w.ny - (o.y - p.y) / d) < 1e-6, `faces the Warrior (${w.nx}, ${w.ny})`);
+});
 test('rule 4: projectiles fly in a straight line and can be dodged by moving', () => {
   const m = match({ k: { x: -100, y: 0 }, r: { x: 90, y: 0 } });
   tap(m, R, 'a1'); run(m, [{}, {}], warrior.moves.a1.cast);
@@ -520,7 +556,7 @@ const HAZ_SRCS = ['Stray arrows', 'Falling soldier', 'Stray spear', 'Runaway hor
 const field = (o = {}) => { const m = createMatch({ seed: o.seed ?? 1, time: o.time ?? 300, arena: 'battlefield', hazardTest: o.test ?? null }); return m; };
 const hazHits = (m) => m.events.filter((e) => e.type === 'hp' && e.dmg > 0 && e.srcs.some((s) => HAZ_SRCS.includes(s)));
 function untilHazard(m, kind, max = 60) { // run until a hazard of that kind is on (or any, without a kind)
-  for (let i = 0; i < steps(max); i++) { stepMatch(m, [{}, {}]); if (m.haz.cur && (!kind || m.haz.cur.kind === kind)) return m.haz.cur; }
+  for (let i = 0; i < steps(max); i++) { stepMatch(m, [{}, {}]); const h = m.haz.list.find((z) => !kind || z.kind === kind); if (h) return h; }
   return null;
 }
 test('rule 12 hazards: only on the battlefield, belong to nobody and hit both fighters, and cannot be turned off', () => {
@@ -535,19 +571,25 @@ test('rule 12 hazards: only on the battlefield, belong to nobody and hit both fi
   }
   assert.ok(hit[K] > 0 && hit[R] > 0, `both fighters get hit (${hit})`);
 });
-test('rule 12 hazards: one at a time, random gaps, never the same kind twice running, and each one warns first', () => {
-  const m = field({ seed: 4, time: 600 }), seen = [];
-  let cur = null;
+test('rule 12 hazards: random gaps, several at once now and then (never two of a kind, never horse and elephant together), each warns first', () => {
+  const SRC = { 'Stray arrows': 'arrows', 'Falling soldier': 'soldier', 'Stray spear': 'spear', 'Runaway horse': 'horse', 'Charging elephant': 'elephant' };
+  const m = field({ seed: 4, time: 600 }), seen = [], known = new Set();
+  let overlaps = 0;
   for (let i = 0; i < steps(600) && m.phase === 'fight'; i++) {
     m.players[K].hp = m.players[R].hp = 100; // keep the match going
     stepMatch(m, [{}, {}]);
-    if (m.haz.cur && m.haz.cur !== cur) { cur = m.haz.cur; seen.push({ kind: cur.kind, t: m.t, warn: cur.warn }); }
-    for (const e of m.events.splice(0)) if (e.type === 'hp' && e.dmg > 0 && e.srcs.some((s) => HAZ_SRCS.includes(s))) {
-      const last = seen.at(-1);
-      assert.ok(e.t >= last.t + last.warn - 1e-6, `${e.srcs} hurt before its warning was over`);
+    const L = m.haz.list, kinds = L.map((h) => h.kind);
+    assert.ok(L.length <= TUNE.hazard.maxAt, 'never too many at once');
+    assert.equal(new Set(kinds).size, kinds.length, 'never two of the same kind at once');
+    assert.ok(!(kinds.includes('horse') && kinds.includes('elephant')), 'never a horse and an elephant together');
+    for (const h of L) if (!known.has(h.id)) { known.add(h.id); seen.push({ kind: h.kind, t: m.t, warn: h.warn }); if (L.length > 1) overlaps++; }
+    for (const e of m.events.splice(0)) if (e.type === 'hp' && e.dmg > 0) for (const s of e.srcs) if (SRC[s]) {
+      const last = seen.findLast((h) => h.kind === SRC[s]);
+      assert.ok(e.t >= last.t + last.warn - 1e-6, `${s} hurt before its warning was over`);
     }
   }
   assert.ok(seen.length >= 10, `${seen.length} hazards in 10 minutes`);
+  assert.ok(overlaps > 0 && overlaps < seen.length / 2, `some come on top of another, most don't (${overlaps} of ${seen.length})`);
   for (let i = 1; i < seen.length; i++) assert.notEqual(seen[i].kind, seen[i - 1].kind);
   const gaps = new Set(seen.slice(1).map((h, i) => Math.round((h.t - seen[i].t) * 10)));
   assert.ok(gaps.size > seen.length / 2, 'the gaps between hazards are random, not a rhythm');
@@ -606,7 +648,7 @@ test('rule 12 hazards: they pause while an arena change is on; a fallen soldier 
   const m = field({ test: { busy: true } });
   startArenaChange(m, { name: 'flood', time: 20 });
   run(m, [{}, {}], 19);
-  assert.equal(m.haz.cur, null, 'no hazard comes in during an arena change');
+  assert.equal(m.haz.list.length, 0, 'no hazard comes in during an arena change');
   const s = field({ test: { kind: 'soldier' } });
   const h = untilHazard(s, 'soldier'); run(s, [{}, {}], h.life + 0.1);
   const body = s.rough.find((z) => z.kind === 'body');

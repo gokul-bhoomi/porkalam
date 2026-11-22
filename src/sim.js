@@ -155,7 +155,7 @@ export function stepMatch(m, inputs = [{}, {}], dt = STEP) {
 function movement(m, inputs, dt) {
   const R = ARENA.r - TUNE.fighterR;
   for (const p of m.players) {
-    const inp = inputs[p.id];
+    const inp = inputs[p.id], sl = Math.hypot(+inp.mx || 0, +inp.my || 0);
     for (const k of Object.keys(p.effects)) if ((p.effects[k].t -= dt) <= 0) delete p.effects[k];
     if (p.msg && (p.msg.t -= dt) <= 0) p.msg = null;
     if (p.recover > 0) p.recover = Math.max(0, p.recover - dt);
@@ -213,8 +213,7 @@ function movement(m, inputs, dt) {
     const vn = p.kvx * n.x + p.kvy * n.y; if (vn < 0) { p.kvx -= vn * n.x; p.kvy -= vn * n.y; } // knockback stops against him
   }
   // arrows stuck in the sand are solid too until they fade (owner 2026-11-22: fighters walked through them)
-  const H = m.haz?.cur;
-  if (H?.kind === 'arrows') for (const a of H.pts) {
+  for (const H of m.haz?.list || []) if (H.kind === 'arrows') for (const a of H.pts) {
     if (a.gone || H.age < H.warn + a.d) continue;
     for (const p of m.players) {
       if (airborne(p)) continue;
@@ -225,7 +224,7 @@ function movement(m, inputs, dt) {
       const vn = p.kvx * n.x + p.kvy * n.y; if (vn < 0) { p.kvx -= vn * n.x; p.kvy -= vn * n.y; }
     }
   }
-  for (const p of m.players) { // ground rule 4: attacks turn toward the opponent
+  for (const p of m.players) { // ground rule 4: he always faces the opponent (walking never turns him)
     const o = opponent(m, p), fd = unitDir(o.x - p.x, o.y - p.y);
     if (fd.x || fd.y) p.face = fd;
   }
@@ -242,7 +241,7 @@ function movement(m, inputs, dt) {
       const F = pr.falloff, k = 1 - 0.5 * clamp((pr.flown - F.full) / (F.half - F.full), 0, 1);
       pr.dmg *= k / pr.k; pr.k = k; // scales what's left of it (a wall may already have soaked some)
     }
-    if (pr.legs > 0 && pr.lt >= pr.legTime) { // a chakra flies in straight legs and re-aims between them
+    if (pr.legs > 0 && pr.lt >= pr.legTime) { // a chakra flies in straight legs and re-aims at the opponent between them
       const o = m.players[1 - pr.owner], sp = Math.hypot(pr.vx, pr.vy), u = unitDir(o.x - pr.x, o.y - pr.y);
       pr.vx = u.x * sp; pr.vy = u.y * sp; pr.legs--; pr.lt = 0;
     }
@@ -464,11 +463,12 @@ export const recoveryOf = (mv) => (ATTACKS.has(mv.kind) ? (isBasic(mv) ? TUNE.re
 
 function release(m, p, c) {
   const mv = c.move, o = opponent(m, p);
+  const aim = { dir: unitDir(o.x - p.x, o.y - p.y), target: o }; // every attack goes at the opponent (rule 4)
   ev(m, 'release', { pid: p.id, name: mv.name });
   p.recover = recoveryOf(mv);
   switch (mv.kind) {
     case 'projectile': {
-      const n = mv.count || 1, base = Math.atan2(o.y - p.y, o.x - p.x);
+      const n = mv.count || 1, base = c.slot === 'boon' ? Math.atan2(o.y - p.y, o.x - p.x) : Math.atan2(aim.dir.y, aim.dir.x);
       const dmg = mv.charge ? mv.damage + (mv.charge.damage - mv.damage) * chargeOf(c) : mv.damage;
       const quick = isBasic(mv) && c.slot !== 'boon' && (!mv.charge || chargeOf(c) < TUNE.quickShot); // rule 6: quick basic shots pass each other
       for (let i = 0; i < n; i++) {
@@ -487,11 +487,22 @@ function release(m, p, c) {
       ev(m, 'swing', { pid: p.id, x: p.x + p.face.x * 18, y: p.y + p.face.y * 18 });
       break;
     }
-    case 'area':
-      m.areas.push({ id: m.nid++, owner: p.id, x: o.x, y: o.y, r: mv.radius, t: mv.delay, delay: mv.delay, dmg: mv.damage, kb: mv.knockback });
+    case 'area': { // it lands where the opponent stands
+      const R = ARENA.r;
+      let ax = o.x, ay = o.y;
+      const l = Math.hypot(ax, ay); if (l > R) { ax *= R / l; ay *= R / l; }
+      m.areas.push({ id: m.nid++, owner: p.id, x: ax, y: ay, r: mv.radius, t: mv.delay, delay: mv.delay, dmg: mv.damage, kb: mv.knockback });
       break;
+    }
     case 'global': // across the whole arena, landing when the strike reaches (strikeDelay s), so it matches what's drawn
-      if (mv.travels) { // it flies from the caster to just short of the opponent (as drawn), and can meet shots on the way
+      if (mv.lands) { // Thousand-Arm Form (owner 2026-11-22): the arms come down where the opponent stood, with a
+        // warning circle; anyone still in it when they land is hit (on the ground or off it: the arms reach up)
+        const R = ARENA.r, T = mv.strikeDelay;
+        let ax = o.x, ay = o.y;
+        const l = Math.hypot(ax, ay); if (l > R) { ax *= R / l; ay *= R / l; }
+        m.strikesDue.push({ id: m.nid++, owner: p.id, name: mv.name, t: T, T, from: { x: p.x, y: p.y }, to: { x: ax, y: ay }, land: mv.lands.radius,
+          x: p.x, y: p.y, vx: (ax - p.x) / T, vy: (ay - p.y) / T, r: mv.travels?.radius || 15, dmg: mv.damage, kb: mv.knockback, src: mv.name, divine: !!mv.divine, travels: true });
+      } else if (mv.travels) { // it flies from the caster to just short of the opponent (as drawn), and can meet shots on the way
         const dx = o.x - p.x, dy = o.y - p.y, d = Math.hypot(dx, dy) || 1, gap = Math.min(15, d * 0.35), T = mv.strikeDelay || STEP;
         m.strikesDue.push({ id: m.nid++, owner: p.id, name: mv.name, t: T, T, from: { x: p.x, y: p.y }, to: { x: o.x - dx / d * gap, y: o.y - dy / d * gap },
           x: p.x, y: p.y, vx: dx / T, vy: dy / T, r: mv.travels.radius, dmg: mv.damage, kb: mv.knockback, src: mv.name, divine: !!mv.divine, travels: true });
@@ -599,6 +610,7 @@ function handleBlock(m, p, inp, dt) {
   // ground rule 5: holding block longer while the opponent prepares an attack makes it stronger
   const preparing = (o.cast && !o.cast.done) || false;
   p.block.cap = Math.min(def.max, p.block.cap + def.growth * dt * (preparing ? B.prepMult : 1));
+  { const d = unitDir(o.x - p.x, o.y - p.y); if (d.x || d.y) p.face = d; } // it stays between him and the opponent
   placeWall(p, p.block);
 }
 
@@ -633,20 +645,32 @@ const NOBODY = -1;
 // test = { kind, busy } (review aid from the URL: only that kind / short gaps)
 function newHazards(seed, test) {
   const rand = rng((seed * 7919 + 13) | 0), H = TUNE.hazard, first = test?.busy ? [1, 2] : H.first;
-  return { rand, cur: null, last: null, next: first[0] + rand() * (first[1] - first[0]), fallen: [], test };
+  return { rand, list: [], last: null, next: first[0] + rand() * (first[1] - first[0]), fallen: [], test };
+}
+// how long until the next hazard comes in, counted from when the last one came in (owner 2026-11-22: several at
+// once is good, at random): now and then the next one follows almost at once, on top of the one still running
+function hazardGap(Z) {
+  const H = TUNE.hazard, R = (a, b) => a + Z.rand() * (b - a);
+  if (Z.test?.busy) return R(1, 5);
+  return Z.rand() < H.overlap ? R(H.soon[0], H.soon[1]) : R(H.gap[0], H.gap[1]);
 }
 // Test mode only (src/testmode.js): send this hazard in now, replacing whatever is on. Not used by the game itself.
 export function forceHazard(m, kind) {
   if (!m.haz || !TUNE.hazard[kind]) return false;
-  if (m.haz.cur?.unit) { const i = m.units.indexOf(m.haz.cur.unit); if (i >= 0) m.units.splice(i, 1); }
-  m.haz.cur = null; m.haz.force = kind; m.haz.next = m.t;
+  for (const h of m.haz.list.filter((h) => h.kind === kind)) { if (h.unit) { const i = m.units.indexOf(h.unit); if (i >= 0) m.units.splice(i, 1); } m.haz.list.splice(m.haz.list.indexOf(h), 1); }
+  m.haz.force = kind; m.haz.next = m.t;
   return true;
 }
 function hazards(m, dt) {
   const Z = m.haz, H = TUNE.hazard, R = (a, b) => a + Z.rand() * (b - a), r = ARENA.r;
   Z.fallen = Z.fallen.filter((f) => m.t - f.t0 < 3);
-  if (!Z.cur && (!m.arenaChange || Z.force) && m.phase === 'fight' && m.t >= Z.next) { // the next one comes in
-    const opts = Object.entries(H.weights).filter(([k]) => k !== Z.last); // never the same kind twice running
+  // the next one comes in when its time is up, whatever else is still running (they overlap at random), but never
+  // two of the same kind at once, never a horse and an elephant together (two lanes to dodge at once), at most H.maxAt
+  const on = new Set(Z.list.map((h) => h.kind)), big = on.has('horse') || on.has('elephant');
+  const opts = Object.entries(H.weights).filter(([k]) => k !== Z.last && !on.has(k) && !(big && (k === 'horse' || k === 'elephant')));
+  if (Z.test?.kind && on.has(Z.test.kind)) opts.length = 0; // a one-kind review run: one of it at a time
+  if ((opts.length && Z.list.length < H.maxAt || Z.force) && (!m.arenaChange || Z.force) && m.phase === 'fight' && m.t >= Z.next) {
+    if (!opts.length) opts.push(...Object.entries(H.weights)); // forced from test mode
     let w = Z.rand() * opts.reduce((a, [, v]) => a + v, 0), kind = opts[opts.length - 1][0];
     for (const [k, v] of opts) if ((w -= v) <= 0) { kind = k; break; }
     if (H[Z.test?.kind]) kind = Z.test.kind;
@@ -673,11 +697,13 @@ function hazards(m, dt) {
       const d = unitDir(h.x1 - h.x0, h.y1 - h.y0); h.vx = d.x * sp; h.vy = d.y * sp; h.army = Z.rand() < 0.5 ? 0 : 1; h.rider = kind === 'elephant' || Z.rand() < 0.5;
       h.run = Math.hypot(h.x1 - h.x0, h.y1 - h.y0) / sp; h.life = C.warn + h.run;
     }
-    Z.cur = h;
+    Z.list.push(h); Z.next = m.t + hazardGap(Z);
     ev(m, 'hazard', { kind, id: h.id });
   }
-  const h = Z.cur;
-  if (!h) return;
+  for (const h of [...Z.list]) stepHazard(m, Z, h, dt);
+}
+function stepHazard(m, Z, h, dt) {
+  const H = TUNE.hazard;
   h.age += dt;
   const C = H[h.kind], FR = TUNE.fighterR, onGround = (p) => !airborne(p);
   const shotDown = (x, y, rr, dmg) => { // a fighter's shot meets it (rule 6): the stronger goes on, weakened
@@ -745,9 +771,9 @@ function hazards(m, dt) {
       }
     }
   }
-  if (h.age >= h.life) { // over: the next one only after a random gap
+  if (h.age >= h.life) { // over
     if (h.unit) { const i = m.units.indexOf(h.unit); if (i >= 0) m.units.splice(i, 1); }
-    const gap = Z.test?.busy ? [1, 4] : H.gap; Z.cur = null; Z.next = m.t + R(gap[0], gap[1]);
+    Z.list.splice(Z.list.indexOf(h), 1);
   }
 }
 
@@ -859,7 +885,9 @@ function collectHits(m) {
     if (s.dead || (s.t -= STEP) > 1e-9) continue;
     s.dead = true;
     const p = m.players[s.owner], o = opponent(m, p);
-    for (const t of [o, ...m.units.filter((u) => u.owner !== s.owner)]) m.hits.push({ target: t, dmg: s.dmg, kb: s.kb, from: s.from, src: s.src, divine: s.divine, by: s.owner });
+    const caught = (t) => !s.land || Math.hypot(t.x - s.to.x, t.y - s.to.y) <= s.land + (t.r ?? FR); // a landing spot only catches who is in it
+    if (s.land) ev(m, 'rain', { x: s.to.x, y: s.to.y, r: s.land });
+    for (const t of [o, ...m.units.filter((u) => u.owner !== s.owner)]) if (caught(t) && !(t === o && o.effects.invuln)) m.hits.push({ target: t, dmg: s.dmg, kb: s.kb, from: s.land ? s.to : s.from, src: s.src, divine: s.divine, by: s.owner });
   }
   m.strikesDue = m.strikesDue.filter((s) => !s.dead);
 }
