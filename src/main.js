@@ -125,6 +125,16 @@ function onEvent(e, m) {
   if (e.type === 'barrier') add({ kind: 'flash', x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'medStop' && m.players[e.pid].msg?.text === 'BARRIER BROKEN') add({ kind: 'boom', x: m.players[e.pid].x, y: m.players[e.pid].y, life: 0.5, ground: true });
   if (e.type === 'rain') add({ kind: 'rain', x: e.x, y: e.y, r: e.r, life: 0.35 });
+  if (e.type === 'manthan') { add({ kind: 'shake', x: 0, y: 0, amp: 3, life: 1 }); sound.play('boom'); sound.play('wallUp'); } // the ocean begins to churn
+  if (e.type === 'mandaraLands') { add({ kind: 'shake', x: 0, y: 0, amp: 8, life: 1.2 }); sound.play('shatter2'); } // the mountain crashes down onto Kurma
+  if (e.type === 'churnTug') { add({ kind: 'shake', x: 0, y: 0, amp: 3.5, life: 0.6 }); sound.play('powerLand'); } // gods and asuras heave on Vasuki
+  if (e.type === 'halahala') { add({ kind: 'shake', x: 0, y: 0, amp: 5, life: 1 }); sound.play('shatter'); sound.play('bolt'); } // the poison erupts
+  if (e.type === 'neelakantha') { sound.duck(0.03, 4); sound.play('boon', true); setTimeout(() => sound.play('medFull'), 1500); } // Shiva rises to drink it
+  if (e.type === 'shivaDrinks') { if (!ART.manthanShiva) add({ kind: 'god', god: 'shiva', x: 0, y: 0, life: 2 }); add({ kind: 'shake', x: 0, y: 0, amp: 10, life: 1.2 }); sound.play('powerLand'); sound.play('shatter2'); } // the poured poison strikes
+  if (e.type === 'poisonPour') { sound.play('bolt'); setTimeout(() => sound.play('rain'), 400); } // the spilled poison gathers and rains down
+  if (e.type === 'markBurst') { add({ kind: 'shake', x: 0, y: 0, amp: 3, life: 0.3 }); sound.play('shatter'); } // a mark bursts
+  if (e.type === 'poisonHit') { add({ kind: 'poisonSplash', x: e.x, y: e.y, life: 0.6 }); sound.play('barrier'); } // a bubble bursts on him // (with the painting in, render.js draws him drinking) // Shiva drinks the Halahala
+  if (e.type === 'treasure' || e.type === 'amrit') sound.play('medFull');
   if (e.type === 'tandava') { add({ kind: 'shake', x: 0, y: 0, amp: 5, life: 1.4 }); sound.play('shatter2'); } // the island tears in two
   if (e.type === 'blink') add({ kind: 'trail', x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.3 });
   if (e.type === 'release') { // power moves land with a bang in the arena, right after their scene
@@ -231,7 +241,9 @@ function update(dt) {
   if (inp.pads) sound.unlock(); // a pad press may count as a gesture in some browsers
   const fighting = S.screen === 'fight' && !S.paused && S.match?.phase === 'fight';
   const finalStretch = fighting && (S.match.timeLeft <= 30 || S.match.players.some((p) => p.hp <= 25)); // music speeds up
-  sound.setMusic(fighting ? 'fight' : 'menu', finalStretch);
+  const churn = S.screen === 'fight' && S.match?.arenaChange?.kind === 'churn' ? S.match.arenaChange : null; // Samudra Manthan has its own music
+  if (churn && !S.paused) sound.setMusic('manthan', !!churn.drank);
+  else sound.setMusic(fighting ? 'fight' : 'menu', finalStretch);
   S.pads = inp.pads;
   while (DBG.menu.length) { const { pid, action } = DBG.menu.shift(); inp.menu[pid][action] = true; }
   const m = inp.menu, any = (a) => m[0][a] || m[1][a];

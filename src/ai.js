@@ -52,6 +52,12 @@ export function cpuInput(m, cpu, dt) {
     const mvx = sl === 'block' ? { cast: 1 } : mv[sl];
     if (out[sl] && mvx && (mvx.cast >= 0.3 || mvx.charge || sl === 'block' || mvx.signature)) delete out[sl];
   }
+  // Samudra Manthan: a treasure has risen; go and grab it if it is near (the better it plays, the further it goes)
+  const ch = m.arenaChange, tr = ch?.kind === 'churn' ? ch.treasure : null;
+  if (tr && tr.taken == null && ch.e >= ch.mv.treasure.at && !p.cast && !p.block && !p.med) {
+    const dx = tr.x - p.x, dy = tr.y - p.y, d = Math.hypot(dx, dy);
+    if (d < 50 + 70 * (cpu.L?.dodge ?? 0.5)) { out.mx = dx / (d || 1); out.my = dy / (d || 1); }
+  }
   return out;
 }
 function cpuThink(m, cpu, dt) {

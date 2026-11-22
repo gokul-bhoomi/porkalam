@@ -6,7 +6,7 @@ import { RES, ARENA } from './config.js';
 
 export const ART = { theme: 'river', arena: null, fit: null, arenas: {}, sheets: {}, fx: {}, scenes: {}, sceneLayers: {}, gods: {}, cards: {}, sand: {}, title: null, arms: null, ready: false };
 // Dramatic scene paintings (art/scene_<key>.png), drawn by drawScene in render.js.
-const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel', 'vishwaroopam', 'tandava'];
+const SCENES = ['siddhan_sig', 'veeran_sig', 'veeran_elephant', 'pashupatastra', 'brahmastra', 'shakti_vel', 'vishwaroopam', 'tandava', 'manthan'];
 // The boon gods, painted blessing (art/god_<name>.png, and the figure alone on magenta in god_<name>_fg.png).
 const GOD_ART = ['shiva', 'murugan', 'brahma', 'krishna', 'narada'];
 
@@ -200,6 +200,10 @@ export async function loadArt(base = '') {
     if (img) ART.gods[g] = { img, fg: fg ? keyOut(fg).c : null };
   }));
   await Promise.all(Object.keys(SHEETS).map(async (id) => { const c = await loadImg(`${base}art/card_${id}.png`); if (c) ART.cards[id] = c; })); // character-select cards
+  { // Shiva drinking the Halahala (Samudra Manthan's end)
+    const img = await loadImg(base + 'art/manthan_shiva.png');
+    if (img) ART.manthanShiva = { img };
+  }
   ART.title = await loadImg(base + 'art/title.png'); // the title screen key art
   if (ART.sceneLayers.siddhan_sig) ART.arms = cutArms(ART.sceneLayers.siddhan_sig.bg); // the Thousand-Arm Form's spirit, for the arena
   const fxImgs = await Promise.all(FX_SHEETS.map((f) => loadImg(base + f)));
@@ -254,6 +258,12 @@ export async function loadArt(base = '') {
     cellSheet('art/fx_sky_eye.png', ['skyEye'], null, 1),
     cellSheet('art/fx_cosmos_sky.png', ['cosmosSky'], null, 1), // Vishwaroopam's sky, one wide sharp image
     cellSheet('art/fx_cosmic_form.png', ['cosmicForm'], fadeBottom, 1),
+    // Samudra Manthan (ChatGPT, 2026-11-22): the churning sky, the poison, the treasures, Mount Mandara, Vasuki
+    cellSheet('art/manthan_sky.png', ['manthanSky'], null, 1),
+    cellSheet('art/manthan_fx.png', ['poisonBubble', 'poisonBurst', 'poisonDrop', 'blueBurst'], null, 1),
+    cellSheet('art/manthan_treasures.png', ['kamadhenu', 'airavata', 'amritPot', 'treasureLight'], null, 1),
+    cellSheet('art/manthan_mandara.png', ['mandara1', 'mandara2', 'mandara3', 'mandara4'], null, 1),
+    cellSheet('art/manthan_vasuki.png', ['vasukiHead', 'vasukiBody1', 'vasukiBody2', 'vasukiTail'], null, 1),
     sandSheet(base + 'art/fx_sand_hits.png', ['crater', 'impact', 'skid', 'scuff']), // marks the fight leaves on the sand (2026-11-15)
     sandSheet(base + 'art/fx_sand_marks.png', ['foot', 'wet', 'glass', 'burn']),
   ]); // the richer crystal yantra (2026-11-15) replaces the first one

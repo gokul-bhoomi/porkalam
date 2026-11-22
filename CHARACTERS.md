@@ -46,7 +46,7 @@ Two specials spend devotion to ask a random god for a boon: 4 segments = small, 
 | Shiva | Shiva's Tandava: the island splits for 8 s, 10% damage; the opponent's half sinks into lava, 2% a second on the ground there until they jump or fly across (about 26% if they stay) | Pashupatastra: 45% damage from anywhere |
 | Murugan | Vel throw: a spear, 16% damage | Shakti Vel: 40% damage, pierces any block |
 | Brahma | Kamandalu: restores 18% health | Brahmastra: both fighters reach 0 health, so it's a draw |
-| Krishna | (none) | Vishwaroopam: 40% damage across the whole arena |
+| Krishna | (none) | Vishwaroopam: 40% damage across the whole arena; or Samudra Manthan (owner, 2026-11-22): the ocean is churned, an arena change on any arena. The island spins (everyone slides, the caster too; jumping or flying is no escape), Mount Mandara stands solid in the middle, poison bubbles drift at the opponent, aimed where the spin will carry him (4% and a mark each, at any height; shoot or dodge them), one treasure rises for whoever touches it first (Kamadhenu heals 15%, Airavata charges the other for 12%, the Amrit pot cancels the next hit), then Shiva rises and drinks the poison in his own scene (the game pauses) and the Halahala burns the opponent for a sure 30%, through any wall or barrier, plus 4% per mark: about 45% against a good dodger, 65-70% against one who stands still |
 
 Owner, 2026-11-14: the medium level was removed, along with Third-eye spark, Sudarshana Chakra (Mangulan already has a chakra) and Lotus seat. Small boons were raised to 16-18% so they're worth sitting for.
 

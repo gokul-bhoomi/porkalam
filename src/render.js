@@ -376,6 +376,272 @@ function drawSplitBeats(c, ends, now) {
   }
 }
 
+// ---------- Samudra Manthan (Krishna's divine weapon, owner 2026-11-22) ----------
+// Placeholder drawing until the painted sheets are in: the world beyond the island turns into a churning milky
+// ocean under a cosmic sky, the serpent Vasuki coils round the island's edge, Mount Mandara stands in the middle on
+// Kurma's shell, the sand swirls with the spin, poison bubbles drift in and a treasure rises.
+const churnOf = (m) => (m.arenaChange?.kind === 'churn' ? m.arenaChange : null);
+function churnAngle(c) { // how far the island has turned so far (the spin's integral)
+  const S = c.mv.spin; let left = Math.min(Math.max(c.e, S.from), S.to) - S.from, a = 0, sg = 1;
+  while (left > 1e-9) { const d = Math.min(S.flip, left); a += sg * S.speed * d; left -= d; sg = -sg; }
+  return a;
+}
+const churnFade = (c) => clamp01(c.e / 0.8) * clamp01((c.mv.time - c.e) / 0.6);
+// the churning's own clock, which keeps running through Shiva's scene (the fight clock stops then)
+const churnClock = (m, c) => c.e + (c.drank ? (m.scene?.churn ? m.scene.t : c.mv.drink) : 0);
+const churnEnd = (c) => c.mv.time + c.mv.drink;
+const TREASURE = { kamadhenu: { name: 'KAMADHENU', col: '255,250,235', tip: 'HEAL' }, airavata: { name: 'AIRAVATA', col: '235,240,255', tip: 'CHARGE' }, amrit: { name: 'AMRIT', col: '255,214,110', tip: 'SHIELD' } };
+function drawChurn(m, now) {
+  const c = churnOf(m);
+  if (!c) return;
+  const f = churnFade(c), ang = churnAngle(c), R = ARENA.r, rx = Z(R), ry = Z(R) * SQ;
+  if (f <= 0) return;
+  G.save();
+  // the cosmic ocean: everything beyond the sand
+  G.beginPath(); G.rect(-300, -300, W + 600, H + 600); G.ellipse(CX, CY, rx * 1.02, ry * 1.02 + 2, 0, 0, Math.PI * 2); G.clip('evenodd');
+  G.globalAlpha = f;
+  if (fxArt('manthanSky')) { // the painted cosmos: gods and asuras pulling Vasuki across it, the milk ocean below
+    const w = W * 1.3, h = w * 0.375, top = CY - ry * 0.35 - h * 0.72;
+    G.fillStyle = '#0a0826'; G.fillRect(-300, -300, W + 600, top + 310);
+    G.fillStyle = '#dfe7fb'; G.fillRect(-300, top + h - 2, W + 600, H + 600);
+    fxSprite(G, 'manthanSky', CX, top + h / 2, w, { h });
+  } else {
+    const sky = G.createLinearGradient(0, 0, 0, CY + ry);
+    sky.addColorStop(0, '#0a0826'); sky.addColorStop(0.45, '#2a2a6a'); sky.addColorStop(0.75, '#b8c4ec'); sky.addColorStop(1, '#eef2ff');
+    G.fillStyle = sky; G.fillRect(-300, -300, W + 600, H + 600);
+    for (let i = 0; i < 40; i++) { const x = hash01(i * 7.1) * W, y = hash01(i * 3.3) * (CY - ry) * 0.8; G.fillStyle = `rgba(255,255,255,${0.5 + 0.5 * Math.sin(now * 2 + i)})`; G.fillRect(x, y, 1, 1); }
+  }
+  { // as the Halahala rises the sky turns to a violet-green storm, torn by lightning
+    const E = churnClock(m, c), B = c.mv.bubbles, pz = clamp01((E - B.from + 0.3) / 2) * (1 - clamp01((E - c.mv.shiva - c.mv.drink) / 0.8));
+    if (pz > 0) {
+      const st = G.createLinearGradient(0, 0, 0, CY + ry);
+      st.addColorStop(0, `rgba(30,6,40,${0.75 * pz})`); st.addColorStop(0.6, `rgba(60,20,90,${0.55 * pz})`); st.addColorStop(1, `rgba(40,90,50,${0.45 * pz})`);
+      G.fillStyle = st; G.fillRect(-300, -300, W + 600, H + 600);
+      const slot = Math.floor(E * 2.5), ph = E * 2.5 - slot, hit = hash01(slot * 3.7) > 0.45 && E < c.mv.shiva;
+      if (hit && ph < 0.35) { // a bolt from the storm down to the ocean
+        const fl = (1 - ph / 0.35) * pz, bx = CX + (hash01(slot) - 0.5) * W * 0.9;
+        G.fillStyle = `rgba(220,200,255,${0.35 * fl})`; G.fillRect(-300, -300, W + 600, H + 600);
+        G.strokeStyle = `rgba(240,230,255,${fl})`; G.lineWidth = 2; G.beginPath(); G.moveTo(bx, -10);
+        let lx = bx; for (let y = 0; y < CY - ry * 0.6; y += 12) { lx += (hash01(slot * 11 + y) - 0.5) * 22; G.lineTo(lx, y); }
+        G.stroke(); G.strokeStyle = `rgba(160,120,255,${0.5 * fl})`; G.lineWidth = 5; G.stroke();
+      }
+    }
+  }
+  { // the churning stops and the poison gathers: it rises out of the ocean all round and streams up into the sky
+    const E = churnClock(m, c), g = clamp01((E - c.mv.spin.to) / (c.mv.shiva - c.mv.spin.to)) * (E < c.mv.shiva + 0.5 ? 1 : 0);
+    if (g > 0 && fxArt('poisonBubble')) for (let i = 0; i < 26; i++) {
+      const q = (now * 0.6 + hash01(i * 5.3)) % 1, a0 = hash01(i * 2.1) * Math.PI * 2, x0 = CX + Math.cos(a0) * rx * 1.15, y0 = CY + Math.abs(Math.sin(a0)) * ry * 1.1;
+      fxSprite(G, 'poisonBubble', x0 + (CX - x0) * q * 0.7, y0 + (10 - y0) * q, (16 + 10 * hash01(i)) * (1 - q * 0.5), { h: (16 + 10 * hash01(i)) * (1 - q * 0.5), alpha: g * (1 - q) });
+    }
+  }
+  G.lineCap = 'round';
+  for (let k = 1; k <= 7; k++) { // milk swirling round the island
+    const rr = 1.08 + k * 0.16, w = 1.5 + k * 0.4;
+    G.setLineDash([Z(14) * rr, Z(10) * rr]); G.lineDashOffset = -ang * Z(R) * rr * 1.4 - now * 6 * (k % 2 ? 1 : -1);
+    ring(CX, CY, rx * rr, ry * rr, `rgba(255,255,255,${0.35 - k * 0.03})`, w);
+  }
+  G.setLineDash([]);
+  G.restore();
+  G.save(); G.globalAlpha = f;
+  // the sand swirls with the spin
+  G.lineCap = 'round';
+  for (let k = 1; k <= 4; k++) {
+    const rr = 0.25 + k * 0.17;
+    G.setLineDash([Z(10), Z(22)]); G.lineDashOffset = -ang * Z(R) * rr;
+    ring(CX, CY, rx * rr, ry * rr, 'rgba(255,250,235,.22)', 1.2);
+  }
+  G.setLineDash([]);
+  ell(CX, CY, rx, ry, 'rgba(225,235,255,.12)');
+  { const u = clamp01((c.e - 0.7) / 0.8); if (u > 0 && u < 1) { // Mandara crashing down: a ring of milk and sand thrown out
+    for (let k = 0; k < 3; k++) { const uu = clamp01(u * 1.2 - k * 0.12); ring(CX, CY, Z(20 + 90 * easeOut(uu)), Z(20 + 90 * easeOut(uu)) * SQ, `rgba(255,250,235,${(1 - uu) * 0.8})`, 3 - k); }
+    G.fillStyle = `rgba(255,255,255,${(1 - u) * 0.35})`; G.fillRect(-300, -300, W + 600, H + 600);
+  } }
+  // Vasuki coiled round the edge, scales sliding with the pull
+  if (fxArt('vasukiBody1')) { drawVasuki(c, ang, rx * 1.04, ry * 1.04, f); G.restore(); G.save(); drawShivaGiant(m, c); G.restore(); return; }
+  ring(CX, CY + 2, rx * 1.03, ry * 1.03, 'rgba(0,0,0,.35)', Z(7));
+  ring(CX, CY, rx * 1.03, ry * 1.03, '#1d5a48', Z(6.5));
+  G.setLineDash([Z(4), Z(4)]); G.lineDashOffset = -ang * Z(R) * 1.03 * 3;
+  ring(CX, CY, rx * 1.03, ry * 1.03, '#5fae7e', Z(3));
+  G.setLineDash([]);
+  ring(CX, CY - Z(1.5), rx * 1.03, ry * 1.03, 'rgba(200,255,220,.35)', 1);
+  G.restore(); G.save();
+  drawShivaGiant(m, c);
+  G.restore(); G.save(); G.globalAlpha = f;
+  const ha = -Math.PI / 2 - 0.9 + ang, hx = CX + Math.cos(ha) * rx * 1.03, hy = CY + Math.sin(ha) * ry * 1.03; // his head, hood spread
+  ell(hx, hy - Z(5), Z(9), Z(7), '#1d5a48'); ell(hx, hy - Z(5), Z(6), Z(4.5), '#3d8a66');
+  ell(hx - Z(2.5), hy - Z(6), Z(1.2), Z(1.2), '#ffe060'); ell(hx + Z(2.5), hy - Z(6), Z(1.2), Z(1.2), '#ffe060');
+  G.restore();
+}
+// Vasuki's painted body laid round the island's edge, piece by piece along the ellipse, his scales sliding as the
+// gods and asuras pull; his hooded head rears up at the far side and his tail tapers off beside it
+function drawVasuki(c, ang, ex, ey, f) {
+  const N = 40, head = -Math.PI / 2 + 0.35 + ang * 0.15, gap = 0.5, thick = Z(9); // he slides a little round the island as he is pulled
+  const at = (t) => [CX + Math.cos(t) * ex, CY + Math.sin(t) * ey];
+  for (let i = 0; i < N; i++) {
+    const t0 = head + gap / 2 + (i / N) * (Math.PI * 2 - gap), t1 = head + gap / 2 + ((i + 1) / N) * (Math.PI * 2 - gap);
+    const [x0, y0] = at(t0), [x1, y1] = at(t1), len = Math.hypot(x1 - x0, y1 - y0);
+    fxSprite(G, i === N - 1 ? 'vasukiTail' : i % 2 ? 'vasukiBody2' : 'vasukiBody1', (x0 + x1) / 2, (y0 + y1) / 2, len * 1.12, { h: thick * 512 / 100, rot: Math.atan2(y1 - y0, x1 - x0), alpha: f });
+  }
+  const [hx, hy] = at(head + gap / 2 - 0.05), hw = Z(26);
+  fxSprite(G, 'vasukiHead', hx, hy - hw * 0.25, hw, { h: hw, alpha: f });
+}
+// Where Shiva stands at the end of the churning: a giant over the whole arena, his head under the timer
+function shivaLayout(m, c) {
+  const t0 = c.mv.shiva, rise = (1 - easeOut(clamp01((churnClock(m, c) - t0) / 1.2))) * 60;
+  const h = H * 1.25, w = h * 1672 / 941, top = -h * 0.06 + rise; // the painting's own frame, drawn this big
+  return { w, h, x: CX - w / 2, y: top, hx: CX, hy: top + h * 0.36, tx: CX, ty: top + h * 0.45 };
+}
+const softShiva = (img) => { // the painting faded out towards its edges, for when there's no cut-out of him
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  g.globalCompositeOperation = 'destination-in';
+  const r = g.createRadialGradient(c.width / 2, c.height * 0.38, c.height * 0.2, c.width / 2, c.height * 0.38, c.height * 0.62);
+  r.addColorStop(0, 'rgba(0,0,0,1)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r; g.fillRect(0, 0, c.width, c.height);
+  return c;
+};
+function drawShivaGiant(m, c) {
+  const S = ART.manthanShiva, t0 = c.mv.shiva, E = churnClock(m, c);
+  if (!useArt || !S || E < t0) return;
+  const a = clamp01((E - t0) / 0.8) * clamp01((churnEnd(c) - E) / 0.8), L = shivaLayout(m, c);
+  ell(CX, CY, Z(ARENA.r), Z(ARENA.r) * SQ, `rgba(8,10,40,${0.45 * a})`); // the world darkens under him
+  const glow = G.createRadialGradient(L.tx, L.y + L.h * 0.25, 10, L.tx, L.y + L.h * 0.25, W * 0.6);
+  glow.addColorStop(0, `rgba(120,170,255,${0.45 * a})`); glow.addColorStop(1, 'rgba(120,170,255,0)');
+  G.fillStyle = glow; G.fillRect(-300, -300, W + 600, H + 600);
+  const img = S.soft ||= softShiva(S.img); // the whole painting, poison stream and all, melting into the sky at its edges (the cut-out leaves a hole where the stream was)
+  G.save(); G.globalAlpha *= a * 0.95; G.imageSmoothingEnabled = true; G.drawImage(img, L.x, L.y, L.w, L.h); G.restore();
+}
+// Mount Mandara on Kurma's shell, in the middle: drawn among the fighters so they pass in front of or behind it
+function mandaraActor(m, now) {
+  const c = churnOf(m);
+  if (!c) return null;
+  return { x: 0, y: 0, warDraw: () => {
+    const gone = clamp01((churnClock(m, c) - c.mv.shiva) / 0.5); // the churning is over: the mountain sinks back into the ocean as Shiva rises
+    const f = churnFade(c) * (1 - gone), drop = (1 - easeOut(clamp01(c.e / 0.7))) * 220 - gone * 30, ang = churnAngle(c), x = sx(0), y = sy(0) - drop;
+    if (f <= 0) return;
+    const w = Z(c.mv.mountain) * 1.15, h = Z(c.mv.mountain) * 3.4;
+    if (fxArt('mandara1')) { // the painted mountain on Kurma, Vasuki's coils sliding round it as it turns
+      const fr = 1 + (((Math.floor(Math.abs(ang) * 6) % 4) + 4) % 4), cw = Z(c.mv.mountain) * 2.9 * 512 / 440, chh = cw * 2;
+      G.save(); G.globalAlpha = f;
+      if (!drop) ell(x, sy(0) + 1, cw * 0.45, cw * 0.16, 'rgba(0,0,0,.3)');
+      fxSprite(G, `mandara${fr}`, x, y + chh * (34 / 1024), cw, { h: chh, anchor: 'bottom' });
+      G.restore();
+      return;
+    }
+    G.save(); G.globalAlpha = f;
+    if (!drop) ell(x, sy(0) + 1, w * 1.5, w * 0.6, 'rgba(0,0,0,.3)');
+    ell(x, y - 2, w * 1.35, w * 0.62, '#4f6b3a'); ell(x, y - 4, w * 1.15, w * 0.48, '#6f8f4a'); // Kurma's shell
+    for (let i = -2; i <= 2; i++) ring(x + i * w * 0.4, y - 4, w * 0.18, w * 0.13, 'rgba(40,60,30,.6)', 0.8);
+    const g = G.createLinearGradient(x - w, 0, x + w, 0);
+    g.addColorStop(0, '#5a4a3e'); g.addColorStop(0.5, '#9a8470'); g.addColorStop(1, '#4a3a30');
+    G.fillStyle = g; G.beginPath(); G.moveTo(x - w, y - 4); G.lineTo(x - w * 0.25, y - h); G.lineTo(x + w * 0.15, y - h * 0.97); G.lineTo(x + w, y - 4); G.closePath(); G.fill();
+    G.strokeStyle = 'rgba(40,30,25,.5)'; G.lineWidth = 0.8;
+    for (let i = 0; i < 4; i++) { G.beginPath(); G.moveTo(x - w * 0.2 + i * w * 0.1, y - h * 0.95); G.lineTo(x - w * 0.8 + i * w * 0.5, y - 6); G.stroke(); }
+    for (let i = 0; i < 3; i++) { // Vasuki's coils round the mountain, turning with it
+      const yy = y - h * (0.25 + i * 0.2), ww = w * (0.95 - i * 0.2), ph = ang * 3 + i;
+      G.strokeStyle = '#1d5a48'; G.lineWidth = Z(3.2); G.beginPath(); G.ellipse(x, yy, ww, ww * 0.3, 0, 0.1 + Math.sin(ph) * 0.2, Math.PI - 0.1 + Math.sin(ph) * 0.2); G.stroke();
+      G.strokeStyle = '#5fae7e'; G.lineWidth = Z(1.2); G.stroke();
+    }
+    G.restore();
+  } };
+}
+// over the fighters: the treasure rising, poison marks and the Amrit pot's shield
+function drawChurnTop(m, now) {
+  const c = churnOf(m);
+  for (const p of m.players) {
+    const x = sx(p.x), y = sy(p.y);
+    if (p.effects.amrit) { const a = 0.55 + 0.25 * Math.sin(now * 5); ring(x, y - 16, Z(13), Z(16), `rgba(255,214,110,${a})`, 1.5); ring(x, y - 16, Z(15), Z(18), `rgba(255,240,190,${a * 0.5})`, 1); }
+    for (let i = 0; i < (p.poison || 0); i++) { // a drop of Halahala for every mark
+      const dx = (i - ((p.poison || 0) - 1) / 2) * 6, dy = y - 50 + Math.sin(now * 4 + i) * 1.2;
+      if (fxArt('poisonDrop')) { fxSprite(G, 'poisonDrop', x + dx, dy, 26, { h: 26 }); continue; }
+      ell(x + dx, dy, 2.4, 2.8, '#3a1a5a'); ell(x + dx, dy, 1.7, 2.1, '#7a3ac0'); ell(x + dx - 0.6, dy - 0.8, 0.6, 0.6, '#d0b0ff');
+    }
+  }
+  if (!c) return;
+  const tr = c.treasure, T = c.mv.treasure;
+  if (tr.taken == null && c.e >= T.at && c.e < T.until) {
+    const L = TREASURE[tr.kind], u = clamp01((c.e - T.at) / 0.6), x = sx(tr.x), y = sy(tr.y), lift = 8 + easeOut(u) * 10 + Math.sin(now * 3) * 2;
+    const glow = G.createRadialGradient(x, y - lift, 0, x, y - lift, 26);
+    glow.addColorStop(0, `rgba(${L.col},${0.8 * u})`); glow.addColorStop(1, `rgba(${L.col},0)`);
+    G.fillStyle = glow; G.fillRect(x - 30, y - lift - 30, 60, 60);
+    ell(x, y, Z(T.grab) * u, Z(T.grab) * SQ * u, `rgba(${L.col},.18)`);
+    ring(x, y, Z(T.grab), Z(T.grab) * SQ, `rgba(${L.col},${0.5 * u})`, 1);
+    const spr = { kamadhenu: 'kamadhenu', airavata: 'airavata', amrit: 'amritPot' }[tr.kind];
+    if (fxArt(spr)) {
+      const cw = Z(46) * 512 / 400;
+      if (fxArt('treasureLight')) fxSprite(G, 'treasureLight', x, y + 2, cw * 0.9, { h: cw * 0.9, anchor: 'bottom', alpha: 0.8 * u });
+      fxSprite(G, spr, x, y - lift + cw * (42 / 512), cw * (0.6 + 0.4 * easeOut(u)), { h: cw * (0.6 + 0.4 * easeOut(u)), anchor: 'bottom', alpha: u });
+    } else if (tr.kind === 'amrit') { ell(x, y - lift, 5, 5.5, '#d8a030'); ell(x, y - lift - 5, 2.5, 1.5, '#f0c050'); }
+    else { ell(x, y - lift, 7, 4.5, `rgb(${L.col})`); ell(x + 6, y - lift - 2, 3, 2.6, `rgb(${L.col})`); if (tr.kind === 'airavata') { G.strokeStyle = '#fff'; G.lineWidth = 1; G.beginPath(); G.moveTo(x + 8, y - lift - 1); G.lineTo(x + 10, y - lift + 5); G.stroke(); } }
+    txt(L.name, x, y - lift - (fxArt(spr) ? Z(46) * 0.95 : 20), `rgb(${L.col})`, 'center', 6);
+  }
+  drawShivaDrinks(m, c, now);
+}
+// The end of the churning (owner 2026-11-22: the grandest moment): Shiva rises over the far side and draws the
+// Halahala up into his cupped hands, from every poison mark and from the ocean, his throat glowing blue; then
+// every mark bursts in blue light.
+function drawShivaDrinks(m, c, now) {
+  const t0 = c.mv.shiva, e = churnClock(m, c), drunk = t0 + c.mv.drink;
+  if (e < t0 || !useArt) return;
+  const a = clamp01((e - t0) / 0.5) * clamp01((churnEnd(c) - e) / 0.5);
+  const L = shivaLayout(m, c), hx = L.hx, hy = L.hy; // his cupped hands on screen
+  // the poison pulled up into his hands: from every fighter still marked, and up out of the ocean
+  if (e < drunk) {
+    const k = clamp01((e - t0 - 0.4) / (drunk - t0 - 0.8));
+    const from = m.players.filter((p) => p.poison > 0).map((p) => [sx(p.x), sy(p.y) - 40]).concat([[CX - 200, CY + 40], [CX + 200, CY + 40]]);
+    from.forEach(([x0, y0], j) => {
+      for (let i = 0; i < 7; i++) {
+        const u = ((now * 0.9 + i / 7 + j * 0.13) % 1), q = u * k, bx = x0 + (hx - x0) * q + Math.sin(u * 9 + j) * 12 * (1 - q), by = y0 + (hy - y0) * q - Math.sin(q * Math.PI) * 30;
+        if (fxArt('poisonBubble')) fxSprite(G, 'poisonBubble', bx, by, 22 * (1 - q * 0.6), { h: 22 * (1 - q * 0.6), alpha: a * (0.4 + 0.6 * (1 - u)) });
+        else ell(bx, by, 4, 4, `rgba(90,30,140,${a})`);
+      }
+    });
+    const tg = G.createRadialGradient(L.tx, L.ty, 0, L.tx, L.ty, 26); // his throat turning blue
+    tg.addColorStop(0, `rgba(80,140,255,${0.75 * k * a})`); tg.addColorStop(1, 'rgba(80,140,255,0)');
+    G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = tg; G.fillRect(L.tx - 30, L.ty - 30, 60, 60); G.restore();
+  }
+  // the poison he could not hold spills: it gathers into a dark cloud over the opponent and rains down on him
+  const o = m.players[1 - c.owner], ox = sx(o.x), oy = sy(o.y) - 18;
+  if (c.pourAt != null && !c.burst) {
+    const u = clamp01((c.e - c.pourAt) / c.mv.burst.pour), cy = Math.max(40, oy - 100), cw = 45 + 60 * easeOut(clamp01(u * 2));
+    const cg = G.createRadialGradient(ox, cy, 0, ox, cy, cw); // the cloud
+    cg.addColorStop(0, 'rgba(10,0,18,.97)'); cg.addColorStop(0.55, 'rgba(40,8,70,.85)'); cg.addColorStop(1, 'rgba(60,20,100,0)');
+    G.fillStyle = cg; for (const [dx, k] of [[0, 1], [-0.5, 0.7], [0.5, 0.7]]) { G.beginPath(); G.ellipse(ox + dx * cw, cy + Math.abs(dx) * 6, cw * k, cw * 0.5 * k, 0, 0, Math.PI * 2); G.fill(); }
+    if (fxArt('poisonBubble')) for (let i = 0; i < 16; i++) { const a = i * 0.7 + now * 0.8, r = cw * 0.8 * hash01(i * 3.1); fxSprite(G, 'poisonBubble', ox + Math.cos(a) * r, cy + Math.sin(a) * r * 0.4, 20 + 12 * hash01(i), { h: 20 + 12 * hash01(i), alpha: 0.95 }); }
+    const n = 6 + Math.floor(u * 22); // the rain thickens until it pours
+    for (let i = 0; i < n; i++) {
+      const q = (now * (1.6 + u * 2) + hash01(i * 7.7)) % 1, x = ox + (hash01(i * 4.3) - 0.5) * cw * 0.9 * (1 - q * 0.6), y = cy + (oy - cy) * q * q;
+      if (fxArt('poisonDrop')) fxSprite(G, 'poisonDrop', x, y, 30, { h: 30, alpha: 0.95 });
+      else ell(x, y, 2, 3, '#7a3ac0');
+    }
+    const r = 10 + 26 * (1 - u); // where it will strike: a ring closing in on him
+    ring(ox, oy + 18, r * 1.4, r * 1.4 * SQ, `rgba(190,120,255,${0.5 + 0.5 * u})`, 2);
+  }
+  if (c.burstT != null) { // it strikes: a huge blue blast on him
+    const u = clamp01((c.e - c.burstT) / 0.9);
+    if (u < 1) {
+      const w = 90 + 120 * easeOut(u);
+      if (fxArt('blueBurst')) fxSprite(G, 'blueBurst', ox, oy, w, { h: w, alpha: 1 - u });
+      else ring(ox, oy, w / 2, w / 2, `rgba(120,170,255,${1 - u})`, 4);
+      if (u < 0.25) { G.fillStyle = `rgba(200,220,255,${0.6 * (1 - u / 0.25)})`; G.fillRect(-300, -300, W + 600, H + 600); }
+    }
+  }
+  for (const pop of c.pops || []) { // then each mark bursts on its own
+    const u = clamp01((c.e - pop.t) / 0.6), p = m.players[pop.pid];
+    if (u >= 1) continue;
+    const w = 40 + 40 * easeOut(u);
+    if (fxArt('poisonBurst')) fxSprite(G, 'poisonBurst', sx(p.x), sy(p.y) - 40, w, { h: w, alpha: 1 - u });
+    if (fxArt('blueBurst')) fxSprite(G, 'blueBurst', sx(p.x), sy(p.y) - 30, w * 0.8, { h: w * 0.8, alpha: (1 - u) * 0.8 });
+  }
+}
+// The churning stops and the poison gathers before Shiva rises: the world shakes, harder and harder
+function churnShake(m) {
+  const c = churnOf(m);
+  if (!c || m.scene) return 0;
+  const E = churnClock(m, c);
+  return 2.5 * clamp01((E - c.mv.spin.to) / (c.mv.shiva - c.mv.spin.to)) * (E < c.mv.shiva ? 1 : 0);
+}
+
 function drawChasm(m, now) {
   const c = m.arenaChange;
   if (!c || c.kind !== 'chasm') return;
@@ -1399,6 +1665,21 @@ function drawProjectile(pr0, now) {
   if (useArt && drawDivineShot(pr0, now)) return;
   const pr = { ...pr0, r: Z(pr0.r) };
   const x = sx(pr.x), y = sy(pr.y) - 6, a = Math.atan2(pr.vy * SQ, pr.vx), ca = Math.cos(a), sa = Math.sin(a);
+  if (pr.shape === 'poison' && fxArt('poisonBubble')) {
+    const d = Z(pr0.r) * 2.3 * (1 + 0.06 * Math.sin(now * 9 + pr0.id)), cw = d * 512 / 300;
+    ell(x, sy(pr.y), d * 0.4, d * 0.15, 'rgba(0,0,0,.25)');
+    fxSprite(G, 'poisonBubble', x, sy(pr.y) - 9, cw, { h: cw, rot: Math.sin(now * 2 + pr0.id) * 0.3 });
+    return;
+  }
+  if (pr.shape === 'poison') { // Samudra Manthan's Halahala: a bubble of dark poison, wobbling as it drifts
+    const r = Z(pr0.r) * 0.75 * (1 + 0.08 * Math.sin(now * 9 + pr0.id)), hy = sy(pr.y) - 8;
+    ell(x, sy(pr.y), r * 0.9, r * 0.35, 'rgba(0,0,0,.25)');
+    const g = G.createRadialGradient(x - r * 0.3, hy - r * 0.3, 0, x, hy, r * 1.6);
+    g.addColorStop(0, 'rgba(200,160,255,.95)'); g.addColorStop(0.45, 'rgba(90,30,140,.95)'); g.addColorStop(0.8, 'rgba(40,90,60,.8)'); g.addColorStop(1, 'rgba(40,90,60,0)');
+    G.fillStyle = g; G.beginPath(); G.arc(x, hy, r * 1.6, 0, Math.PI * 2); G.fill();
+    ell(x - r * 0.35, hy - r * 0.4, r * 0.25, r * 0.18, 'rgba(255,255,255,.7)');
+    return;
+  }
   if (pr.shape === 'orb') { // the mage's mantra bolt: a glowing teal orb with a short tail
     const hy = sy(pr.y) - 18, r = Z(pr0.r) * 1.3 * (1 + Math.max(0, pr0.dmg - 4) / 9), g = G.createRadialGradient(x, hy, 0, x, hy, r * 2.2); // a charged bolt is bigger
     g.addColorStop(0, 'rgba(235,255,252,1)'); g.addColorStop(0.35, 'rgba(90,230,215,.9)'); g.addColorStop(1, 'rgba(40,160,170,0)');
@@ -1500,7 +1781,7 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   chasm = m.arenaChange?.kind === 'chasm' ? m.arenaChange : null;
   let sh = 0; // screen shake from power moves landing
   for (const f of fx) if (f.kind === 'shake') sh += f.amp * Math.max(0, 1 - (fxNow - f.t0) / f.life);
-  sh += dramaShake(now);
+  sh += dramaShake(now) + churnShake(m);
   G.save();
   if (sh) G.translate(Math.sin(now * 83) * sh, Math.cos(now * 67) * sh * 0.7);
   const cam = sceneCamera(m) || divineCamera(now); // a power-up zooms in on the caster; a divine weapon on its moment
@@ -1516,6 +1797,7 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
   drawDamage(G, fxNow, 'ground'); // what the fight has done to the sand
   if (m.haz) warDrawGround(G, WV, m); // the battlefield's hazards (they are real, so they show with or without the art)
   drawChasm(m, now);
+  drawChurn(m, now);
   for (const a of m.areas) {
     const k = 1 - a.t / a.delay;
     if (fxArt('danger')) { // the warning circle fills in as the arrows get closer
@@ -1545,12 +1827,14 @@ export function drawFight(m, now, fx, tags = ['P1', 'P2'], fxNow = now, hints = 
     drawSignatureHalo(sx(p.x), sy(p.y) - 18, m.scene.t);
   }
   m0 = m;
-  const order = [...m.players, ...m.walls, ...wallGhosts(m.walls, now), ...warActors(WV, m)].sort((a, b) => a.y - b.y); // back to front
+  const mandara = mandaraActor(m, now);
+  const order = [...m.players, ...m.walls, ...wallGhosts(m.walls, now), ...warActors(WV, m), ...(mandara ? [mandara] : [])].sort((a, b) => a.y - b.y); // back to front
   const lifted = (o, draw) => { const d = liftAt(o.x, o.y); if (d) { G.save(); G.translate(0, d); draw(); G.restore(); } else draw(); }; // rides its half of a split island
   drawParts(now, true);
   for (const o of order) if (o.ch) drawFighter(m, o, now); else if (o.warDraw) o.warDraw(G); else lifted(o, () => drawWall(o, now));
   drawParts(now, false);
   drawDamage(G, fxNow, 'air'); // sand thrown up
+  drawChurnTop(m, now);
   drawDivine(m, now, 'sky');
   for (const pr of m.projectiles) lifted(pr, () => drawProjectile(pr, now));
   for (const f of fx) if (!f.ground) drawFx(f, fxNow);
@@ -1647,6 +1931,11 @@ function drawFx(f, now) {
   if (spr && fxArt(spr)) {
     const size = { spark: 20 + k * 10, burst: Z(22) * 2 * (0.6 + k * 0.6), clash: 34 + k * 12 }[spr];
     fxSprite(G, spr, x, spr === 'burst' ? y : y - 18, size, { alpha: 1 - k * k, anchor: spr === 'burst' ? 'bottom' : 'center' });
+    return;
+  }
+  if (f.kind === 'poisonSplash') { // Samudra Manthan: a poison bubble bursting on whoever it hit
+    if (fxArt('poisonBurst')) { const w = 34 + 30 * k; fxSprite(G, 'poisonBurst', x, y - 18, w, { h: w, alpha: 1 - k }); }
+    else ring(x, y - 18, 8 + 14 * k, 8 + 14 * k, `rgba(140,60,200,${1 - k})`, 2);
     return;
   }
   if (f.kind === 'rain' && fxArt('rain')) { // arrows drop onto the circle
@@ -1840,10 +2129,12 @@ const SCENE_LOOK = {
   shakti_vel: { face: [0.4, 0.3], at: [0.7, 0.4], glow: '255,200,90', spark: '255,240,190', bg: ['#5a3a10', '#0a0604'], sub: 'DIVINE BOON OF MURUGAN' },
   brahmastra: { face: [0.4, 0.3], at: [0.7, 0.38], glow: '255,246,214', spark: '255,255,236', bg: ['#4a3a20', '#0a0806'], sub: 'DIVINE BOON OF BRAHMA' },
   pashupatastra: { face: [0.4, 0.3], at: [0.82, 0.37], glow: '160,215,255', spark: '210,240,255', bg: ['#1a2a6a', '#03050f'], sub: 'DIVINE BOON OF SHIVA' },
+  neelakantha: { glow: '120,170,255', spark: '200,220,255' },
+  manthan: { face: [0.4, 0.3], at: [0.6, 0.35], glow: '190,220,255', spark: '235,245,255', bg: ['#cfd8f0', '#0a0826'], sub: 'DIVINE BOON OF KRISHNA: THE OCEAN CHURNS' },
   tandava: { face: [0.5, 0.3], at: [0.5, 0.6], glow: '255,150,60', spark: '255,230,170', bg: ['#5a1a10', '#0a0302'], sub: 'BOON OF SHIVA: THE ISLAND SPLITS' },
 };
 export const sceneKey = (name) => ({ 'Thousand-Arm Form': 'siddhan_sig', 'Gaja Arrow': 'veeran_elephant', Pashupatastra: 'pashupatastra',
-  Brahmastra: 'brahmastra', 'Shakti Vel': 'shakti_vel', Vishwaroopam: 'vishwaroopam', "Shiva's Tandava": 'tandava' })[name] || null;
+  Brahmastra: 'brahmastra', 'Shakti Vel': 'shakti_vel', Vishwaroopam: 'vishwaroopam', "Shiva's Tandava": 'tandava', 'Samudra Manthan': 'manthan', Neelakantha: 'neelakantha' })[name] || null;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const easeOut = (v) => 1 - (1 - v) ** 3;
 
@@ -1911,6 +2202,11 @@ function drawGod(f, now) {
 // the camera during a power-up: zoom toward the caster, ease in, hold, ease back out
 function sceneCamera(m) {
   const s = m.scene; if (!s) return null;
+  if (s.churn && churnOf(m)) { // Shiva drinking: the camera rises to his throat as it turns blue, then pulls back
+    const L = shivaLayout(m, churnOf(m)), t = s.t, D = s.dur;
+    const e = easeOut(clamp01(t / 1.2)) * (1 - easeOut(clamp01((t - (D - 0.4)) / 0.4)));
+    return { e, z: 1 + 0.3 * e, fx: CX + (L.hx - CX) * e, fy: H / 2 + (L.hy - H / 2) * e };
+  }
   const p = m.players[s.pid], t = s.t, D = s.dur;
   const e = easeOut(clamp01(t / 0.35)) * (1 - easeOut(clamp01((t - (D - 0.3)) / 0.3)));
   return { e, z: 1 + 0.22 * e, fx: CX + (sx(p.x) - CX) * 0.6 * e, fy: H / 2 + (sy(p.y) - 22 - H / 2) * 0.5 * e };
@@ -1918,7 +2214,7 @@ function sceneCamera(m) {
 // the world around the island becomes the power: the painting replaces sky, river and far bank, and only the
 // sand floor stays (drawn right after the backdrop, inside the camera)
 function sceneSky(m) {
-  if (m.scene.name === 'Thousand-Arm Form') return; // the serene aureole stays in the sunlit arena
+  if (m.scene.name === 'Thousand-Arm Form' || m.scene.churn) return; // the serene aureole stays in the sunlit arena
   const s = m.scene, p = m.players[s.pid], key = sceneKey(s.name), look = SCENE_LOOK[key] || {};
   const k2 = key && !ART.scenes[key] && look.fallback ? look.fallback : key; // e.g. a painting that isn't in yet
   const img = useArt && k2 ? ART.scenes[k2] : null, lay = img ? ART.sceneLayers[k2] : null, t = s.t, u = t / s.dur;
@@ -1944,6 +2240,7 @@ function sceneSky(m) {
 }
 // dim everything but the caster, and raise an aura around them (inside the camera, over the fighters)
 function sceneAura(m, now) {
+  if (m.scene.churn) return; // Shiva's own scene: he is the light
   const s = m.scene, p = m.players[s.pid], look = SCENE_LOOK[sceneKey(s.name)] || { glow: '255,220,140', spark: '255,240,200' }, t = s.t;
   const fade = clamp01(t / 0.3) * (1 - clamp01((t - s.dur + 0.25) / 0.25)), x = sx(p.x), y = sy(p.y);
   const serene = s.name === 'Thousand-Arm Form';

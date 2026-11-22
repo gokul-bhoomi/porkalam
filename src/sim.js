@@ -31,7 +31,7 @@ function makeFighter(ch, i) {
   return {
     id: i, ch, x: i === 0 ? -TUNE.startX : TUNE.startX, y: 0, face: { x: i === 0 ? 1 : -1, y: 0 },
     hp: ch.health, power: ch.power.size * TUNE.startPower, kvx: 0, kvy: 0,
-    cast: null, block: null, med: null, dash: null, effects: {}, recover: 0, air: null, chasmSide: 0,
+    cast: null, block: null, med: null, dash: null, effects: {}, recover: 0, air: null, chasmSide: 0, poison: 0,
     chord: null,
     devotion: 0, // full devotion segments, earned by meditating and spent on boons (ground rule 11)
     boon: null,  // a boon the gods have offered, held until it's used
@@ -55,6 +55,7 @@ export function rangeOK(move, d) { const [lo, hi] = RANGES[rangeOf(move)]; retur
 // Why a move can't start right now (null = it can).
 export function whyNot(m, p, move, extraPower = 0) {
   if (p.effects.stun) return 'STUNNED';
+  if (move.kind === 'manthan' && m.arenaChange) return 'ARENA BUSY'; // ground rule 12: one arena change at a time
   // Basic attacks always go off; their range is how far they reach (owner, 2026-11-08). Specials still need it.
   const d = dist(p, opponent(m, p)), [lo] = RANGES[rangeOf(move)];
   if (!isBasic(move) && !rangeOK(move, d)) return d < lo ? 'TOO CLOSE' : 'TOO FAR';
@@ -141,6 +142,7 @@ export function stepMatch(m, inputs = [{}, {}], dt = STEP) {
 
   movement(m, inputs, dt);        // 1. movement (and timers)
   if (m.haz) hazards(m, dt);      //    the battlefield's hazards move, warn and strike
+  churn(m, dt);                   //    Samudra Manthan, while it lasts
   newMoves(m, inputs, dt);        // 2. new moves start, casts finish
   clashes(m);                     // 3. clashes are decided
   collectHits(m);
@@ -258,6 +260,91 @@ function movement(m, inputs, dt) {
   lavaBurn(m, dt);
   if (m.arenaChange && (m.arenaChange.t -= dt) <= 0) m.arenaChange = null;
   if (m.rough.length && m.rough[0].until <= m.t) m.rough = m.rough.filter((z) => z.until > m.t);
+}
+
+// Samudra Manthan (an arena change, ground rule 12): `e` = seconds since it began.
+export const churnSpin = (c) => { // the island's turning speed right now (rad/s, + = clockwise on screen)
+  const S = c.mv.spin;
+  if (c.e < S.from || c.e >= S.to) return 0;
+  return S.speed * (Math.floor((c.e - S.from) / S.flip) % 2 ? -1 : 1);
+};
+const spinOver = (c, e0, e1) => { // how far the island turns between two moments of the churning
+  let a = 0; for (let e = e0; e < e1; e += 0.05) a += churnSpin({ ...c, e }) * Math.min(0.05, e1 - e);
+  return a;
+};
+function churn(m, dt) {
+  const c = m.arenaChange;
+  if (!c || c.kind !== 'churn') return;
+  const mv = c.mv, B = mv.bubbles, T = mv.treasure, p = m.players[c.owner], o = m.players[1 - c.owner];
+  c.e += dt;
+  // the beats everyone feels (shakes and sounds in main.js): Mandara crashing down, each heave on Vasuki, the poison erupting
+  if (!c.landed && c.e >= 0.7) { c.landed = true; ev(m, 'mandaraLands', {}); }
+  const tug = c.e >= mv.spin.from && c.e < mv.spin.to ? Math.floor((c.e - mv.spin.from) / mv.spin.flip) : -1;
+  if (tug >= 0 && tug !== c.tug) { c.tug = tug; ev(m, 'churnTug', { n: tug }); }
+  if (!c.erupted && c.e >= mv.bubbles.from) { c.erupted = true; ev(m, 'halahala', {}); }
+  // the whole world turns: everyone slides round with it, the caster too, and jumping or flying is no escape
+  // (owner 2026-11-22: a power on the scale of Brahmastra)
+  const w = churnSpin(c);
+  if (w) for (const f of m.players) {
+    const cs = Math.cos(w * dt), sn = Math.sin(w * dt), x = f.x, y = f.y;
+    f.x = x * cs - y * sn; f.y = x * sn + y * cs;
+  }
+  // Mount Mandara stands in the middle: solid for anyone on the ground
+  for (const f of m.players) if (!airborne(f)) {
+    const d = Math.hypot(f.x, f.y), min = mv.mountain + TUNE.fighterR;
+    if (d < min) { const n = d > 1e-6 ? { x: f.x / d, y: f.y / d } : { x: f === p ? -1 : 1, y: 0 }; f.x = n.x * min; f.y = n.y * min; }
+  }
+  // Halahala poison rises from the ocean and drifts straight at where the opponent is
+  while (c.e >= c.nextBubble - 1e-9 && c.nextBubble <= B.to + 1e-9) {
+    c.nextBubble += B.every;
+    const ao = Math.atan2(o.y, o.x), a = ao + (m.rand() < 0.5 ? -1 : 1) * (Math.PI / 2 + m.rand() * 0.6), R = ARENA.r - 4; // from the ocean off to his side
+    const x = Math.cos(a) * R, y = Math.sin(a) * R;
+    // aimed where the spin will have carried him when it gets there (standing still is no answer; moving is)
+    const T = Math.hypot(o.x - x, o.y - y) / B.speed, wl = spinOver(c, c.e, c.e + T), tx = o.x * Math.cos(wl) - o.y * Math.sin(wl), ty = o.x * Math.sin(wl) + o.y * Math.cos(wl);
+    const u = unitDir(tx - x, ty - y);
+    m.projectiles.push({ id: m.nid++, owner: p.id, name: 'Halahala', shape: 'poison', x, y, vx: u.x * B.speed, vy: u.y * B.speed, r: B.radius, dmg: mv.damage, dmg0: mv.damage, kb: 0,
+      life: B.life, legs: 0, legTime: 0, lt: 0, effect: null, divine: false, boon: false, reach: Infinity, flown: 0, seek: false, falloff: null, k: 1,
+      pierceBlock: false, pierceUnits: false, hitUnits: [], hitWalls: [], quick: false, poison: true, born: true });
+    ev(m, 'poisonRise', { x, y });
+  }
+  // the treasure: the first fighter to touch it gets it
+  const tr = c.treasure;
+  if (tr.taken == null && c.e >= T.at && c.e < T.until) {
+    const f = m.players.find((q) => Math.hypot(q.x - tr.x, q.y - tr.y) <= T.grab + TUNE.fighterR);
+    if (f) {
+      tr.taken = f.id; tr.at = m.t;
+      const other = m.players[1 - f.id];
+      if (tr.kind === 'kamadhenu') m.hits.push({ target: f, heal: T.heal, src: 'Kamadhenu' });
+      else if (tr.kind === 'amrit') applyEffect(f, 'amrit', T.amrit);
+      else m.hits.push({ target: other, dmg: T.charge, kb: T.chargeKb, from: { x: f.x, y: f.y }, src: 'Airavata', by: f.id });
+      ev(m, 'treasure', { pid: f.id, kind: tr.kind, x: tr.x, y: tr.y });
+      say(f, { kamadhenu: 'KAMADHENU: HEALED', airavata: 'AIRAVATA CHARGES', amrit: 'AMRIT: NEXT HIT CANCELLED' }[tr.kind]);
+    }
+  }
+  // Shiva rises and drinks the poison: his scene pauses the game (ground rule 4), and right after it the Halahala
+  // burns the opponent (a sure amount) and every mark bursts on whoever carries it
+  if (!c.drank && c.e >= mv.shiva) {
+    c.drank = true;
+    m.scene = { pid: c.owner, name: 'Neelakantha', t: 0, dur: mv.drink, churn: true };
+    m.projectiles = m.projectiles.filter((pr) => !pr.poison); // he draws every drifting drop of it up into his hands
+    ev(m, 'neelakantha', { pid: c.owner });
+    return;
+  }
+  // then, so everyone sees where it comes from (owner 2026-11-22): he pours the burning poison down onto the opponent
+  // as a beam (`burst.pour` s); the sure part lands when it strikes, then every mark bursts one after another
+  if (c.drank && c.pourAt == null) { c.pourAt = c.e; ev(m, 'poisonPour', { pid: o.id }); }
+  if (c.drank && !c.burst && c.e >= c.pourAt + mv.burst.pour) {
+    c.burst = true; c.burstT = c.e; c.pops = []; c.nextPop = c.e + mv.burst.gap;
+    m.hits.push({ target: o, dmg: mv.burst.sure, kb: 0, from: null, pierceBlock: true, divine: true, src: 'Halahala', by: c.owner });
+    ev(m, 'shivaDrinks', { pid: o.id, marks: m.players.map((f) => f.poison || 0) });
+  }
+  while (c.burst && c.e >= c.nextPop - 1e-9) { // one mark bursts at a time, on whoever carries it
+    const f = m.players.find((q) => q.poison > 0);
+    if (!f) { c.nextPop = Infinity; break; }
+    f.poison--; c.nextPop += mv.burst.gap; c.pops.push({ pid: f.id, t: c.e });
+    m.hits.push({ target: f, dmg: mv.burst.per, kb: 0, from: null, pierceBlock: true, divine: true, src: 'Halahala', by: c.owner });
+    ev(m, 'markBurst', { pid: f.id, x: f.x, y: f.y });
+  }
 }
 
 // Rough ground (ground rule 13, owner 2026-11-15): craters and wet sand slow anyone walking through them.
@@ -518,6 +605,17 @@ function release(m, p, c) {
       }
       m.hits.push({ target: o, dmg: mv.damage, kb: 0, from: null, pierceBlock: true, src: mv.name, by: p.id }); // a boon always finds its target
       ev(m, 'tandava', { pid: p.id, x: cx, y: cy });
+      break;
+    }
+    case 'manthan': { // Samudra Manthan (Krishna, owner 2026-11-22): see the boon in chars/gods.js
+      const kinds = ['kamadhenu', 'airavata', 'amrit'], kind = kinds[Math.floor(m.rand() * kinds.length)];
+      // Keep the treasure beside Mandara so its sprite and pickup area clear the mountain.
+      const flank = m.rand() < 0.5 ? -1 : 1, offset = m.rand() - 0.5;
+      const radius = ARENA.sizes[m.arena] ?? ARENA.r;
+      startArenaChange(m, { kind: 'churn', name: mv.name, time: mv.time, owner: p.id, mv, e: 0, nextBubble: mv.bubbles.from, dir: 1,
+        treasure: { kind, x: flank * radius * (0.52 + offset * 0.08), y: radius * offset * 0.32, taken: null }, burst: false });
+      for (const f of m.players) f.poison = 0;
+      ev(m, 'manthan', { pid: p.id });
       break;
     }
     case 'brahmastra': // it rises and hangs in the sky (holdBrahma); when its sun lands both fighters reach 0 health: a draw
@@ -860,9 +958,9 @@ function collectHits(m) {
       if (pr.pierceUnits) pr.hitUnits.push(u.id); else { pr.dead = true; break; }
     }
     if (pr.dead || o.effects.invuln || Math.hypot(o.x - pr.x, o.y - pr.y) > FR + pr.r) continue;
-    if (o.air?.kind === 'jump' && !pr.seek) continue; // ground rule 17: shots pass under a jump (boons still find him)
+    if (o.air?.kind === 'jump' && !pr.seek && !pr.poison) continue; // ground rule 17: shots pass under a jump (boons still find him; Samudra Manthan's poison is a whole-arena power and reaches any height)
     const d = unitDir(pr.vx, pr.vy);
-    m.hits.push({ target: o, dmg: pr.dmg, kb: pr.kb, dir: d, from: { x: pr.x - d.x * 20, y: pr.y - d.y * 20 }, effect: pr.effect, divine: pr.divine, pierceBlock: pr.pierceBlock, walled: true, src: pr.name, by: pr.owner });
+    m.hits.push({ target: o, dmg: pr.dmg, kb: pr.kb, dir: d, from: { x: pr.x - d.x * 20, y: pr.y - d.y * 20 }, effect: pr.effect, divine: pr.divine, pierceBlock: pr.pierceBlock, walled: true, src: pr.name, by: pr.owner, poison: pr.poison });
     pr.dead = true;
   }
   m.projectiles = m.projectiles.filter((pr) => !pr.dead);
@@ -907,9 +1005,11 @@ function applyHits(m) {
     const n = net.get(t);
     if (h.heal) { n.heal += h.heal; continue; }
     if (t.effects?.invuln && !h.absolute) continue;
+    if (t.effects?.amrit && !h.absolute && !h.burn && h.dmg > 0) { delete t.effects.amrit; ev(m, 'amrit', { pid: t.id, x: t.x, y: t.y }); continue; } // the Amrit pot cancels the next hit
     let dmg = h.dmg;
     const w = wallFor(m, t, h);
     if (w) dmg = absorb(m, w, dmg);
+    if (h.poison && t.ch && dmg > 0) { t.poison = (t.poison || 0) + 1; ev(m, 'poisonHit', { pid: t.id, x: t.x, y: t.y }); } // Samudra Manthan: a poison mark, until Shiva drinks
     // the meditation barrier takes most of the damage; a little (`leak`) still reaches health, so sitting under fire
     // isn't free (owner, 2026-11-14). Divine weapons go straight through it.
     if (t.med && !h.divine && !h.absolute && dmg > 0) {
