@@ -4,7 +4,10 @@ export const W = 480, H = 270;   // game layout units
 export const RES = 4;             // the canvas is W*RES x H*RES (1920x1080) so the art stays sharp
 export const STEP = 1 / 60;
 
-export const ARENA = { r: 121 }; // 110 -> 121, 10% larger (owner, 2026-11-08): more room to move and plan
+// Arena radius: 110 -> 121, 10% larger (owner, 2026-11-08): more room to move and plan. Per arena (owner, 2026-11-16):
+// the river island stays 121, the battlefield is 15% larger (139) and drawn bigger on screen (render.js fitView) so
+// fighters keep their size. ARENA.r is set for the arena being played (art.js loadArt); 121 is the default.
+export const ARENA = { r: 121, sizes: { river: 121, battlefield: 139 } };
 
 // Class rule: power bar size and refill speed are the same for every class.
 export const POWER = { size: 100, refill: 3.4 }; // % of the bar, % per second (4 -> 3.4, owner 2026-11-08: slower pace)

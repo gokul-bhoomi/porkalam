@@ -461,7 +461,8 @@ test('rule 11: asking reveals the boon and holds it; two specials again use it, 
 });
 
 test('rule 11: a boon always finds the opponent: no dodging, no walls, any distance; only another attack can meet it (owner, 2026-11-08)', () => {
-  const vel = findBoon('vel');
+  // a stand-in small boon attack (the Vel throw itself was removed, owner 2026-11-21): the rule is about every boon attack
+  const vel = { id: 'testSpear', name: 'Test spear', kind: 'projectile', range: 'midlong', cost: { power: 0 }, req: {}, cast: 0.3, damage: 16, knockback: 80, speed: 260, radius: 3, life: 1.5, pierceBlock: true, shape: 'spear' };
   const fire = (m) => { m.players[R].boon = { move: vel, name: vel.name, god: 'Murugan', godId: 'murugan', tier: 'small' }; useBoon(m, R); };
   // fired from across the arena while the opponent runs away and hides behind a wall
   const m = match({ k: { x: -100, y: 0, power: 100 }, r: { x: 100, y: 0 } });
@@ -617,7 +618,7 @@ test('classes (owner, 2026-11-08): two classes, Mages and Warriors, and no Monst
 
 test('theme (owner, 2026-11-08): inspired by Indian mythology; the fighters are original, the real gods only grant boons', () => {
   for (const c of Object.values(CHARS)) assert.ok(!/krishna|raja|chola|shiva|murugan|brahma|vishnu/i.test(`${c.id} ${c.name}`), c.name);
-  assert.deepEqual(Object.keys(GODS).sort(), ['brahma', 'krishna', 'murugan', 'shiva']); // Krishna joined as a boon god (owner, 2026-11-08)
+  assert.deepEqual(Object.keys(GODS).sort(), ['brahma', 'krishna', 'murugan', 'narada', 'shiva']); // Krishna joined as a boon god (owner, 2026-11-08); Narada the sage (owner, 2026-11-21)
   assert.ok(src('render.js').includes('INSPIRED BY INDIAN MYTHOLOGY'));
 });
 

@@ -18,17 +18,18 @@ export const setUseArt = (v) => { useArt = v; fitView(); };
 
 // Line the world up with the arena floor in arena.png, then draw the picture at the matching scale.
 let arenaDraw = null;
-const VIEW = { floor: 0.84, cy: 165 }; // floor width as a share of the screen; where its centre sits (below the HUD)
+const VIEW = { floor: 0.84, cy: 165 }; // a bigger arena (ARENA.r over 121) is drawn bigger on screen, so fighters and effects keep their size (fitView); // floor width as a share of the screen; where its centre sits (below the HUD)
 export function fitView() {
   const img = ART.arena, f = ART.fit;
   if (!useArt || !img) { CY = 160; SQ = 0.62; SC = 1; arenaDraw = null; return; }
   // zoom in so the floor fills VIEW.floor of the screen width, but never so little that the picture leaves a gap
-  const s = Math.max(W / img.width, H / img.height, (VIEW.floor * W) / (2 * f.rx * img.width));
+  const grow = ARENA.r / ARENA.sizes.river, floor = Math.min(0.97, VIEW.floor * grow), cy = VIEW.cy + 7 * (grow - 1) / 0.15;
+  const s = Math.max(W / img.width, H / img.height, (floor * W) / (2 * f.rx * img.width));
   const w = img.width * s, h = img.height * s;
   SC = (f.rx * img.width * s) / ARENA.r;             // the floor's half-width = the arena radius
   SQ = (f.ry * img.height) / (f.rx * img.width);
   // floor centred on CX and VIEW.cy; y is nudged if that would leave a gap above or below the picture
-  const x = CX - f.cx * w, y = Math.min(0, Math.max(H - h, VIEW.cy - f.cy * h));
+  const x = CX - f.cx * w, y = Math.min(0, Math.max(H - h, cy - f.cy * h));
   CY = y + f.cy * h;
   arenaDraw = { s, x, y, w, h };
 }
@@ -66,7 +67,71 @@ export const clock = (s) => { const t = Math.ceil(s); return `${Math.floor(t / 6
 // Life on the river: glints on the water, waves lapping round the sand, birds, drifting embers.
 // Purely visual, from the render clock; nothing here touches the match.
 const hash = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
+// The battlefield has no water: dust haze rolling across, embers from the burning tents, ash falling.
+// (The live army, banners and smoke columns come from ChatGPT frame sheets, art/prompts_battlefield.txt.)
+function drawWarAmbient(now) {
+  const rx = ARENA.r * SC, ry = rx * SQ;
+  const inFloor = (x, y) => ((x - CX) / rx) ** 2 + ((y - CY) / ry) ** 2 < 1;
+  G.save();
+  for (let i = 0; i < 7; i++) { // low banks of battle dust drifting along behind the floor
+    const sp = 5 + hash(i, 20) * 6, x = ((now * sp + hash(i, 21) * (W + 200)) % (W + 200)) - 100, y = CY - ry - 8 + hash(i, 22) * 18;
+    const r = 40 + hash(i, 23) * 50, g = G.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(190,120,70,${0.16 + 0.08 * Math.sin(now * 0.4 + i)})`); g.addColorStop(1, 'rgba(190,120,70,0)');
+    G.fillStyle = g; G.beginPath(); G.ellipse(x, y, r, r * 0.35, 0, 0, Math.PI * 2); G.fill();
+  }
+  for (let i = 0; i < 40; i++) { // embers rising from the fires, swaying in the heat
+    const sp = 6 + hash(i, 10) * 9, y = H + 10 - ((now * sp + hash(i, 11) * (H + 20)) % (H + 20)), x = hash(i, 12) * W + Math.sin(now * 1.1 + i) * 8;
+    const a = 0.4 + 0.6 * Math.max(0, Math.sin(now * 3 + i * 1.7));
+    G.fillStyle = `rgba(255,140,60,${0.2 * a})`; G.beginPath(); G.arc(x, y, 2, 0, Math.PI * 2); G.fill();
+    G.fillStyle = `rgba(255,214,140,${0.9 * a})`; G.beginPath(); G.arc(x, y, 0.55, 0, Math.PI * 2); G.fill();
+  }
+  for (let i = 0; i < 30; i++) { // grey ash drifting down, tumbling
+    const sp = 5 + hash(i, 30) * 5, y = ((now * sp + hash(i, 31) * (H + 20)) % (H + 20)) - 10, x = hash(i, 32) * W + Math.sin(now * 0.7 + i * 2) * 10;
+    if (inFloor(x, y)) continue;
+    const s = 0.5 + hash(i, 33) * 0.8, t = Math.sin(now * 2 + i);
+    G.fillStyle = 'rgba(70,60,60,.55)'; G.fillRect(x, y, s * (1 + Math.abs(t)), s);
+  }
+  G.restore();
+}
+// The battlefield's life (owner 2026-11-16): the painted armies stay still (looped army frames only bobbed in place
+// and looked fake); what moves is what would look right from afar: smoke rising over the painted fires, big war
+// banners snapping in the wind at the edges, battle dust drifting along the back of the clearing, and now and then
+// a volley of arrows crossing the sky. All ChatGPT frame sheets, crossfaded. Places are in the painting's pixels.
+const WAR = {
+  smoke: [{ x: 452, y: 200, s: 0.42, ph: 0 }, { x: 705, y: 205, s: 0.36, ph: 3 }, { x: 1318, y: 205, s: 0.4, ph: 5 }],
+  sky: { name: 'skyArrows', n: 8, fps: 8, ground: 250, scale: 1.0, drift: 0, alpha: 0.85, every: 11, show: 3.5 }, // a volley every 11 s
+  dust: { name: 'dustBand', n: 8, fps: 4, ground: 300, scale: 0.6, drift: 12, alpha: 0.55, foot: 0 },
+  props: [
+    { name: 'tigerFlag', from: 1, n: 16, x: 12, y: 500, w: 230, fps: 9, anchor: 'left', foot: 0.03 }, // pole at the cell's edge
+    { name: 'fishFlag', from: 1, n: 16, x: 1660, y: 500, w: 230, fps: 9, anchor: 'right', foot: 0.03, ph: 7 },
+  ],
+};
+function drawWarLive(now) {
+  const a = arenaDraw, X = (x) => a.x + x * a.s, Y = (y) => a.y + y * a.s;
+  const blend = (pre, n, fps, ph, from, draw) => { // frame i fading into i+1, so painted frames flow instead of popping
+    const t = now * fps + ph, i = Math.floor(t) % n, k = t - Math.floor(t);
+    draw(pre + (from + i), 1); draw(pre + (from + (i + 1) % n), k);
+  };
+  const band = (L, fade = 1) => { // a full-width band, tiled side to side, drifting
+    const c = ART.fx[L.name + '1'];
+    if (!c || fade <= 0) return;
+    const w = c.w * L.scale * a.s, h = c.h * L.scale * a.s, bottom = Y(L.ground) + h * (L.foot || 0);
+    const off = ((now * L.drift * a.s) % w + w) % w;
+    for (let x = a.x - w + off; x < a.x + a.w + w; x += w) blend(L.name, L.n, L.fps, 0, 1, (nm, al) => fxSprite(G, nm, x + w / 2, bottom, w, { h, anchor: 'bottom', alpha: (L.alpha ?? 1) * al * fade }));
+  };
+  const S = WAR.sky, ts = now % S.every; // the volley rises, crosses and fades
+  if (ts < S.show) band(S, Math.min(1, ts / 0.6, (S.show - ts) / 0.8));
+  for (const b of WAR.smoke) { const c = ART.fx.smokeCol1; if (c) blend('smokeCol', 8, 6, b.ph, 1, (nm, al) => fxSprite(G, nm, X(b.x), Y(b.y), c.w * b.s * a.s, { anchor: 'bottom', alpha: al })); }
+  band(WAR.dust);
+  for (const P of WAR.props) {
+    const c = ART.fx[P.name + P.from];
+    if (!c) continue;
+    const w = P.w * a.s, h = w * c.h / c.w, x = P.anchor === 'left' ? X(P.x) + w / 2 - w * 0.06 : P.anchor === 'right' ? X(P.x) - w / 2 + w * 0.06 : X(P.x);
+    blend(P.name, P.n || 8, P.fps, P.ph || 0, P.from, (nm, al) => fxSprite(G, nm, x, Y(P.y) + h * (P.foot || 0), w, { h, anchor: 'bottom', alpha: al }));
+  }
+}
 function drawAmbient(now) {
+  if (ART.theme === 'battlefield') return drawWarAmbient(now);
   const rx = ARENA.r * SC, ry = rx * SQ, top = arenaDraw.y + arenaDraw.h * 0.27; // the far bank / horizon
   const inFloor = (x, y, k) => ((x - CX) / (rx * k)) ** 2 + ((y - CY) / (ry * k)) ** 2 < 1;
   G.save();
@@ -106,6 +171,7 @@ function drawBackdrop(now) {
     G.imageSmoothingEnabled = true;
     G.drawImage(ART.arena, arenaDraw.x, arenaDraw.y, arenaDraw.w, arenaDraw.h);
     G.imageSmoothingEnabled = false;
+    if (ART.theme === 'battlefield') drawWarLive(now);
     drawAmbient(now);
     return;
   }
@@ -1066,12 +1132,15 @@ function drawFighter(m, p, now) {
     ring(x, gy + 1, Z(9), Z(9) * SQ, p.id === 0 ? 'rgba(90,160,255,.9)' : 'rgba(255,90,70,.9)', 1); // player ring, on the ground
     const pose = poseOf(m, p);
     if (m.phase === 'done' && drawEnd(m, p, x, y + 1, now)) { /* knockout / victory */ }
+    else if (p.air?.ride && drawSprite(G, p.ch.id, 'ride', Math.floor(m.t * 12), x, y + 4, p.face.x < 0)) { /* Peacock Ride: the wing-flap loop */ }
     else if (p.air && drawSprite(G, p.ch.id, 'air', airPose(p), x, y + 1, p.face.x < 0, 1 + 0.08 * Math.min(1, h / 13))) { /* jumping or flying (rule 17): a little bigger the higher, as if nearer */ }
     else if (pose == null || !drawSprite(G, p.ch.id, 'act', pose, x, y + 1, p.face.x < 0)) {
-      const a = anim[p.id], i = a.moving ? Math.floor(a.stride) % 4 + 4 : Math.floor(now * 5) % 4; // walking: one frame per STRIDE walked, so the feet keep pace with the ground
-      drawSprite(G, p.ch.id, 'walk', i, x, y + 1, p.face.x < 0);
+      const a = anim[p.id], sh = ART.sheets[p.ch.id] || {};
+      if (a.moving && sh.walk8) drawSprite(G, p.ch.id, 'walk8', Math.floor(a.stride * 2) % 8, x, y + 1, p.face.x < 0); // 8 frames over the same ground as the old 4
+      else if (!a.moving && sh.idle8) drawSprite(G, p.ch.id, 'idle8', Math.floor(now * 8) % 8, x, y + 1, p.face.x < 0);
+      else drawSprite(G, p.ch.id, 'walk', a.moving ? Math.floor(a.stride) % 4 + 4 : Math.floor(now * 5) % 4, x, y + 1, p.face.x < 0); // walking: one frame per STRIDE walked, so the feet keep pace with the ground
     }
-    top = y - ART_TOP;
+    top = y - ART_TOP - (p.air?.ride && ART.sheets[p.ch.id]?.ride ? 12 : 0); // a peacock rider sits higher: keep the labels clear of his head
   } else {
     ell(x, y - 4, 8, 7, c);
     ell(x, y - 13, 5, 5, c);
@@ -1084,8 +1153,13 @@ function drawFighter(m, p, now) {
   if (m.phase === 'done') return; // no cast bars or status text once it's over
   const fx = Object.entries(p.effects).filter(([k]) => k !== 'invuln' || true);
   if (fx.length) {
-    const s = fx.map(([k, e]) => `${{ slow: 'SLOW', hold: 'HELD', stun: 'STUN', invuln: 'SAFE' }[k] || k.toUpperCase()} ${e.t.toFixed(1)}`).join(' ');
-    txt(s, x, top, '#ffe14d', 'center'); top -= 10;
+    // each effect: its name, and a small bar under it for the time left (owner, 2026-11-21: no running numbers)
+    for (const [k, e] of fx) {
+      txt({ slow: 'SLOW', hold: 'HELD', stun: 'STUN', invuln: 'SAFE', confuse: 'SCRAMBLED', ride: 'PEACOCK' }[k] || k.toUpperCase(), x, top, '#ffe14d', 'center', 6);
+      const bw = 28, left = Math.max(0, Math.min(1, e.t / (e.T || e.t || 1)));
+      R(x - bw / 2, top + 8, bw, 2, 'rgba(0,0,0,.6)'); R(x - bw / 2, top + 8, bw * left, 2, '#ffe14d');
+      top -= 13;
+    }
   }
   if (p.cast) {
     const mv = p.cast.move, k = mv.charge ? chargeOf(p.cast) : Math.min(1, p.cast.t / Math.max(0.01, mv.cast));
@@ -1717,7 +1791,20 @@ function drawHud(m, tags, hints = [null, null]) {
   box(CX - 34, 3, 68, 32, 8, tg, '#e8c060');
   box(CX - 31, 6, 62, 26, 6, null, 'rgba(232,192,96,.45)');
   txt(clock(m.timeLeft), CX, 11, low && Math.floor(m.t * 2) % 2 ? '#ff6a5a' : low ? '#ffb0a0' : '#fff6dc', 'center', 16);
+  if (SERIES) { // a tournament: the match number, and one dot per match (owner, 2026-11-21: best of 3 = 3 dots),
+    // filled with the winner's colour once played (grey for a draw); the one being played has a brighter rim
+    const res = SERIES.results || [], n = Math.max(SERIES.bestOf, res.length + (m.phase === 'done' ? 0 : 1)), gap = 9, x0 = CX - (n - 1) * gap / 2;
+    txt(`MATCH ${SERIES.round}`, CX, 37, '#e8dcc0', 'center', 6);
+    for (let i = 0; i < n; i++) {
+      const x = x0 + i * gap, r = res[i], cur = i === res.length && m.phase !== 'done';
+      ell(x, 49, 3, 3, r === undefined ? '#0d0812' : r === null ? '#8a8494' : m.players[r].ch.color);
+      ring(x, 49, 3.6, 3.6, cur ? '#ffe7a0' : '#c9a24a', cur ? 1.2 : 0.75); // the match being played has a steady brighter rim (owner, 2026-11-21: no blinking)
+    }
+  }
 }
+// The tournament being played (best of 3 or 5), or null for a single match: shown on the HUD and the result.
+let SERIES = null;
+export function setSeries(s) { SERIES = s; }
 
 // ---------- dramatic scenes (ground rule 4: the game pauses while one plays) ----------
 // Owner, 2026-11-08: like a fighting game's super move, the game itself stays on screen. The camera zooms in on
@@ -1880,7 +1967,7 @@ export function drawOffer(o, p, hint, t) {
   G.save(); G.globalAlpha = a;
   const g = G.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(46,26,8,.95)'); g.addColorStop(1, 'rgba(22,12,4,.95)');
   box(x, y, w, h, 7, g, '#e8c060'); box(x + 3, y + 3, w - 6, h - 6, 5, null, 'rgba(232,192,96,.4)');
-  txt(o.name.toUpperCase(), CX, y + 8, o.tier === 'divine' ? '#fff2b0' : '#ffe7a0', 'center', 16, 'rgba(60,20,0,.9)'); // just the name (owner, 2026-11-15: less text)
+  txtFit(o.name.toUpperCase(), CX, y + 8, o.tier === 'divine' ? '#fff2b0' : '#ffe7a0', 'center', 16, w - 16); // long names shrink to fit the card // just the name (owner, 2026-11-15: less text)
   const pulse = 0.65 + 0.35 * Math.sin(t * 6);
   if (hint) {
     G.globalAlpha = a * pulse;
@@ -1912,23 +1999,25 @@ function drawCard(ch, x, y, w, h, now) { // the Codex card art, or the fighter d
   txt(ch.cls === 'mage' ? 'MAGE' : 'WARRIOR', x + w / 2, y + h - 11, '#c9b07a', 'center', 6);
 }
 const MOVE_ROWS = [['a1', 'ATK 1'], ['a2', 'ATK 2'], ['block', 'BLOCK'], ['s1', 'SP 1'], ['s2', 'SP 2'], ['s3', 'SP 3'], ['sig', 'SP 1+2+3'], ['cls', 'DOWN+SP 1']];
-// a fighter's page, kept crisp: a button chip, the move's name and one short phrase, and its power cost
+// A fighter's page, kept plain (owner, 2026-11-21: the old chips and glow looked machine-made and were hard to
+// read): one row per move = the button, the move's name and one short line, and its power cost. Nothing below size 6.
+const PANEL = '#15111b', PANEL_EDGE = 'rgba(255,255,255,.14)', DIM = '#8f86a0', SOFT = '#cfc6dc';
 function drawMoveList(ch, x, y, w) {
   txt(ch.name.toUpperCase(), x, y, ch.color, 'left', 16);
-  txt(ch.cls === 'mage' ? 'MAGE' : 'WARRIOR', x + w, y + 6, '#c9b07a', 'right', 8);
-  wrap(ch.bio || '', Math.floor(w / 5.1)).slice(0, 2).forEach((l, i) => txt(l, x, y + 19 + i * 6, '#d8cfe8', 'left', 5));
-  let yy = y + 34;
+  txt(ch.cls === 'mage' ? 'MAGE' : 'WARRIOR', x + w, y + 5, DIM, 'right', 8);
+  let yy = y + 24;
+  txt('BUTTON', x, yy, DIM, 'left', 6); txt('POWER', x + w, yy, DIM, 'right', 6);
+  yy += 11;
   for (const [slot, btn] of MOVE_ROWS) {
     const mv = slot === 'block' ? { name: ch.defence.name, short: ch.defence.short, cost: { power: ch.defence.cost } } : ch.moves[slot];
-    const sig = slot === 'sig';
-    box(x, yy, 50, 18, 3, sig ? 'rgba(120,80,20,.6)' : 'rgba(60,90,50,.45)', sig ? '#e8c060' : 'rgba(159,224,122,.6)');
-    txt(btn, x + 25, yy + 6, sig ? '#ffe7a0' : '#bff0a8', 'center', 5);
-    const c = mv.cost || {}, textW = w - 58 - 34; // the name and line never reach the cost column
-    txtFit(mv.name.toUpperCase(), x + 58, yy + 2, sig ? '#ffcf6a' : '#fff', 'left', 8, textW);
-    txtFit(`${mv.short || ''}${c.health ? `, costs ${c.health}% HP` : ''}`, x + 58, yy + 11, c.health ? '#ffb4a8' : '#c8bcd8', 'left', 6, textW);
-    txt(`${c.power || 0}`, x + w, yy + 1, '#ffd34a', 'right', 8); // power cost, labelled so it reads as a cost
-    txt('POWER', x + w, yy + 11, '#c9a24a', 'right', 5);
-    yy += 22;
+    const sig = slot === 'sig', c = mv.cost || {}, nx = x + 66, textW = w - 66 - 30;
+    R(x, yy - 3, w, 0.6, 'rgba(255,255,255,.08)');
+    txt(btn, x, yy + 2, sig ? '#ffcf6a' : '#9fe07a', 'left', 6);
+    txtFit(mv.name.toUpperCase(), nx, yy, sig ? '#ffcf6a' : '#fff', 'left', 8, textW);
+    txtFit((mv.short || '').toUpperCase(), nx, yy + 11, SOFT, 'left', 6, textW);
+    txt(`${c.power || 0}`, x + w, yy, '#ffd34a', 'right', 8);
+    if (c.health) txt(`-${c.health}% HP`, x + w, yy + 11, '#ff8a7a', 'right', 6);
+    yy += 24;
   }
 }
 // The fighter card on the select screen: five trait bars (ground rule 16's shared budget) and one line each for
@@ -1937,7 +2026,7 @@ const TRAITS = [['range', 'RANGE'], ['speed', 'SPEED'], ['defence', 'DEFENCE'], 
 function drawTraitCard(ch, x, y, w, now) {
   txt(ch.name.toUpperCase(), x, y, ch.color, 'left', 16);
   txt(ch.cls === 'mage' ? 'MAGE' : 'WARRIOR', x + w, y + 6, '#c9b07a', 'right', 8);
-  wrap(ch.bio || '', Math.floor(w / 5.1)).slice(0, 2).forEach((l, i) => txt(l, x, y + 20 + i * 7, '#d8cfe8', 'left', 5));
+  wrap((ch.bio || '').toUpperCase(), Math.floor(w / 6.1)).slice(0, 2).forEach((l, i) => txt(l, x, y + 20 + i * 8, '#d8cfe8', 'left', 6));
   let yy = y + 42;
   const pw = 22, gap = 3, px0 = x + w - 5 * (pw + gap) + gap;
   for (const [k, label] of TRAITS) {
@@ -1957,35 +2046,39 @@ function drawTraitCard(ch, x, y, w, now) {
   const blink = 0.55 + 0.45 * Math.sin(now * 4);
   txt('UP: MOVES AND KEYS', x + w / 2, yy + 36, `rgba(255,207,106,${blink})`, 'center', 6);
 }
-// how boons work, and every boon by tier
+// How boons work, and every boon: three steps, then one row per boon (name, god, one short line). Plain and
+// large enough to read (owner, 2026-11-21).
 function drawBoonsPage(now) {
-  R(0, 0, W, H, 'rgba(8,6,14,.94)'); covered();
-  txt('BOONS OF THE GODS', CX, 8, '#ffcf6a', 'center', 16);
-  const how = ['MEDITATE (DOWN + SPECIAL 1) BEHIND A BARRIER TO FILL 8 DEVOTION SEGMENTS.',
-    'A WALL YOU BUILT STAYS UP WHILE YOU SIT.',
-    'TWO SPECIALS ASK A RANDOM GOD FOR A BOON: 4 = SMALL, 8 = DIVINE WEAPON.',
-    'THE GOD REVEALS IT AND YOU HOLD IT. TWO SPECIALS AGAIN USE IT, NOW OR LATER.',
-    'A BOON ATTACK ALWAYS FINDS THE OPPONENT. ONLY ANOTHER ATTACK MEETING IT CAN WEAKEN IT.'];
-  how.forEach((l, i) => txt(l, CX, 28 + i * 8, '#d8cfe8', 'center', 5));
-  const tiers = [['SMALL  (4)', 0], ['DIVINE WEAPON  (8)', 1]], colW = 225;
-  tiers.forEach(([label, ti], c) => {
-    const x = 15 + c * colW + c * 3; let y = 72;
-    box(x - 4, y - 4, colW, 172, 5, 'rgba(40,24,10,.6)', ti === 1 ? '#e8c060' : 'rgba(201,162,74,.6)');
-    txt(label, x + colW / 2 - 4, y, ti === 1 ? '#fff2b0' : '#ffcf6a', 'center', 6); y += 12;
-    for (const [gid, god] of Object.entries(GODS_LIST)) for (const b of god.tiers[ti]) {
-      txt(b.name.toUpperCase(), x, y, '#fff', 'left', 5); txt(god.name.toUpperCase(), x + colW - 8, y, '#c9b07a', 'right', 5); y += 7;
-      for (const l of wrap(b.desc || '', 44).slice(0, 3)) { txt(l, x + 3, y, '#c8bcd8', 'left', 5); y += 6; }
-      y += 4;
+  R(0, 0, W, H, 'rgba(8,6,14,.96)'); covered();
+  txt('BOONS', CX, 8, '#ffcf6a', 'center', 16);
+  [['1  MEDITATE', 'DOWN + SP 1'], ['2  FILL DEVOTION', '4 SMALL  /  8 DIVINE'], ['3  USE THE BOON', 'SP 1 + SP 2']].forEach(([a, b], i) => {
+    const cx = 80 + i * 160;
+    txt(a, cx, 34, '#fff', 'center', 8); txt(b, cx, 46, '#9fe07a', 'center', 6);
+  });
+  const colW = 222;
+  [['SMALL BOONS', 0], ['DIVINE WEAPONS', 1]].forEach(([label, ti], c) => {
+    const x = 12 + c * (colW + 12), top = 66;
+    box(x, top, colW, 164, 4, PANEL, ti === 1 ? 'rgba(232,192,96,.55)' : PANEL_EDGE);
+    txt(label, x + 10, top + 9, ti === 1 ? '#ffcf6a' : '#fff', 'left', 8);
+    txt(ti === 1 ? '8 DEVOTION' : '4 DEVOTION', x + colW - 10, top + 10, DIM, 'right', 6);
+    let y = top + 28;
+    for (const god of Object.values(GODS_LIST)) for (const b of god.tiers[ti]) {
+      R(x + 10, y - 5, colW - 20, 0.6, 'rgba(255,255,255,.08)');
+      txtFit(b.name.toUpperCase(), x + 10, y, '#fff', 'left', 8, colW - 80);
+      txt(god.name.toUpperCase(), x + colW - 10, y + 1, '#c9a24a', 'right', 6);
+      txtFit(b.short || b.desc || '', x + 10, y + 12, SOFT, 'left', 6, colW - 20);
+      y += 30;
     }
   });
-  txt('BRAHMASTRA IS RARE UNLESS YOUR HEALTH IS LOW. DIVINE WEAPONS GO THROUGH A MEDITATION BARRIER.', CX, 250, '#9aa', 'center', 5);
+  txt('BOON ATTACKS ALWAYS FIND THE OPPONENT. DIVINE WEAPONS GO THROUGH BARRIERS.', CX, 237, DIM, 'center', 6);
+  txt('BRAHMASTRA COMES MOSTLY WHEN YOUR HEALTH IS LOW.', CX, 247, DIM, 'center', 6);
 }
 export function drawSelect(now, o) {
   drawBackdrop(now);
   R(0, 0, W, H, 'rgba(8,6,14,.82)');
   if (o.boonsPage) { drawBoonsPage(now); txt('ANY KEY: BACK', CX, 260, '#ddd', 'center', 6); return; }
   if (o.movesPage) { // the focused fighter's moves and keys
-    box(110, 12, 260, 236, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)'); drawMoveList(o.chars[o.ids[o.cursor[o.focus || 0]]], 120, 20, 240);
+    box(110, 10, 260, 240, 4, PANEL, PANEL_EDGE); drawMoveList(o.chars[o.ids[o.cursor[o.focus || 0]]], 120, 20, 240);
     txt('ANY KEY: BACK', CX, 260, '#ddd', 'center', 6); return;
   }
   txt('CHOOSE YOUR FIGHTER', CX, 6, '#ffcf6a', 'center', 16);
@@ -1998,17 +2091,17 @@ export function drawSelect(now, o) {
     const tag = o.mode === '1p' ? 'YOU' : `P${pid + 1}`;
     txt(o.locked[pid] ? `${tag} READY` : tag, x + (pid ? cw - 2 : 2), y0 + chh + 6, `rgb(${col})`, pid ? 'right' : 'left', 6);
   }
-  if (o.mode === '1p') txt(o.tutorial ? 'THE OTHER ONE IS YOUR TRAINING DUMMY' : 'THE CPU TAKES THE OTHER FIGHTER', x0 + cw + gap / 2, y0 + chh + 18, '#9aa', 'center', 5);
+  if (o.mode === '1p') txt(o.tutorial ? 'THE OTHER ONE IS YOUR TRAINING DUMMY' : 'THE CPU TAKES THE OTHER FIGHTER', x0 + cw + gap / 2, y0 + chh + 18, '#9aa', 'center', 6);
   box(232, 28, 242, 222, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)');
   drawTraitCard(o.chars[o.ids[o.cursor[o.focus || 0]]], 242, 36, 222, now);
-  txt(o.mode === '1p' ? 'LEFT/RIGHT CHOOSE   ENTER LOCK IN   UP: MOVES   DOWN: BOONS' : 'LEFT/RIGHT CHOOSE   ATTACK 1 LOCK IN   UP: MOVES   DOWN: BOONS', CX, 258, '#ddd', 'center', 5);
+  txt(o.mode === '1p' ? 'LEFT/RIGHT CHOOSE   ENTER LOCK IN   UP: MOVES   DOWN: BOONS' : 'LEFT/RIGHT CHOOSE   ATTACK 1 LOCK IN   UP: MOVES   DOWN: BOONS', CX, 258, '#ddd', 'center', 6);
 }
 // pause menu pages: page 0 and 1 = the two fighters in this match, 2 = boons
 export function drawInfo(page, chs) {
   R(0, 0, W, H, 'rgba(8,6,14,.94)'); covered();
   if (page === 2) drawBoonsPage(0);
   else if (page === 3) drawControls();
-  else { box(110, 12, 260, 236, 6, 'rgba(20,12,24,.85)', 'rgba(201,162,74,.6)'); drawMoveList(chs[page], 120, 20, 240); }
+  else { box(110, 10, 260, 240, 4, PANEL, PANEL_EDGE); drawMoveList(chs[page], 120, 20, 240); }
   txt(`< ${['P1 FIGHTER', 'P2 FIGHTER', 'BOONS', 'CONTROLS'][page]} >    LEFT/RIGHT: NEXT PAGE    ESC: BACK`, CX, 260, '#ddd', 'center', 6);
 }
 
@@ -2077,6 +2170,7 @@ export function drawSetup(now, o) {
     mode: ['PLAYERS', o.mode === '1p' ? '1 PLAYER VS CPU' : '2 PLAYERS'],
     level: ['CPU LEVEL', o.levelName],
     length: ['LENGTH', `${o.minutes} MIN`],
+    series: ['MATCHES', o.bestOf > 1 ? `BEST OF ${o.bestOf}` : 'SINGLE MATCH'],
   };
   o.rows.forEach((r, i) => {
     const y = 84 + i * 24, on = i === o.row, [label, val] = show[r];
@@ -2172,7 +2266,7 @@ export function drawTutorial(v, now) {
 }
 
 // t = seconds since the match ended: first the call (K.O. / TIME!) over the knockout, then the result fades in.
-export function drawResult(m, sel, t = 9) {
+export function drawResult(m, sel, t = 9, items = ['REMATCH', 'MATCH SETUP', 'TITLE']) {
   const r0 = m.result;
   if (r0.reason === 'brahmastra' && ART.fx.sun2) { t -= BRAHMA_AFTER; if (t < 0) return; } // let the second sun play out first
   if (t < 1.6) {
@@ -2188,6 +2282,11 @@ export function drawResult(m, sel, t = 9) {
   txt(why, CX, 80, '#ddd', 'center');
   txt(r.winner == null ? 'DRAW' : `${m.players[r.winner].ch.name.toUpperCase()} WINS`, CX, 100, r.winner == null ? '#fff' : m.players[r.winner].ch.color, 'center', 16);
   m.players.forEach((p, i) => txt(`${p.ch.name}: ${Math.ceil(p.hp)}% health, dealt ${Math.round(p.stats.dealt)}%`, CX, 134 + i * 12, '#ddd', 'center'));
-  ['REMATCH', 'MATCH SETUP', 'TITLE'].forEach((s, i) => txt((i === sel ? '> ' : '  ') + s, CX, 176 + i * 14, i === sel ? '#ffcf6a' : '#ddd', 'center'));
+  if (SERIES) { // the tournament score, and who took it once someone has enough wins
+    const need = Math.ceil(SERIES.bestOf / 2), champ = SERIES.wins.findIndex((w) => w >= need);
+    txt(`BEST OF ${SERIES.bestOf}   ${m.players[0].ch.name.toUpperCase()} ${SERIES.wins[0]} - ${SERIES.wins[1]} ${m.players[1].ch.name.toUpperCase()}`, CX, 120, '#ffcf6a', 'center', 6);
+    if (champ >= 0) txt(`${m.players[champ].ch.name.toUpperCase()} WINS THE TOURNAMENT`, CX, 60, m.players[champ].ch.color, 'center', 8);
+  }
+  items.forEach((s, i) => txt((i === sel ? '> ' : '  ') + s, CX, 176 + i * 14, i === sel ? '#ffcf6a' : '#ddd', 'center'));
   G.globalAlpha = 1;
 }

@@ -72,7 +72,7 @@ function add(m) {
   LIVE.push(m); return m;
 }
 function withFloor(fn) { for (const g of [DG, LG]) { g.save(); g.setTransform(RES, 0, 0, RES, 0, 0); floorClip(g); } fn(); DG.restore(); LG.restore(); }
-function dust(x, y, n, reach, o = {}) { // grains thrown up; they land and disappear into the painted mark
+export function dust(x, y, n, reach, o = {}) { // grains thrown up; they land and disappear into the painted mark
   for (let i = 0; i < n; i++) {
     const a = o.dir != null ? o.dir + rnd(-0.6, 0.6) : rnd(0, Math.PI * 2), d = reach * Math.sqrt(rnd(0.2, 1));
     DUST.push({ t0: o.t0, x0: x, y0: y, x1: x + Math.cos(a) * d, y1: y + Math.sin(a) * d * SQ, T: rnd(0.25, 0.55) * (o.slow || 1), h: rnd(3, 10) * (o.high || 1), s: rnd(0.3, 0.7) * (o.size || 1), c: Math.random() < 0.5 ? '150,80,30' : '255,215,150' });
@@ -88,9 +88,10 @@ export function damageEvent(e, m, now) {
   const at = (x, y) => [sx(x), sy(y)];
   if (e.type === 'rough') { // rough ground (ground rule 13): the mark is exactly the area that slows
     const [x, y] = at(e.x, e.y), d = 2 * e.r * SC;
-    if (e.kind === 'impact') { mark(now, 'impact', x, y, d, { grow: 0.25 }); dust(x, y, 90, d * 1.1, { t0: now, high: 2.4, size: 1.4 }); }
+    if (e.kind === 'impact') { if (ART.theme === 'river') mark(now, 'impact', x, y, d, { grow: 0.25 }); else mark(now, 'crater', x, y, d * 1.25, { grow: 0.25 }); /* dry ground: no water in the crater */ dust(x, y, 90, d * 1.1, { t0: now, high: 2.4, size: 1.4 }); }
     if (e.kind === 'crater') { mark(now, 'crater', x, y, d); dust(x, y, Math.round(d * 1.5), d * 1.4, { t0: now }); }
-    if (e.kind === 'wet') mark(now, 'wet', x, y, d * 1.3, { look: 'wet', delay: 0.3, dry: TUNE.rough.wet.life + 2, settle: Infinity }); // knocked into the river's edge: a splash
+    if (e.kind === 'wet' && ART.theme === 'river') mark(now, 'wet', x, y, d * 1.3, { look: 'wet', delay: 0.3, dry: TUNE.rough.wet.life + 2, settle: Infinity }); // knocked into the river's edge: a splash
+    else if (e.kind === 'wet') { mark(now, 'scuff', x, y, d * 1.3, { alpha: 0.95 }); dust(x, y, 40, d, { t0: now, high: 1.6 }); } // battlefield: knocked into the churned earth at the edge
   }
   if (e.type === 'hp' && e.dmg > 0) {
     const srcs = e.srcs || [], [x, y] = at(e.x, e.y), p = m.players[e.pid];

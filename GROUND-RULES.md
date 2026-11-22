@@ -78,7 +78,7 @@ These rules apply to every fighter, whatever their class. They are fixed. When c
 ## 13. Arena
 - One round arena that fits on one screen and is always fully visible to both players.
 - Nobody can fall off. The edge is an invisible wall, and getting knocked into it costs health.
-- The arena never grows. (Its size was set 10% larger by the owner on 2026-11-08, for more room to move and plan.)
+- The arena never grows. (Its size was set 10% larger by the owner on 2026-11-08, for more room to move and plan, and on 2026-11-16 each arena got its own size: the river island stays as it is, the battlefield is 15% larger, drawn bigger on screen so the fighters keep their size.)
 - Rough ground (owner, 2026-11-15): a heavy hit (8% or more) leaves a crater where it lands, a power move (Gaja Arrow, Pashupatastra, Shakti Vel, Vishwaroopam) a big crater, and being knocked into the edge a wet patch. Walking through one is 30% slower while it lasts (craters 60 s, big craters 90 s, wet sand 20 s), then the ground settles. Jumping, flying and knockback are not slowed. It looks the same to both players, and it isn't an arena change (rule 12): there can be many at once.
 
 ## 14. Screen and controls

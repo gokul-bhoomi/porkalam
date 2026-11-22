@@ -74,12 +74,31 @@ function pay(p, move, extraPower = 0) {
   if (c.health) p.hp = Math.max(move.selfKO ? 0 : 0.01, p.hp - c.health);
 }
 
+// Narada's Mischief (owner, 2026-11-21: scramble ALL controls at random, more fun than a left/right swap).
+// The stick gets one of the 7 non-identity flips/turns (left and right swap, up and down swap, the axes trade
+// places, ...) and the six buttons are shuffled so none stays where it was. Seeded by the match, so it replays.
+const SCRAMBLE_BUTTONS = ['a1', 'a2', 'block', 's1', 's2', 's3'];
+const STICK_TURNS = [[-1, 1, 0], [1, -1, 0], [-1, -1, 0], [1, 1, 1], [-1, 1, 1], [1, -1, 1], [-1, -1, 1]]; // [x sign, y sign, swap axes]
+function mischief(rand) {
+  const order = [...SCRAMBLE_BUTTONS];
+  do { for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; } }
+  while (order.some((b, i) => b === SCRAMBLE_BUTTONS[i]));
+  return { buttons: Object.fromEntries(SCRAMBLE_BUTTONS.map((b, i) => [b, order[i]])), stick: STICK_TURNS[Math.floor(rand() * STICK_TURNS.length)] };
+}
+// what a scrambled player's input does: pressing button b fires map.buttons[b]; the stick is flipped / turned
+export function scramble(inp, map) {
+  const out = { ...inp }, [sx, sy, sw] = map.stick, x = +inp.mx || 0, y = +inp.my || 0;
+  out.mx = sx * (sw ? y : x); out.my = sy * (sw ? x : y);
+  for (const b of SCRAMBLE_BUTTONS) out[map.buttons[b]] = !!inp[b];
+  return out;
+}
+
 // Temporary effects (ground rule 9): set duration, the same kind doesn't stack, the strongest counts.
 export function applyEffect(p, kind, time, mag = 1) {
   const cur = p.effects[kind], str = (e) => (kind === 'slow' ? e.mag : e.t);
-  const next = { t: time, mag };
+  const next = { t: time, mag, T: time }; // T = the full time, so the screen can show how much is left
   if (!cur || str(next) > str(cur)) p.effects[kind] = next;
-  else if (str(next) === str(cur)) cur.t = Math.max(cur.t, time);
+  else if (str(next) === str(cur)) { if (time > cur.t) cur.T = time; cur.t = Math.max(cur.t, time); }
 }
 
 // Extra units (ground rule 12): own health, can be hit, gone when their timer ends.
@@ -106,6 +125,8 @@ const unitDir = (dx, dy) => { const l = Math.hypot(dx, dy); return l > 1e-9 ? { 
 export function stepMatch(m, inputs = [{}, {}], dt = STEP) {
   if (m.phase === 'done') return m;
   inputs = [inputs[0] || {}, inputs[1] || {}];
+  // Narada's Mischief: a fighter under it has every control scrambled (everything that reads the input sees it)
+  inputs = inputs.map((inp, i) => { const c = m.players[i].effects.confuse; return c?.map ? scramble(inp, c.map) : inp; });
   if (m.scene) { // a power move's dramatic scene: the game pauses for both players
     m.scene.t += dt;
     if (m.scene.t >= m.scene.dur - 1e-9) { ev(m, 'sceneEnd', { name: m.scene.name }); m.scene = null; }
@@ -142,6 +163,8 @@ function movement(m, inputs, dt) {
       if (a.kind === 'jump') {
         p.x += a.vx * dt; p.y += a.vy * dt;
         if (a.t >= a.dur - 1e-9) land(m, p);
+      } else if (a.ride) { // Peacock Ride: no power cost; the peacock sets you down when its time is up
+        if (!p.effects.ride) land(m, p);
       } else if (a.t >= a.lift) { // flying costs power every second it lasts; out of power = land
         p.power = Math.max(0, p.power - a.drain * dt);
         if (p.power <= 1e-9) land(m, p);
@@ -231,6 +254,7 @@ function roughFromHit(m, t, n) {
 // Ground rule 17: touching down ends jumping or flying, with a short landing pause.
 function land(m, p) {
   p.air = null;
+  delete p.effects.ride; // a Peacock Ride ends with any landing
   p.recover = Math.max(p.recover, TUNE.air.land);
   ev(m, 'land', { pid: p.id });
 }
@@ -478,6 +502,16 @@ function release(m, p, c) {
       break;
     }
     case 'heal': m.hits.push({ target: p, heal: mv.heal, src: mv.name }); break;
+    case 'confuse': // Narada's Mischief: a boon always finds its target, so it simply lands on the opponent
+      applyEffect(o, 'confuse', mv.time);
+      o.effects.confuse.map = mischief(m.rand); // a fresh random scramble of all their controls each time
+      ev(m, 'confuse', { pid: o.id, by: p.id });
+      break;
+    case 'ride': // Peacock Ride: up into the air like Fly, but faster, free and timed (the 'ride' effect is the timer)
+      p.air = { kind: 'fly', t: 0, lift: mv.lift, speed: mv.speed, drain: 0, ride: true };
+      applyEffect(p, 'ride', mv.time + mv.lift);
+      ev(m, 'fly', { pid: p.id, ride: true });
+      break;
     case 'dash': {
       const d = c.dir || unitDir(p.x - o.x, p.y - o.y);
       p.dash = { vx: d.x * mv.speed, vy: d.y * mv.speed, t: mv.time };
@@ -710,6 +744,7 @@ function applyHits(m) {
       if (n.hit) { // ground rule 7: a hit that gets through breaks casting and meditation; the cost stays spent
         if (t.cast && !t.cast.done) { ev(m, 'broken', { pid: t.id, name: t.cast.move.name }); say(t, `${t.cast.move.name.toUpperCase()} BROKEN`); t.cast = null; }
         if (t.med) stopMed(m, t, 'MEDITATION BROKEN');
+        delete t.effects.confuse; // Narada's Mischief ends when a hit gets through
       }
     } else t.hp -= n.dmg;
   }

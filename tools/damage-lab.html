@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arena Damage Lab</title>
+<style>
+  :root { --bg: #121016; --panel: #1c1922; --line: #34303d; --text: #eee8f2; --dim: #a59fb0; --accent: #ffb35c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+  .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; max-width: 1600px; margin: 0 auto; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+  canvas { width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 10px; cursor: crosshair; background: #000; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 18px 0 8px; }
+  p { margin: 6px 0; color: var(--dim); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .styles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  button { font: inherit; color: var(--text); background: #26222e; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; cursor: pointer; text-align: left; }
+  button:hover { border-color: #5a5468; }
+  button.on { border-color: var(--accent); background: #3a2a1a; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .row button { flex: 1 1 auto; text-align: center; }
+  #desc { min-height: 3.2em; color: var(--text); }
+  ol { padding-left: 18px; margin: 6px 0; color: var(--dim); }
+  ol li { margin: 6px 0; }
+  ol b { color: var(--text); }
+  .hint { font-size: 12px; color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <canvas id="c" width="1920" height="1080"></canvas>
+    <p class="hint">Click the sand to drop the selected mark. The fight buttons replay the same short fight, first with today's cracks, then with the new marks.</p>
+  </div>
+  <div class="panel">
+    <h1>Arena damage lab</h1>
+    <p>The floor is <b style="color:var(--text)">sand on a river island</b>. Real sand doesn't crack like a plate: it gets pushed, thrown, burnt, wet and fused. Each mark below follows that idea.</p>
+    <h2>Replay a fight</h2>
+    <div class="row">
+      <button id="fightOld">Today's cracks</button>
+      <button id="fightNew">New damage</button>
+      <button id="clear">Clear</button>
+    </div>
+    <h2>Click to place</h2>
+    <div class="styles" id="styles"></div>
+    <p id="desc"></p>
+    <h2>Ideas</h2>
+    <ol>
+      <li><b>Craters, not cracks.</b> A heavy hit pushes the sand into a bowl with a raised rim, shadow on the far wall and light on the near wall, matching the sunset behind. Thrown sand lands around it in grains and paler streaks.</li>
+      <li><b>Skid grooves.</b> When a fighter is knocked back, their feet plough two grooves and leave a heap of sand where they stop. The arena shows where the big hits came from.</li>
+      <li><b>Footprints.</b> Fighters leave prints wherever they walk. By the end, the middle of the island is trampled and the edges are clean.</li>
+      <li><b>Element marks.</b> Fire leaves a black burn with embers that cool from orange to grey and a little smoke. Lightning fuses sand into black glass branches (fulgurite) that glow blue, then orange, then go dark. River splashes darken the sand, and it slowly dries from the edges.</li>
+      <li><b>Power impacts.</b> A deep crater, long ray streaks, clods of wet sand thrown out, ripples frozen in the sand, and river water seeping up into the bottom of the crater, reflecting the sky.</li>
+      <li><b>Damage that stays.</b> The game keeps only the newest 16 cracks, fading over 30 s. The marks could be drawn once onto a hidden floor layer, so a whole match of damage stays with no slowdown. Only the moving parts (embers, smoke, drying) are redrawn each frame.</li>
+      <li><b>Optional painted marks.</b> The examples here are drawn in code. For the most real look, ChatGPT could paint a sheet of top-down sand marks (crater, burn, glass) matching the arena art, with code still doing the motion, as the divine weapons do.</li>
+    </ol>
+    <h2>How they'd map to the game</h2>
+    <p>Hit damage sets the crater size, knockback sets the skid, fire/lightning/water moves pick their element, and power moves get the big impact. Light hits leave only a scuff and a few grains, so the floor isn't covered in seconds.</p>
+  </div>
+</div>
+<script>
+const W = 480, H = 270, RES = 4, ARENA_R = 121;
+const cv = document.getElementById('c'), G = cv.getContext('2d');
+let CX = 240, CY = 165, SC = 1.666, SQ = 0.403, img = null, A = null;
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const easeOut = (u) => 1 - Math.pow(1 - u, 3);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const lerp = (a, b, u) => a + (b - a) * u;
+const now = () => performance.now() / 1000;
+
+// ---- the arena, lined up the same way as the game (src/render.js fitView) ----
+Promise.all([
+  new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = '../art/arena.png'; }),
+  fetch('../art/arena.json').then((r) => r.json()),
+]).then(([i, f]) => {
+  img = i;
+  const s = Math.max(W / i.width, H / i.height, (0.84 * W) / (2 * f.rx * i.width));
+  const w = i.width * s, h = i.height * s;
+  SC = (f.rx * i.width * s) / ARENA_R; SQ = (f.ry * i.height) / (f.rx * i.width);
+  const x = CX - f.cx * w, y = Math.min(0, Math.max(H - h, 165 - f.cy * h));
+  CY = y + f.cy * h; A = { x, y, w, h };
+  makeGrain(); requestAnimationFrame(frame);
+});
+const FLOOR = () => ({ rx: ARENA_R * SC, ry: ARENA_R * SC * SQ });
+const onFloor = (x, y, k = 0.92) => { const f = FLOOR(); return ((x - CX) / (f.rx * k)) ** 2 + ((y - CY) / (f.ry * k)) ** 2 < 1; };
+
+// fine sand grain, one device pixel per speck, laid over marks so they aren't flat colour
+let GRAIN = null;
+function makeGrain() {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), d = g.createImageData(128, 128);
+  for (let i = 0; i < d.data.length; i += 4) { const v = Math.random(), dark = v < 0.5; d.data[i] = dark ? 60 : 255; d.data[i + 1] = dark ? 30 : 235; d.data[i + 2] = dark ? 10 : 200; d.data[i + 3] = Math.random() < 0.35 ? 90 : 0; }
+  g.putImageData(d, 0, 0); GRAIN = G.createPattern(c, 'repeat'); GRAIN.setTransform(new DOMMatrix().scale(1 / RES * 1.5));
+}
+const grainOver = (alpha) => { G.save(); G.globalAlpha *= alpha; G.fillStyle = GRAIN; G.fill(); G.restore(); };
+
+// an irregular round shape: radius wobbles with a few random sines
+const wobble = (n = 5, amp = 0.12) => Array.from({ length: n }, (_, k) => ({ k: k + 2, a: amp * rnd(0.4, 1) / (1 + k * 0.4), p: rnd(0, 6.28) }));
+function blob(x, y, rx, ry, wb, rot = 0) {
+  G.beginPath();
+  for (let i = 0; i <= 48; i++) {
+    const t = (i / 48) * Math.PI * 2; let r = 1; for (const w of wb) r += w.a * Math.sin(w.k * t + w.p);
+    const px = Math.cos(t + rot) * rx * r, py = Math.sin(t + rot) * ry * r;
+    i ? G.lineTo(x + px, y + py) : G.moveTo(x + px, y + py);
+  }
+  G.closePath();
+}
+const radial = (x, y, r0, r1, stops, sy = SQ) => { // a radial gradient squashed into the 3/4 view
+  G.save(); G.translate(x, y); G.scale(1, sy); const g = G.createRadialGradient(0, 0, r0, 0, 0, r1); for (const [o, c] of stops) g.addColorStop(o, c); G.restore();
+  return { g, x, y, sy };
+};
+function fillRadial(x, y, rx, stops, wb) { // fill an irregular squashed blob with a radial gradient
+  G.save(); G.translate(x, y); G.scale(1, SQ);
+  const g = G.createRadialGradient(0, 0, 0, 0, 0, rx); for (const [o, c] of stops) g.addColorStop(o, c);
+  G.fillStyle = g; blob(0, 0, rx, rx, wb || []); G.fill(); G.restore();
+}
+
+// ---- marks ----
+const MARKS = [];
+// grains of sand thrown out from a point; they fly in an arc and stay where they land
+function throwGrains(x, y, n, reach, opt = {}) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const a = opt.dir != null ? opt.dir + rnd(-opt.spread, opt.spread) : rnd(0, Math.PI * 2), d = reach * Math.sqrt(rnd(0.15, 1));
+    out.push({ x0: x, y0: y, x1: x + Math.cos(a) * d, y1: y + Math.sin(a) * d * SQ, T: rnd(0.25, 0.6) * (opt.slow || 1), h: rnd(3, 12) * (opt.high || 1), s: rnd(0.25, 0.6) * (opt.size || 1), c: opt.color || (Math.random() < 0.6 ? '120,62,24' : '255,228,175'), delay: rnd(0, 0.05) });
+  }
+  return out;
+}
+function drawGrainsFlying(gs, t) {
+  for (const q of gs) {
+    const u = (t - q.delay) / q.T; if (u <= 0 || u >= 1) continue;
+    const x = lerp(q.x0, q.x1, u), y = lerp(q.y0, q.y1, u) - 4 * q.h * u * (1 - u);
+    G.fillStyle = `rgba(${q.c},0.9)`; G.fillRect(x - q.s / 2, y - q.s / 2, q.s, q.s);
+  }
+}
+function drawGrainsLanded(gs, t, a = 1) {
+  for (const q of gs) { if (t < q.delay + q.T) continue; G.fillStyle = `rgba(${q.c},${0.55 * a})`; G.fillRect(q.x1 - q.s / 2, q.y1 - q.s / 2, q.s, q.s); }
+}
+
+const TYPES = {
+  // today's game: thin branching cracks (ported from render.js 'crack')
+  old: {
+    label: "Today's crack", desc: 'What the game draws now: thin dark lines with a lit edge. On sand they read as drawn on, not as damage.',
+    make: (x, y, size = 1.2) => ({ x, y, size, seed: Math.floor(Math.random() * 1e6), life: 30 }),
+    ground(m, t) {
+      const hash = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
+      const Z = (r) => r * SC, a = Math.min(1, (m.life - t) / 6), sz = m.size * Math.min(1, t / 0.12), { x, y } = m;
+      if (a <= 0) return;
+      const dip = G.createRadialGradient(x, y, 0, x, y, Z(10) * sz); dip.addColorStop(0, `rgba(80,40,15,${0.35 * a})`); dip.addColorStop(1, 'rgba(80,40,15,0)');
+      G.fillStyle = dip; G.beginPath(); G.ellipse(x, y, Z(10) * sz, Z(10) * sz * SQ, 0, 0, Math.PI * 2); G.fill();
+      const n = 4 + (m.seed % 4);
+      for (let i = 0; i < n; i++) {
+        let ang = (i / n) * Math.PI * 2 + hash(i, m.seed) * 0.9, px = x, py = y;
+        const len = Z(6 + hash(i, m.seed + 1) * 9) * sz, pts = [[px, py]];
+        for (let j = 1; j <= 5; j++) { ang += (hash(i * 7 + j, m.seed) - 0.5) * 1.3; px += Math.cos(ang) * len / 5; py += Math.sin(ang) * len / 5 * SQ; pts.push([px, py]); }
+        const path = () => { G.beginPath(); G.moveTo(pts[0][0], pts[0][1]); for (const [qx, qy] of pts.slice(1)) G.lineTo(qx, qy); };
+        G.lineCap = 'round'; G.lineJoin = 'round';
+        path(); G.strokeStyle = `rgba(255,228,180,${0.5 * a})`; G.lineWidth = 0.9; G.save(); G.translate(0, 0.45); G.stroke(); G.restore();
+        path(); G.strokeStyle = `rgba(55,26,10,${0.9 * a})`; G.lineWidth = 0.55 * (1.2 - 0.2 * sz); G.stroke();
+      }
+    },
+  },
+
+  crater: {
+    label: 'Crater', desc: 'Heavy hit. Sand is pushed into a bowl with a raised rim, lit to match the sunset behind the island. Thrown grains land around it.',
+    make: (x, y, r = rnd(7, 10)) => ({ x, y, r, wb: wobble(5, 0.1), ej: wobble(6, 0.22), rays: Array.from({ length: 9 }, () => ({ a: rnd(0, 6.28), l: rnd(1.8, 2.8), w: rnd(0.12, 0.25) })), grains: throwGrains(x, y, 40, r * 3) }),
+    ground(m, t) { drawCrater(m, t); drawGrainsLanded(m.grains, t); },
+    air(m, t) { drawGrainsFlying(m.grains, t); },
+  },
+
+  skid: {
+    label: 'Skid grooves', desc: 'Knockback. The feet plough two grooves and a heap of sand piles up where the fighter stops.',
+    make: (x, y, dir) => {
+      dir ??= Math.atan2((y - CY) / SQ, x - CX) + rnd(-0.4, 0.4);
+      const len = rnd(28, 40), ux = Math.cos(dir), uy = Math.sin(dir) * SQ, px = -Math.sin(dir), py = Math.cos(dir) * SQ;
+      const lines = [-1, 1].map((s) => Array.from({ length: 13 }, (_, i) => { const u = i / 12, w = rnd(-0.35, 0.35); return [x + ux * len * u + px * (s * 2.2 + w), y + uy * len * u + py * (s * 2.2 + w)]; }));
+      const ex = x + ux * (len + 3), ey = y + uy * (len + 3);
+      return { x, y, len, ux, uy, px, py, lines, ex, ey, wb: wobble(4, 0.15), grains: throwGrains(ex, ey, 26, 14, { dir, spread: 0.7, slow: 1.2 }) };
+    },
+    ground(m, t) {
+      const slide = easeOut(clamp01(t / 0.4));
+      G.lineCap = 'round'; G.lineJoin = 'round';
+      for (const L of m.lines) {
+        const n = Math.max(2, Math.ceil(L.length * slide)), pts = L.slice(0, n);
+        const path = (dy, c, lw) => { G.beginPath(); pts.forEach(([px, py], j) => (j ? G.lineTo(px, py + dy) : G.moveTo(px, py + dy))); G.strokeStyle = c; G.lineWidth = lw; G.stroke(); };
+        path(0, 'rgba(255,228,175,0.16)', 3.2); // the sand pushed up on each side
+        path(-0.2, 'rgba(95,42,14,0.45)', 1.2); // the groove, in shadow on the far side
+        path(0.5, 'rgba(255,236,195,0.4)', 0.45); // light catching the near lip
+      }
+      if (slide > 0.85) { // the heap where they stopped
+        const k = clamp01((slide - 0.85) / 0.15), r = 5.5 * k;
+        fillRadial(m.ex, m.ey + 0.8, r * 1.3, [[0, 'rgba(110,55,20,0.35)'], [1, 'rgba(110,55,20,0)']]);
+        G.save(); G.translate(m.ex, m.ey); G.scale(1, SQ); blob(0, 0, r, r * 0.9, m.wb); G.restore();
+        const g = G.createLinearGradient(0, m.ey - r * SQ, 0, m.ey + r * SQ); g.addColorStop(0, 'rgba(255,238,200,0.65)'); g.addColorStop(1, 'rgba(150,80,30,0.45)');
+        G.fillStyle = g; G.fill(); grainOver(0.6);
+      }
+      drawGrainsLanded(m.grains, t);
+    },
+    air(m, t) { drawGrainsFlying(m.grains.map((q) => ({ ...q, delay: q.delay + 0.35 })), t); },
+  },
+
+  steps: {
+    label: 'Footprints', desc: 'Fighters leave prints where they walk. Over a match the middle gets trampled and the edges stay clean.',
+    make: (x, y, dir) => {
+      dir ??= rnd(0, 6.28); const pts = []; let px = x, py = y, a = dir;
+      for (let i = 0; i < 14; i++) { a += rnd(-0.25, 0.25); const side = i % 2 ? 1 : -1; px += Math.cos(a) * 5; py += Math.sin(a) * 5 * SQ; pts.push({ x: px - Math.sin(a) * 1.3 * side, y: py + Math.cos(a) * 1.3 * side * SQ, a, t: i * 0.28 }); }
+      return { x, y, pts };
+    },
+    ground(m, t) {
+      for (const p of m.pts) {
+        if (t < p.t) continue;
+        const fade = 1 - 0.5 * clamp01((t - p.t) / 40);
+        G.save(); G.translate(p.x, p.y); G.scale(1, SQ); G.rotate(p.a);
+        G.beginPath(); G.ellipse(0, 0, 1.9, 0.95, 0, 0, Math.PI * 2); G.fillStyle = `rgba(95,45,15,${0.38 * fade})`; G.fill();
+        G.beginPath(); G.ellipse(0.9, 0, 0.9, 0.75, 0, 0, Math.PI * 2); G.fillStyle = `rgba(80,38,12,${0.2 * fade})`; G.fill(); // the toe digs deeper
+        G.restore();
+        G.beginPath(); G.ellipse(p.x, p.y + 0.55, 1.6, 0.35, 0, 0, Math.PI); G.strokeStyle = `rgba(255,236,195,${0.4 * fade})`; G.lineWidth = 0.35; G.stroke();
+      }
+    },
+  },
+
+  scorch: {
+    label: 'Fire burn', desc: 'Fire move. The sand turns black, embers glow and cool from orange to grey, smoke drifts off, and a few specks of fused glass glint afterwards.',
+    make: (x, y, r = rnd(11, 15)) => {
+      const embers = Array.from({ length: 46 }, () => { const a = rnd(0, 6.28), d = r * Math.sqrt(rnd(0, 1)) * 0.9; return { x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * SQ, cool: rnd(1.2, 6), s: rnd(0.35, 0.8), f: rnd(0, 6) }; });
+      const smoke = Array.from({ length: 16 }, () => { const a = rnd(0, 6.28), d = r * rnd(0, 0.7); return { x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * SQ, t: rnd(0, 3.5), life: rnd(2, 3.4), s: rnd(3, 6) }; });
+      const glints = Array.from({ length: 6 }, () => { const a = rnd(0, 6.28), d = r * rnd(0, 0.6); return { x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * SQ, p: rnd(0, 6) }; });
+      return { x, y, r, w1: wobble(6, 0.2), w2: wobble(6, 0.25), w3: wobble(5, 0.3), embers, smoke, glints };
+    },
+    ground(m, t) {
+      const g = easeOut(clamp01(t / 0.3)), r = m.r * g;
+      fillRadial(m.x, m.y, r * 1.7, [[0, 'rgba(90,40,15,0.45)'], [0.7, 'rgba(110,55,20,0.25)'], [1, 'rgba(110,55,20,0)']], m.w1); // singed sand
+      fillRadial(m.x, m.y, r * 1.05, [[0, 'rgba(20,10,6,0.9)'], [0.6, 'rgba(35,16,8,0.75)'], [1, 'rgba(50,24,10,0)']], m.w2); // burnt black
+      G.save(); G.translate(m.x, m.y); G.scale(1, SQ); blob(0, 0, r * 0.95, r * 0.95, m.w2); G.restore(); grainOver(0.45);
+      const heat = 1 - clamp01(t / 2.2);
+      if (heat > 0) { G.save(); G.globalCompositeOperation = 'lighter'; fillRadial(m.x, m.y, r * 1.2, [[0, `rgba(255,120,30,${0.55 * heat})`], [1, 'rgba(255,80,20,0)']], m.w3); G.restore(); }
+      G.save(); G.globalCompositeOperation = 'lighter';
+      for (const e of m.embers) {
+        const c = clamp01(t / e.cool); if (c >= 1) continue;
+        const fl = 0.75 + 0.25 * Math.sin(t * 9 + e.f), col = [lerp(255, 140, c), lerp(200, 40, c), lerp(90, 10, c)].map(Math.round);
+        G.fillStyle = `rgba(${col},${(1 - c) * fl})`; G.beginPath(); G.arc(e.x, e.y, e.s, 0, Math.PI * 2); G.fill();
+      }
+      if (t > 2) for (const q of m.glints) { const a = 0.35 * clamp01((t - 2) / 2) * Math.max(0, Math.sin(t * 1.2 + q.p)); G.fillStyle = `rgba(255,240,220,${a})`; G.fillRect(q.x - 0.3, q.y - 0.3, 0.6, 0.6); }
+      G.restore();
+    },
+    air(m, t) {
+      for (const s of m.smoke) {
+        let u = (t - s.t) / s.life; if (t > 8) continue; if (u < 0 || u > 1) continue;
+        const x = s.x + u * 9, y = s.y - u * 26, rad = s.s * (0.5 + u), a = 0.28 * Math.sin(u * Math.PI);
+        G.fillStyle = `rgba(70,62,70,${a})`; G.beginPath(); G.ellipse(x, y, rad, rad * 0.8, 0, 0, Math.PI * 2); G.fill();
+      }
+    },
+  },
+
+  lightning: {
+    label: 'Lightning glass', desc: 'Lightning strike. The sand fuses into branching black glass (fulgurite), white-blue hot at first, cooling through orange to glossy black.',
+    make: (x, y) => {
+      const branches = [];
+      const grow = (px, py, a, len, w, depth) => {
+        const pts = [[px, py]], segs = 9;
+        for (let j = 1; j <= segs; j++) { a += rnd(-0.55, 0.55); const l = len / segs * rnd(0.6, 1.4); px += Math.cos(a) * l; py += Math.sin(a) * l * SQ; pts.push([px, py]); }
+        branches.push({ pts, w });
+        if (depth < 2) for (const j of [3, 6]) if (Math.random() < 0.6) grow(pts[j][0], pts[j][1], a + rnd(0.5, 1) * (Math.random() < 0.5 ? 1 : -1), len * 0.45, w * 0.55, depth + 1);
+      };
+      const n = 6; for (let i = 0; i < n; i++) grow(x, y, (i / n) * 6.28 + rnd(0, 0.6), rnd(12, 24), 0.9, 1);
+      return { x, y, branches, wb: wobble(6, 0.25), grains: throwGrains(x, y, 24, 16, { color: '30,24,30', high: 1.3 }) };
+    },
+    ground(m, t) {
+      const run = easeOut(clamp01(t / 0.12));
+      G.lineCap = 'round'; G.lineJoin = 'round';
+      fillRadial(m.x, m.y, 14, [[0, 'rgba(60,30,12,0.5)'], [1, 'rgba(60,30,12,0)']]);
+      const draw = (glass) => {
+        for (const b of m.branches) {
+          const k = Math.max(2, Math.ceil(b.pts.length * run));
+          for (let j = 1; j < k; j++) {
+            const w = b.w * (1 - (j - 1) / b.pts.length), [ax, ay] = b.pts[j - 1], [bx, by] = b.pts[j];
+            G.beginPath(); G.moveTo(ax, ay); G.lineTo(bx, by); glass(w); G.stroke();
+          }
+        }
+      };
+      draw((w) => { G.strokeStyle = 'rgba(110,55,25,0.3)'; G.lineWidth = w * 2.6; }); // sand browned along each vein
+      draw((w) => { G.strokeStyle = 'rgba(40,26,34,0.7)'; G.lineWidth = w; }); // black glass
+      draw((w) => { G.strokeStyle = 'rgba(200,200,255,0.25)'; G.lineWidth = w * 0.35; G.translate(0, -0.25); }); G.setTransform(RES, 0, 0, RES, 0, 0);
+      G.save(); G.translate(m.x, m.y); G.scale(1, SQ); blob(0, 0, 4.5, 4.5, m.wb); G.restore(); G.fillStyle = 'rgba(18,12,22,0.92)'; G.fill(); // the fused splat
+      G.beginPath(); G.ellipse(m.x - 1.2, m.y - 0.8, 1.6, 0.5, -0.2, 0, Math.PI * 2); G.fillStyle = 'rgba(220,225,255,0.45)'; G.fill(); // its gloss
+      const heat = 1 - clamp01(t / 2);
+      if (heat > 0) {
+        const col = t < 0.35 ? [210, 230, 255] : [255, lerp(110, 200, heat), lerp(40, 120, heat)].map(Math.round);
+        G.save(); G.globalCompositeOperation = 'lighter';
+        draw((w) => { G.strokeStyle = `rgba(${col},${heat})`; G.lineWidth = w * 0.6; });
+        fillRadial(m.x, m.y, 9, [[0, `rgba(${col},${0.8 * heat})`], [1, `rgba(${col},0)`]]);
+        G.restore();
+      }
+      drawGrainsLanded(m.grains, t);
+    },
+    air(m, t) {
+      if (t < 0.25) { G.save(); G.globalCompositeOperation = 'lighter'; const a = 1 - t / 0.25; G.fillStyle = `rgba(180,210,255,${0.9 * a})`; G.fillRect(m.x - 1.2, 0, 2.4, m.y); fillRadial(m.x, m.y, 40, [[0, `rgba(200,220,255,${0.7 * a})`], [1, 'rgba(200,220,255,0)']]); G.restore(); }
+      drawGrainsFlying(m.grains, t);
+      for (let i = 0; i < 6; i++) { const u = (t - 0.2 - i * 0.25) / 2.5; if (u < 0 || u > 1) continue; const x = m.x + Math.sin(i * 2.1) * 6 + u * 6, y = m.y - u * 22, r = 2 + 4 * u; G.fillStyle = `rgba(200,200,215,${0.22 * Math.sin(u * Math.PI)})`; G.beginPath(); G.ellipse(x, y, r, r * 0.8, 0, 0, Math.PI * 2); G.fill(); }
+    },
+  },
+
+  wet: {
+    label: 'River splash', desc: 'Water thrown up from the river darkens the sand, glistens for a moment, then dries from the edges over about 20 s.',
+    make: (x, y) => ({ x, y, blobs: Array.from({ length: 5 }, (_, i) => ({ dx: i ? rnd(-12, 12) : 0, dy: i ? rnd(-5, 5) : 0, r: i ? rnd(4, 8) : rnd(9, 12), wb: wobble(5, 0.2) })), sheen: Array.from({ length: 14 }, () => ({ dx: rnd(-11, 11), dy: rnd(-4, 4), l: rnd(1, 3), p: rnd(0, 6) })), drops: throwGrains(x, y - 10, 30, 22, { color: '235,240,255', slow: 1.4, high: 2, size: 1.3 }) }),
+    ground(m, t) {
+      const land = clamp01((t - 0.35) / 0.2); if (!land) return;
+      const dry = clamp01(t / 22), k = 1 - Math.pow(dry, 1.6);
+      for (const b of m.blobs) {
+        const r = b.r * (0.4 + 0.6 * land) * (0.35 + 0.65 * k);
+        G.save(); G.translate(m.x + b.dx, m.y + b.dy * SQ * 2); G.scale(1, SQ); blob(0, 0, r, r, b.wb); G.restore();
+        G.fillStyle = `rgba(105,45,48,${0.4 * k})`; G.fill(); // darker, a little purple from the sky
+      }
+      const sh = 1 - clamp01((t - 0.5) / 4);
+      if (sh > 0) { G.save(); G.globalCompositeOperation = 'lighter'; for (const s of m.sheen) { const a = sh * 0.4 * (0.6 + 0.4 * Math.sin(t * 6 + s.p)); G.strokeStyle = `rgba(255,190,150,${a})`; G.lineWidth = 0.35; G.beginPath(); G.moveTo(m.x + s.dx, m.y + s.dy); G.lineTo(m.x + s.dx + s.l, m.y + s.dy); G.stroke(); } G.restore(); }
+    },
+    air(m, t) { drawGrainsFlying(m.drops, t); },
+  },
+
+  impact: {
+    label: 'Power impact', desc: 'Power move. A deep crater with long ray streaks, ripples frozen in the sand, clods of wet sand thrown out, and river water seeping up into the bottom.',
+    make: (x, y) => {
+      const r = 22;
+      const clods = Array.from({ length: 14 }, () => { const a = rnd(0, 6.28), d = rnd(r * 1.4, r * 3.2); return { x0: x, y0: y, x1: x + Math.cos(a) * d, y1: y + Math.sin(a) * d * SQ, T: rnd(0.5, 0.9), h: rnd(18, 40), s: rnd(1, 2.2), rot: rnd(0, 6), vr: rnd(-8, 8), shape: Array.from({ length: 6 }, (_, i) => rnd(0.65, 1.15)) }; });
+      return { x, y, r, wb: wobble(6, 0.08), ej: wobble(7, 0.25), rays: Array.from({ length: 16 }, () => ({ a: rnd(0, 6.28), l: rnd(2, 3.6), w: rnd(0.08, 0.18) })), grains: throwGrains(x, y, 120, r * 4, { high: 2.2 }), clods, ripples: [2.2, 2.6, 3.0] };
+    },
+    ground(m, t) {
+      drawCrater(m, t, true);
+      const sink = clamp01((t - 0.9) / 2.5); // river water seeps up into the bottom
+      if (sink > 0) {
+        const pr = m.r * 0.55 * easeOut(sink), py = m.y + m.r * SQ * 0.22;
+        G.save(); G.translate(m.x, py); G.scale(1, SQ * 0.9);
+        const g = G.createLinearGradient(0, -pr, 0, pr); g.addColorStop(0, 'rgba(120,70,150,0.85)'); g.addColorStop(0.55, 'rgba(230,120,90,0.85)'); g.addColorStop(1, 'rgba(110,60,120,0.85)');
+        blob(0, 0, pr, pr, m.wb); G.fillStyle = g; G.fill();
+        G.strokeStyle = 'rgba(90,40,30,0.5)'; G.lineWidth = 0.8; G.stroke();
+        G.restore();
+        G.save(); G.globalCompositeOperation = 'lighter'; G.fillStyle = `rgba(255,200,140,${0.5 * sink})`; G.fillRect(m.x - pr * 0.5, py - 0.3, pr * 0.7, 0.5); G.fillRect(m.x - pr * 0.2, py + 1.4, pr * 0.4, 0.4); G.restore(); // sun glints on the water
+      }
+      for (const q of m.clods) if (t > q.T) drawClod(q, q.x1, q.y1, q.rot + q.vr * q.T);
+    },
+    air(m, t) {
+      if (t < 0.18) { G.save(); G.globalCompositeOperation = 'lighter'; fillRadial(m.x, m.y, 70, [[0, `rgba(255,240,210,${1 - t / 0.18})`], [1, 'rgba(255,240,210,0)']]); G.restore(); }
+      drawGrainsFlying(m.grains, t);
+      for (const q of m.clods) { const u = t / q.T; if (u >= 1) continue; const x = lerp(q.x0, q.x1, u), gy = lerp(q.y0, q.y1, u), y = gy - 4 * q.h * u * (1 - u); G.fillStyle = 'rgba(80,40,15,0.25)'; G.beginPath(); G.ellipse(x, gy, q.s, q.s * SQ, 0, 0, Math.PI * 2); G.fill(); drawClod(q, x, y, q.rot + q.vr * t, true); }
+      if (t < 1.4) { const u = t / 1.4; G.fillStyle = `rgba(230,195,140,${0.45 * (1 - u)})`; for (let i = 0; i < 10; i++) { const a = i / 10 * 6.28; const d = m.r * (1 + 2.2 * easeOut(u)); G.beginPath(); G.ellipse(m.x + Math.cos(a) * d, m.y + Math.sin(a) * d * SQ - 4 * u, 6 + 10 * u, (6 + 10 * u) * 0.6, 0, 0, Math.PI * 2); G.fill(); } } // a ring of dust rolling out
+    },
+  },
+};
+
+function drawClod(q, x, y, rot, air) { // a lump of damp sand: darker, lit on top
+  G.save(); G.translate(x, y); G.rotate(air ? rot : 0);
+  G.beginPath(); q.shape.forEach((k, i) => { const a = i / q.shape.length * 6.28; const px = Math.cos(a) * q.s * k, py = Math.sin(a) * q.s * k * (air ? 1 : 0.7); i ? G.lineTo(px, py) : G.moveTo(px, py); }); G.closePath();
+  const g = G.createLinearGradient(0, -q.s, 0, q.s); g.addColorStop(0, '#d9a066'); g.addColorStop(1, '#6e3a18'); G.fillStyle = g; G.fill();
+  G.restore();
+  if (!air) { G.fillStyle = 'rgba(70,32,10,0.3)'; G.beginPath(); G.ellipse(x + 0.6, y + q.s * 0.55, q.s * 1.1, q.s * 0.35, 0, 0, Math.PI * 2); G.fill(); }
+}
+
+// a bowl in the sand: thrown sand around it, a raised rim lit on the far side, shadow inside under the far wall
+function drawCrater(m, t, big) {
+  const R = m.r * easeOut(clamp01(t / (big ? 0.22 : 0.15))), { x, y } = m;
+  if (R <= 0.2) return;
+  fillRadial(x, y, R * (big ? 3.2 : 2.4), [[0, 'rgba(255,230,180,0.0)'], [0.35, 'rgba(255,232,185,0.28)'], [1, 'rgba(255,232,185,0)']], m.ej); // thrown sand, paler and drier
+  G.save(); G.globalAlpha = 0.9;
+  for (const r of m.rays) { // streaks of thrown sand
+    const L = R * r.l * (big ? 1.4 : 1), ca = Math.cos(r.a), sa = Math.sin(r.a), w = R * r.w, nx = -sa * w, ny = ca * w * SQ;
+    const g = G.createLinearGradient(x + ca * R, y + sa * R * SQ, x + ca * L, y + sa * L * SQ); g.addColorStop(0, 'rgba(255,236,195,0.35)'); g.addColorStop(1, 'rgba(255,236,195,0)');
+    G.fillStyle = g; G.beginPath(); G.moveTo(x + ca * R + nx, y + sa * R * SQ + ny); G.lineTo(x + ca * L, y + sa * L * SQ); G.lineTo(x + ca * R - nx, y + sa * R * SQ - ny); G.fill();
+  }
+  G.restore();
+  if (big) for (const k of m.ripples) { // ripples frozen in the sand by the shock
+    const rr = R * k; G.lineWidth = 0.9; G.setLineDash([rr * 0.5, rr * 0.35, rr * 0.2, rr * 0.4]); G.lineDashOffset = k * 37;
+    G.strokeStyle = 'rgba(255,236,195,0.14)'; G.beginPath(); G.ellipse(x, y - 0.3, rr, rr * SQ, 0, 0, Math.PI * 2); G.stroke();
+    G.strokeStyle = 'rgba(110,55,20,0.12)'; G.beginPath(); G.ellipse(x, y + 0.4, rr, rr * SQ, 0, 0, Math.PI * 2); G.stroke();
+    G.setLineDash([]);
+  }
+  // the rim: outer slope, darker toward the viewer
+  fillRadial(x, y + R * SQ * 0.15, R * 1.35, [[0.6, 'rgba(110,55,20,0)'], [0.82, 'rgba(110,55,20,0.28)'], [1, 'rgba(110,55,20,0)']]);
+  G.lineCap = 'round';
+  G.strokeStyle = 'rgba(255,238,200,0.4)'; G.lineWidth = R * 0.1; G.beginPath(); G.ellipse(x, y, R * 1.05, R * 1.05 * SQ, 0, Math.PI * 1.05, Math.PI * 1.95); G.stroke(); // the far rim catches the light
+  // the bowl
+  G.save(); G.translate(x, y); G.scale(1, SQ); blob(0, 0, R, R, m.wb); G.restore();
+  G.save(); G.clip();
+  const bowl = radial(x, y - R * SQ * 0.25, 0, R * 1.1, [[0, 'rgba(70,30,10,0.75)'], [1, 'rgba(120,58,22,0.45)']]);
+  G.fillStyle = bowl.g; G.save(); G.translate(bowl.x, bowl.y); G.scale(1, bowl.sy); G.fillRect(-R * 2, -R * 2, R * 4, R * 4); G.restore();
+  fillRadial(x + R * 0.12, y + R * SQ * 0.6, R * 1.0, [[0, 'rgba(255,215,150,0.5)'], [1, 'rgba(255,215,150,0)']]); // the near wall faces the sun: lit
+  G.fillStyle = GRAIN; G.globalAlpha = 0.6; G.fillRect(x - R * 2, y - R * 2, R * 4, R * 4);
+  G.restore();
+}
+
+// ---- loop ----
+function frame() {
+  const T = now();
+  G.setTransform(RES, 0, 0, RES, 0, 0);
+  G.clearRect(0, 0, W, H);
+  if (img) G.drawImage(img, A.x, A.y, A.w, A.h);
+  const f = FLOOR();
+  G.save(); G.beginPath(); G.ellipse(CX, CY, f.rx * 0.985, f.ry * 0.985, 0, 0, Math.PI * 2); G.clip(); // marks only on the sand
+  for (const m of MARKS) TYPES[m.type].ground(m, T - m.t0);
+  G.restore();
+  for (const m of MARKS) TYPES[m.type].air?.(m, T - m.t0);
+  requestAnimationFrame(frame);
+}
+
+// ---- UI ----
+let pick = 'crater', SCRIPT = [];
+const box = document.getElementById('styles'), desc = document.getElementById('desc');
+for (const [id, t] of Object.entries(TYPES)) {
+  const b = document.createElement('button'); b.textContent = t.label; b.dataset.id = id; box.appendChild(b);
+  b.onclick = () => { pick = id; sync(); };
+}
+const sync = () => { for (const b of box.children) b.classList.toggle('on', b.dataset.id === pick); desc.textContent = TYPES[pick].desc; };
+sync();
+const add = (type, ...args) => MARKS.push({ type, t0: now(), ...TYPES[type].make(...args) });
+cv.addEventListener('click', (e) => {
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+  if (onFloor(x, y)) add(pick, x, y);
+});
+const stopScript = () => { SCRIPT.forEach(clearTimeout); SCRIPT = []; };
+document.getElementById('clear').onclick = () => { stopScript(); MARKS.length = 0; };
+
+// the same short fight, both ways: positions are fixed so the two runs compare
+const P = (u, v) => [CX + u * FLOOR().rx, CY + v * FLOOR().ry];
+const FIGHT = [
+  [0.0, 'walk', P(-0.6, 0.1), 0.2], [0.0, 'walk', P(0.6, -0.1), Math.PI - 0.2],
+  [2.4, 'hit', P(-0.1, 0.05), Math.PI, 9], [3.6, 'splash', P(0.78, 0.35)],
+  [4.6, 'fire', P(0.25, -0.25)], [5.8, 'hit', P(0.15, 0.3), 0.1, 8], [6.6, 'walk', P(-0.5, -0.4), 0.3],
+  [7.6, 'bolt', P(-0.35, -0.45)], [9.0, 'hit', P(-0.42, 0.42), Math.PI - 0.4, 10], [10.6, 'power', P(0.05, -0.02)],
+];
+function fight(style) {
+  stopScript(); MARKS.length = 0;
+  for (const [at, kind, [x, y], dir, r] of FIGHT) SCRIPT.push(setTimeout(() => {
+    if (style === 'old') { if (kind === 'hit') add('old', x, y, 1.2); if (kind === 'fire' || kind === 'bolt') add('old', x, y, 1.3); if (kind === 'power') for (let i = 0; i < 6; i++) { const a = rnd(0, 6.28), d = rnd(0, 30); add('old', x + Math.cos(a) * d, y + Math.sin(a) * d * SQ, 1.3); } return; }
+    if (kind === 'walk') add('steps', x, y, dir);
+    if (kind === 'hit') { add('crater', x, y, r); add('skid', x + Math.cos(dir) * 6, y + Math.sin(dir) * 6 * SQ, dir); }
+    if (kind === 'splash') add('wet', x, y);
+    if (kind === 'fire') add('scorch', x, y);
+    if (kind === 'bolt') add('lightning', x, y);
+    if (kind === 'power') add('impact', x, y);
+  }, at * 1000));
+}
+document.getElementById('fightOld').onclick = () => fight('old');
+document.getElementById('fightNew').onclick = () => fight('new');
+setTimeout(() => fight('new'), 400);
+</script>
+</body>
+</html>

@@ -1,14 +1,14 @@
 import { W, H, RES, STEP, TUNE, ARENA } from './config.js';
 import { createMatch, stepMatch, spawnUnit } from './sim.js';
 import { CHARS } from './chars/index.js';
-import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, drawRemap, drawTutorial, CX, fitView, fxEvent, BRAHMA_HOLD, BRAHMA_AFTER, BRAHMA_BORN, divineTime, DRAMA_MOVES, setUseArt, useArt } from './render.js';
+import { setCtx, R, txt, isHurtPose, drawFight, drawOffer, drawSelect, drawInfo, drawTitle, drawSetup, drawPause, drawResult, setSeries, drawRemap, drawTutorial, CX, fitView, fxEvent, BRAHMA_HOLD, BRAHMA_AFTER, BRAHMA_BORN, divineTime, DRAMA_MOVES, setUseArt, useArt, sx, sy } from './render.js';
 import { loadArt, ART } from './art.js';
 import { createInput, KEYS, KEY_NAME, PAD, PAD_NAMES, REMAP, ACTIONS, RESERVED, PAD_RESERVED, setKey, setPad, resetControls } from './input.js';
 import { createTutorial, startTutorial, nextLesson, frozen, beforeStep, afterStep, view as tutView, lesson } from './tutorial.js';
 import * as sound from './audio.js';
 import { createCpu, cpuInput, LEVELS, LEVEL_IDS } from './ai.js';
 import { createTestMode } from './testmode.js';
-import { damageEvent } from './damage.js';
+import { damageEvent, dust } from './damage.js';
 
 const cv = document.getElementById('screen');
 const ctx = cv.getContext('2d');
@@ -18,7 +18,7 @@ setCtx(ctx);
 const input = createInput();
 const qs = new URLSearchParams(location.search);
 const S = {
-  screen: 'title', minutes: 5, mode: '1p', side: 0, level: 'normal', row: 0, cpu: null, match: null, paused: false, sel: 0, now: 0, clock: 0, fx: [], banner: null, errors: [], pads: 0,
+  screen: 'title', minutes: 5, bestOf: 1, series: null, mode: '1p', side: 0, level: 'normal', row: 0, cpu: null, match: null, paused: false, sel: 0, now: 0, clock: 0, fx: [], banner: null, errors: [], pads: 0,
   seed: Number(qs.get('seed')) || 1 + Math.floor(Math.random() * 1e6), screenAt: 0,
 };
 const DBG = { paused: qs.get('pause') === '1', override: [null, null], menu: [] };
@@ -30,18 +30,26 @@ const TEST = createTestMode(qs, {
 
 // Setup screen rows. 1 player: you pick your fighter and the computer's level.
 const CHAR_IDS = Object.keys(CHARS);
-const ROWS = () => (S.mode === '1p' ? ['mode', 'level', 'length'] : ['mode', 'length']); // the fighters are picked on the select screen
+const ROWS = () => (S.mode === '1p' ? ['mode', 'level', 'length', 'series'] : ['mode', 'length', 'series']); // the fighters are picked on the select screen
 function changeRow(dir) {
   const row = ROWS()[S.row];
   if (row === 'mode') { S.mode = S.mode === '1p' ? '2p' : '1p'; S.row = 0; }
   if (row === 'side') S.side = 1 - S.side;
   if (row === 'level') S.level = LEVEL_IDS[(LEVEL_IDS.indexOf(S.level) + dir + LEVEL_IDS.length) % LEVEL_IDS.length];
   if (row === 'length') S.minutes = Math.max(1, Math.min(TUNE.match.max / 60, S.minutes + dir));
+  if (row === 'series') S.bestOf = SERIES_SIZES[(SERIES_SIZES.indexOf(S.bestOf) + dir + SERIES_SIZES.length) % SERIES_SIZES.length];
 }
+// Tournament mode (owner, 2026-11-21): a single match, best of 3 or best of 5. The same two fighters play until one
+// has won more than half; a draw counts for nobody and the next match is played.
+const SERIES_SIZES = [1, 3, 5];
+const newSeries = () => { S.series = S.bestOf > 1 && !S.tutorial ? { bestOf: S.bestOf, wins: [0, 0], round: 1, results: [] } : null; };
+const seriesOver = () => !!S.series && S.series.wins.some((w) => w >= Math.ceil(S.series.bestOf / 2));
+const resultItems = () => (!S.series ? ['REMATCH', 'MATCH SETUP', 'TITLE'] : seriesOver() ? ['NEW TOURNAMENT', 'MATCH SETUP', 'TITLE'] : ['NEXT MATCH', 'MATCH SETUP', 'TITLE']);
 
 function startMatch() {
   S.offer = null;
   const seed = S.seed++;
+  setSeries(S.series);
   S.match = createMatch({ seed, time: S.tutorial ? TUNE.match.max : S.minutes * 60, chars: S.chars || ['siddhan', 'veeran'] });
   S.cpu = S.mode === '1p' && !S.tutorial ? createCpu(1 - S.side, S.level, seed) : null; // the computer plays the other fighter
   Object.assign(S, { screen: 'fight', paused: false, fx: [], banner: null, sel: 0, screenAt: S.now });
@@ -63,7 +71,7 @@ function hitFx(e, shake) {
   const now = S.clock, add = (f) => S.fx.push({ t0: now, life: 0.8, ...f });
   if (e.dmg > 0 && (e.srcs || []).some((s) => POWER_MOVES.has(s) && s !== 'Thousand-Arm Form')) { // a power move lands: the island shatters
     add({ kind: 'shatter', x: e.x, y: e.y, seed: Math.floor(Math.random() * 1e6), life: 2.2 });
-    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3; add({ kind: 'splash', x: Math.cos(a) * ARENA.r, y: Math.sin(a) * ARENA.r, life: 1.4, big: 2.6 }); }
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3, x = Math.cos(a) * ARENA.r, y = Math.sin(a) * ARENA.r; if (ART.theme === 'river') add({ kind: 'splash', x, y, life: 1.4, big: 2.6 }); else dust(sx(x), sy(y), 60, 40, { t0: now, high: 4, size: 1.6, slow: 1.6 }); } // river: water columns; battlefield: earth thrown up
     if (shake) add({ kind: 'shake', x: 0, y: 0, amp: 6, life: 0.9 });
     const own = ART.fx.storm && (e.srcs || []).some((s) => DRAMA_MOVES.has(s)); // the divine weapons stage their own impact (render.js)
     if (!own) { add({ kind: 'global', x: 0, y: 0, life: 0.35, color: '255,255,255' }); S.slowmo = { t0: S.now, short: true }; } // a heavy hit-stop
@@ -128,7 +136,7 @@ function onEvent(e, m) {
     if (e.name === 'Brahmastra' && ART.fx.sun2) { sound.duck(0.02, BRAHMA_HOLD); setTimeout(() => { if (S.match?.brahma) sound.play('medFull'); }, BRAHMA_BORN * 1000); } // silence; a gong as the second sun is born
     if (e.name === 'Brahmastra') { if (!ART.fx.sun2) { for (const q of m.players) add({ kind: 'pillar', x: q.x, y: q.y, life: 1.2 }); add({ kind: 'global', x: 0, y: 0, life: 0.9, color: '255,255,255' }); } if (!ART.fx.sun2) shake(5, 1.0); } // with art: the second sun (render.js), which stages its own shaking
   }
-  if (e.type === 'wall') { add({ kind: 'splash', x: e.x, y: e.y, life: 0.9, big: 1 }); }
+  if (e.type === 'wall') { if (ART.theme === 'river') add({ kind: 'splash', x: e.x, y: e.y, life: 0.9, big: 1 }); else dust(sx(e.x), sy(e.y), 30, 22, { t0: S.clock, high: 2 }); }
   if (e.type === 'boon') { // a god answers and reveals the boon: the fight slows, the god appears, blessing
     S.slowmo = { t0: S.now };
     add({ kind: 'god', god: e.godId, x: 0, y: 0, life: 2.4 });
@@ -227,7 +235,7 @@ function update(dt) {
     if (any('up')) { S.titleSel = (S.titleSel + 2) % 3; sound.play('tick'); }
     if (any('down')) { S.titleSel = (S.titleSel + 1) % 3; sound.play('tick'); }
     if (any('confirm') || any('pause')) {
-      if (S.titleSel === 0) { S.tutorial = false; go('setup'); }
+      if (S.titleSel === 0) { S.tutorial = false; S.series = null; go('setup'); }
       else if (S.titleSel === 1) { S.tutorial = true; S.mode = '1p'; go('select'); S.cursor = [0, CHAR_IDS.length > 1 ? 1 : 0]; S.locked = [false, false]; S.focus = 0; S.boonsPage = S.movesPage = false; }
       else openControls('title');
     }
@@ -260,7 +268,7 @@ function update(dt) {
     if (humans.every((h) => S.locked[h])) {
       if (S.mode === '1p') S.cursor[1] = (S.cursor[0] + 1) % CHAR_IDS.length; // the computer takes the other fighter
       S.chars = [CHAR_IDS[S.cursor[0]], CHAR_IDS[S.cursor[1]]]; S.side = 0;
-      startMatch();
+      newSeries(); startMatch();
     }
   } else if (S.screen === 'fight') {
     const match = S.match;
@@ -288,7 +296,10 @@ function update(dt) {
       if (S.now - S.screenAt < 1.6 + (match.result?.reason === 'brahmastra' && ART.fx.sun2 ? BRAHMA_AFTER : 0)) return; // let the knockout (or the second sun) play before the menu takes input
       if (any('up')) S.sel = (S.sel + 2) % 3;
       if (any('down')) S.sel = (S.sel + 1) % 3;
-      if (any('confirm')) { if (S.sel === 0) startMatch(); else go(S.sel === 1 ? 'setup' : 'title'); }
+      if (any('confirm')) {
+        if (S.sel === 0) { if (!S.series || seriesOver()) newSeries(); else S.series.round++; startMatch(); }
+        else { S.series = null; go(S.sel === 1 ? 'setup' : 'title'); }
+      }
       return;
     }
     if (any('pause')) { S.paused = true; S.sel = 0; S.info = null; return; }
@@ -312,7 +323,7 @@ function update(dt) {
     const events = match.events.splice(0);
     if (T) afterStep(T, match, events, match.t); // sim time, so "well done" lasts the same at any frame rate
     for (const e of events) if (!(T && e.type === 'end')) onEvent(e, match);
-    if (match.phase === 'done') { S.screenAt = S.now; S.sel = 0; }
+    if (match.phase === 'done') { S.screenAt = S.now; S.sel = 0; if (S.series) { const w = match.result?.winner ?? null; S.series.results.push(w); if (w != null) S.series.wins[w]++; } }
   }
 }
 
@@ -332,7 +343,7 @@ function render() {
       txt(S.banner.text, CX, H - 30, '#ffcf6a', 'center');
       if (S.banner.sub) txt(S.banner.sub, CX, H - 18, '#ddd', 'center');
     }
-    if (S.match.phase === 'done') drawResult(S.match, S.sel, S.now - S.screenAt);
+    if (S.match.phase === 'done') drawResult(S.match, S.sel, S.now - S.screenAt, resultItems());
     if (S.paused) { drawPause(S.sel, pauseItems()); if (S.info != null) drawInfo(S.info, S.match.players.map((p) => p.ch)); }
   } else if (S.screen === 'controls') {
     if (S.ctl.from === 'pause' && S.match) { drawFight(S.match, S.now, S.fx, ['', ''], S.clock); }
@@ -380,7 +391,7 @@ window.__game = {
     controls(from = 'title') { openControls(from); },
     start(o = {}) { // debug starts default to 2 players; pass { mode: '1p', side, level } for the computer, { tutorial: true } for the tutorial
       if (o.minutes) S.minutes = o.minutes; if (o.seed) S.seed = o.seed;
-      S.mode = o.tutorial ? '1p' : o.mode || '2p'; S.side = o.side ?? 0; S.level = o.level || 'normal'; S.tutorial = !!o.tutorial; if (o.chars) S.chars = o.chars; startMatch();
+      S.mode = o.tutorial ? '1p' : o.mode || '2p'; S.side = o.side ?? 0; S.level = o.level || 'normal'; S.tutorial = !!o.tutorial; if (o.chars) S.chars = o.chars; S.bestOf = o.bestOf || 1; newSeries(); startMatch();
     },
     set(pid, fields) { Object.assign(S.match.players[pid], fields); },
     match() { return S.match; },
@@ -388,7 +399,7 @@ window.__game = {
     snapshot() {
       const m = S.match;
       return {
-        screen: S.screen, paused: S.paused, minutes: S.minutes, mode: S.mode, side: S.side, level: S.level, cpu: S.cpu ? S.cpu.pid : null, fx: S.fx.map((f) => f.text || f.kind), banner: S.banner?.text || null,
+        screen: S.screen, paused: S.paused, minutes: S.minutes, series: S.series && { ...S.series, wins: [...S.series.wins], results: [...S.series.results] }, mode: S.mode, side: S.side, level: S.level, cpu: S.cpu ? S.cpu.pid : null, fx: S.fx.map((f) => f.text || f.kind), banner: S.banner?.text || null,
         match: m && {
           phase: m.phase, result: m.result, timeLeft: r1(m.timeLeft), duration: m.duration, scene: m.scene?.name || null,
           projectiles: m.projectiles.length,
