@@ -38,6 +38,8 @@ export const TUNE = {
   block: { prepMult: 2, buildTime: 3, standTime: 3, gap: 14, halfWidth: [8, 20], maxWalls: 3 }, // up to 3 walls standing at once
   quickShot: 0.5,       // a basic shot charged less than this (0-1) is 'quick': two quick shots pass each other (rule 6)
   chord: 0.08,          // special buttons pressed within this time count as one combo (boon / signature)
+  lateJoin: 0.15,       // a second special up to this long after the first still makes the boon combo, if the first is still winding up (it is called off and refunded) (owner, 2026-11-26)
+  buffer: 0.15,         // a press up to this long before a cast or recovery ends is kept and goes off as soon as the fighter is free (owner, 2026-11-26)
   // Meditation (ground rule 11, owner 2026-11-08): fills a devotion bar of `segments` parts, segTime s each,
   // wherever the opponent is (`dist` is only how far the computer likes to be before it starts). Only full segments count. A barrier of `barrier` strength
   // goes up around the meditating fighter each sitting. It soaks only part of each hit: `leak` of it still reaches health

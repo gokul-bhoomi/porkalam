@@ -32,7 +32,7 @@ function makeFighter(ch, i) {
     id: i, ch, x: i === 0 ? -TUNE.startX : TUNE.startX, y: 0, face: { x: i === 0 ? 1 : -1, y: 0 },
     hp: ch.health, power: ch.power.size * TUNE.startPower, kvx: 0, kvy: 0,
     cast: null, block: null, med: null, dash: null, effects: {}, recover: 0, air: null, chasmSide: 0, poison: 0,
-    chord: null,
+    chord: null, lastChord: null, late: null, buf: null, // combo wait; late second special; a press kept while busy
     devotion: 0, // full devotion segments, earned by meditating and spent on boons (ground rule 11)
     boon: null,  // a boon the gods have offered, held until it's used
     msg: null, stats: { dealt: 0, taken: 0 },
@@ -401,14 +401,49 @@ function newMoves(m, inputs, dt) {
     if (m.brahma) break; // a Brahmastra just went off: from here on everyone is held (holdBrahma)
     const inp = inputs[p.id], prev = m.prev[p.id] || {}, pr = (b) => !!inp[b] && !prev[b];
     if (p.cast?.done) { const c = p.cast; p.cast = null; release(m, p, c); } // after the scene
-    const act = chord(p, inp, ACTS.find(pr), dt);
+    if (lateJoin(m, p, inp, prev, dt)) { handleBlock(m, p, inp, dt); continue; }
+    let act = chord(p, inp, ACTS.find(pr), dt);
+    if (p.buf && (p.buf.t -= dt) <= 1e-9) p.buf = null;
+    if (act && p.cast) { p.buf = { act, t: TUNE.buffer }; act = null; } // busy casting: keep the press for a moment
+    if (!act && p.buf && !p.cast && !(p.recover > 0) && !p.block && !p.effects.stun) { act = p.buf.act; p.buf = null; } // free again: the kept press goes off
     if (p.cast) progressCast(m, p, inp, dt);
     else if (p.med) { // a button gets up from meditation and does its thing straight away (e.g. two specials spend the devotion)
-      if (act || pr('block')) { stopMed(m, p, 'MEDITATION STOPPED'); if (act && act !== 'cls' && !p.effects.stun) tryAct(m, p, act, inp); }
+      if (act || pr('block')) { stopMed(m, p, 'MEDITATION STOPPED'); if (act && act !== 'cls' && !p.effects.stun) doAct(m, p, act, inp); }
       else progressMed(m, p, dt);
-    } else if (act && !p.block && !p.effects.stun) tryAct(m, p, act, inp); // attacks work in the air too (owner, 2026-11-14)
+    } else if (act && !p.block && !p.effects.stun) doAct(m, p, act, inp); // attacks work in the air too (owner, 2026-11-14)
+    p.lastChord = null;
     handleBlock(m, p, inp, dt);
   }
+}
+
+// Responsive controls (owner, 2026-11-26): a press made while still recovering is kept for TUNE.buffer s and
+// goes off as soon as the fighter is free; a single special that starts winding up can still become the boon combo.
+function doAct(m, p, act, inp) {
+  const before = { power: p.power, hp: p.hp, cast: p.cast, air: p.air };
+  const r = tryAct(m, p, act, inp);
+  if (r === 'busy') { p.buf = { act, t: TUNE.buffer }; return; }
+  if (!SPECIALS.includes(act) || !p.lastChord) return;
+  // a single special just started: remember it, so a second special a little late can still make the boon
+  const started = p.cast && p.cast !== before.cast && p.cast.t < p.cast.move.cast ? 'cast' : p.air?.kind === 'fly' && p.air !== before.air ? 'fly' : null;
+  if (started) p.late = { slot: act, t: p.lastChord.t, kind: started, ref: started === 'cast' ? p.cast : p.air, power: before.power - p.power, hp: before.hp - p.hp };
+}
+
+// A second special pressed up to TUNE.lateJoin s after the first, while the first is still winding up (or still
+// lifting off), calls the first one off (its cost comes back) and makes the boon combo instead (owner, 2026-11-26).
+function lateJoin(m, p, inp, prev, dt) {
+  const L = p.late;
+  if (!L) return false;
+  L.t += dt;
+  const alive = L.kind === 'cast' ? p.cast === L.ref && !p.cast.done && p.cast.t < p.cast.move.cast - 1e-9 : p.air === L.ref && p.air.t < p.air.lift - 1e-9;
+  if (!alive || L.t > TUNE.lateJoin + 1e-9) { p.late = null; return false; }
+  const second = SPECIALS.some((b) => b !== L.slot && inp[b] && !prev[b]);
+  if (!second || !(p.boon || p.devotion >= TUNE.meditate.tiers[0]) || p.effects.stun) return false;
+  p.late = null; p.chord = null; p.buf = null;
+  if (L.kind === 'cast') p.cast = null; else p.air = null;
+  p.power = Math.min(p.ch.power.size, p.power + L.power); p.hp += L.hp;
+  ev(m, 'cancel', { pid: p.id, slot: L.slot });
+  tryAct(m, p, 'boon', inp);
+  return true;
 }
 
 // A special press waits a moment (TUNE.chord) to see which other special buttons join it:
@@ -424,9 +459,9 @@ function chord(p, inp, act, dt) {
     p.chord = { slot: act, t: 0, seen: held, down: isDown(inp) };
   }
   const c = p.chord;
-  if (c.seen.length >= 3) { p.chord = null; return 'sig'; }
+  if (c.seen.length >= 3) { p.chord = null; p.lastChord = null; return 'sig'; }
   if (c.t < TUNE.chord - 1e-9) return null;
-  p.chord = null;
+  p.chord = null; p.lastChord = c;
   if (c.seen.length === 2 && (p.boon || p.devotion >= TUNE.meditate.tiers[0])) return 'boon';
   if (c.slot === 's1' && c.down) return 'cls';
   return c.slot;
@@ -448,7 +483,7 @@ function tryAct(m, p, slot, inp) {
   else move = p.ch.moves[slot];
   if (!move) return;
   if (move.kind === 'fly' && p.air?.kind === 'fly') { land(m, p); return; } // press again to land (always allowed)
-  if (p.recover > 0) return; // still recovering from the last attack (ground rule 16)
+  if (p.recover > 0) return 'busy'; // still recovering from the last attack (ground rule 16): the press is kept a moment (doAct)
   if (p.air && (move.kind === 'meditate' || move.kind === 'fly' || move.kind === 'jump')) { say(p, move.kind === 'meditate' ? 'LAND FIRST' : 'IN THE AIR'); return; }
   // a boon can be used from any distance: it always finds the opponent (owner, 2026-11-08)
   const why = whyNot(m, p, slot === 'boon' ? { ...move, range: 'anywhere' } : move);

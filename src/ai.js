@@ -106,6 +106,11 @@ function cpuThink(m, cpu, dt) {
   if (cpu.think <= 0) {
     cpu.think = L.react * (0.7 + R() * 0.6);
     const press = decide(m, cpu, p, o, d);
+    if (press && p.recover > 0) { // still recovering: the game would keep this press for later (TUNE.buffer), which is for
+      // people; the computer plays as before, when such a press did nothing (only the boon combo and landing worked)
+      const sp = ['s1', 's2', 's3'].filter((s) => press.buttons[s]), fly = p.air?.kind === 'fly' && sp.length === 1 && p.ch.moves[sp[0]]?.kind === 'fly';
+      if (sp.length < 2 && !fly) { press.buttons = { ...press.buttons }; for (const a of ['a1', 'a2', 's1', 's2', 's3']) delete press.buttons[a]; }
+    }
     if (press) {
       cpu.hold = press.buttons; cpu.holdT = press.time;
       Object.assign(out, press.buttons);

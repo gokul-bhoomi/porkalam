@@ -206,6 +206,38 @@ test('two specials pressed a few frames apart still count as the boon chord', ()
   assert.ok(!events(m, 'cast').some((e) => e.pid === R && ['Jump', 'Pinning arrow', 'Arrow rain'].includes(e.name)), 'no special went off');
 });
 
+test('a second special a little late still makes the boon: the first special is called off and refunded (owner, 2026-11-26)', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } }), p = m.players[R];
+  p.devotion = 4;
+  run(m, [{}, { s1: true }], 0.12); // the chord window has passed: the pinning arrow starts winding up
+  assert.equal(p.cast?.move.name, 'Pinning arrow');
+  const pw = p.power;
+  run(m, [{}, { s1: true, s3: true }], 0.03); run(m, [{}, {}], 0.1);
+  assert.ok(events(m, 'boon')[0], 'a boon was bought');
+  assert.equal(p.devotion, 0); assert.equal(p.cast, null, 'the arrow was called off');
+  assert.ok(p.power >= pw + warrior.moves.s1.cost.power - 1e-6, 'its power came back');
+  assert.ok(!events(m, 'release').some((e) => e.pid === R), 'nothing was fired');
+});
+
+test('too late for the boon: a second special after TUNE.lateJoin leaves the first special going', () => {
+  const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } }), p = m.players[R];
+  p.devotion = 4;
+  run(m, [{}, { s1: true }], TUNE.lateJoin + 0.05); run(m, [{}, { s1: true, s3: true }], 0.03);
+  assert.equal(p.devotion, 4); assert.equal(p.cast?.move.name, 'Pinning arrow');
+});
+
+test('a press made just before recovery ends is kept and goes off when free; an early one is not (owner, 2026-11-26)', () => {
+  const m = match({ k: { x: -20, power: 100 }, r: { x: 20 } }), p = m.players[K];
+  tap(m, K, 'a2'); run(m, [{}, {}], mage.moves.a2.cast + 0.02);
+  assert.ok(p.recover > TUNE.buffer + 0.05, 'recovering');
+  tap(m, K, 'a1'); run(m, [{}, {}], p.recover + 0.05);
+  assert.equal(p.cast, null, 'a press early in recovery is dropped');
+  tap(m, K, 'a2'); run(m, [{}, {}], mage.moves.a2.cast + 0.02);
+  run(m, [{}, {}], p.recover - TUNE.buffer + 0.05); // now inside the last TUNE.buffer s
+  tap(m, K, 'a1'); run(m, [{}, {}], p.recover + 2 / 60);
+  assert.equal(p.cast?.move.name, mage.moves.a1.name, 'the kept press went off once free');
+});
+
 test('a special goes off after the short combo wait', () => {
   const m = match({ k: { x: -60, y: 0 }, r: { x: 60, y: 0, power: 50 } });
   stepMatch(m, [{}, { s1: true }]);
